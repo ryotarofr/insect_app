@@ -121,28 +121,52 @@ describe("E2E: cart flow", () => {
   });
 });
 
-describe("E2E: specimen variant switcher", () => {
-  it("switches variant V1 → V2 → V3 content via tab click", async () => {
+describe("E2E: specimen carte tabs", () => {
+  it("renders 1-hero-3-tabs layout and switches tabs", async () => {
     const { container } = render(() => <App />);
     fireKey("3"); // specimen
     await waitFor(10);
 
-    const variants = container.querySelectorAll(".variants button");
-    expect(variants.length).toBe(5);
+    // Hero は最新KPI 3点を表示
+    const heroText = container.querySelector(".carte-hero")?.textContent ?? "";
+    expect(heroText).toContain("WEIGHT");
+    expect(heroText).toContain("SIZE");
+    expect(heroText).toContain("NEXT ECLOSION");
 
-    // Default: V1 is active
-    expect(variants[0].className).toContain("active");
+    // タブは 3つ (概要 / ログ / 血統)
+    const tabs = container.querySelectorAll(".carte-tabs button");
+    expect(tabs.length).toBe(3);
+    expect(tabs[0].getAttribute("aria-selected")).toBe("true");
 
-    // Click V2
-    fireEvent.click(variants[1]);
+    // ログタブへ切替
+    fireEvent.click(tabs[1]);
     await waitFor(10);
-    expect(variants[1].className).toContain("active");
-    expect(container.textContent).toContain("博物誌レイアウト");
+    expect(tabs[1].getAttribute("aria-selected")).toBe("true");
+    expect(container.textContent).toContain("TIMELINE");
 
-    // Click V3
-    fireEvent.click(variants[2]);
+    // 血統タブへ切替
+    fireEvent.click(tabs[2]);
     await waitFor(10);
-    expect(variants[2].className).toContain("active");
-    expect(container.textContent).toContain("データリッチ");
+    expect(tabs[2].getAttribute("aria-selected")).toBe("true");
+    expect(container.textContent).toContain("BLOODLINE");
+  });
+
+  it("opens QuickLogSheet when 「この個体にログを追加」is clicked", async () => {
+    const { container } = render(() => <App />);
+    fireKey("3");
+    await waitFor(10);
+
+    // シートは初期状態では非表示
+    expect(container.querySelector(".sheet-dialog")).toBeNull();
+
+    const primary = Array.from(container.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("この個体にログを追加"),
+    );
+    expect(primary).toBeTruthy();
+    fireEvent.click(primary!);
+    await waitFor(10);
+
+    expect(container.querySelector(".sheet-dialog")).not.toBeNull();
+    expect(container.querySelector(".sheet-dialog")?.textContent).toContain("記録を追加");
   });
 });

@@ -209,27 +209,509 @@
   gap: 8px;
 }
 
-/* Variation picker (カルテ画面) */
-.variants {
+/* ==========================================================================
+   Carte (個体カルテ) — 1 Hero + 3 Tabs レイアウト
+   ========================================================================== */
+
+.carte-hero {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  gap: 20px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 20px;
+}
+.carte-hero .main-photo {
+  height: 260px;
+  border-radius: var(--r-md);
+}
+.carte-hero .eyebrow {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+  letter-spacing: 0.2em;
+}
+.carte-hero h1 {
+  font-family: var(--font-serif);
+  font-size: 28px;
+  font-weight: 600;
+  margin: 4px 0 2px;
+  letter-spacing: -0.01em;
+}
+.carte-hero .sci {
+  font-family: var(--font-serif);
+  font-style: italic;
+  color: var(--ink-mute);
+  font-size: 13px;
+}
+.carte-hero .chips {
   display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-top: 12px;
+}
+.carte-hero .kpi-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  margin-top: 18px;
+  border-top: 1px solid var(--line);
+  border-bottom: 1px solid var(--line);
+}
+.carte-hero .kpi {
+  padding: 12px 14px;
+  border-right: 1px solid var(--line);
+}
+.carte-hero .kpi:last-child { border-right: 0; }
+.carte-hero .kpi .k-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+  letter-spacing: 0.12em;
+  margin-bottom: 4px;
+}
+.carte-hero .kpi .k-value {
+  font-family: var(--font-serif);
+  font-size: 22px;
+  font-weight: 600;
+  line-height: 1.1;
+}
+.carte-hero .kpi .k-value small {
+  font-size: 12px;
+  color: var(--ink-mute);
+  font-weight: 400;
+  margin-left: 3px;
+}
+.carte-hero .kpi.accent .k-value { color: oklch(0.45 0.1 70); }
+.carte-hero .kpi .k-delta {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--accent-forest);
+  margin-top: 3px;
+}
+.carte-hero .kpi .k-delta.muted { color: var(--ink-faint); }
+.carte-hero .actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  flex-wrap: wrap;
+}
+
+/* Carte tabs */
+.carte-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid var(--line);
+  margin: 24px 0 20px;
+}
+.carte-tabs button {
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--ink-mute);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  font-weight: 500;
+}
+.carte-tabs button:hover { color: var(--ink); }
+.carte-tabs button.active {
+  color: var(--ink);
+  border-bottom-color: var(--ink);
+}
+.carte-tabs .count {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+  margin-left: 4px;
+}
+
+/* Carte 概要タブ 2カラム */
+.carte-overview {
+  display: grid;
+  grid-template-columns: 1.1fr 1fr;
+  gap: 24px;
+  align-items: start;
+}
+
+/* 週次体重チャート (simple bar chart) */
+.weight-chart {
+  display: flex;
+  gap: 6px;
+  align-items: flex-end;
+  height: 120px;
+  margin: 18px 0 18px;
+  padding: 18px 0 18px;
+}
+.weight-chart .bar-wrap {
+  flex: 1;
+  position: relative;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+}
+.weight-chart .bar {
+  width: 100%;
+  background: var(--accent-forest);
+  border-radius: 3px 3px 0 0;
+}
+.weight-chart .val {
+  position: absolute;
+  top: -16px;
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-mute);
+}
+.weight-chart .wk {
+  position: absolute;
+  bottom: -16px;
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ink-faint);
+}
+
+/* 血統ペア */
+.bloodline-pair {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  gap: 8px;
+  align-items: center;
+  padding: 14px 0;
+}
+.bloodline-pair .p {
   background: var(--bg-sunken);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
-  padding: 3px;
-  gap: 2px;
-}
-.variants button {
-  padding: 5px 10px;
-  font-size: 11px;
+  padding: 10px 12px;
   font-family: var(--font-mono);
-  color: var(--ink-mute);
-  border-radius: 4px;
-  letter-spacing: 0.04em;
+  font-size: 12px;
+  text-align: center;
 }
-.variants button.active {
+.bloodline-pair .p .role {
+  display: block;
+  font-size: 10px;
+  color: var(--ink-faint);
+  font-family: var(--font-mono);
+  margin-bottom: 2px;
+}
+.bloodline-pair .x {
+  font-family: var(--font-serif);
+  color: var(--ink-faint);
+  font-size: 18px;
+  text-align: center;
+}
+
+/* Suggest card */
+.suggest-card {
+  padding: 16px 18px;
+  margin-top: 14px;
+  background: var(--accent-amber-soft);
+  border: 1px solid transparent;
+  border-radius: var(--r-lg);
+}
+.suggest-card .title {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: oklch(0.45 0.1 70);
+  letter-spacing: 0.12em;
+}
+.suggest-card ul {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: 13px;
+  color: oklch(0.3 0.05 70);
+}
+.suggest-card li { padding: 4px 0; }
+
+/* ==========================================================================
+   Quick Log — バー／シート共通
+   ========================================================================== */
+
+.quick-bar {
   background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  padding: 16px 18px;
+}
+.quick-bar .qb-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.quick-bar .qb-target {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--bg-sunken);
+  font-size: 12px;
+}
+.quick-bar .qb-target .who { font-weight: 600; }
+.quick-bar .qb-date {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+.quick-bar .qb-spacer { flex: 1; }
+
+.type-picker {
+  display: flex;
+  gap: 8px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.type-picker .tp {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--bg-raised);
+  font-size: 13px;
+  font-weight: 500;
   color: var(--ink);
-  box-shadow: var(--shadow-sm);
+  transition: background 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+}
+.type-picker .tp:hover { background: var(--bg-sunken); }
+.type-picker .tp .ico { font-size: 16px; }
+.type-picker .tp[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--ink-inverse);
+  border-color: var(--ink);
+}
+
+.qb-input {
+  margin-top: 14px;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  gap: 10px;
+  align-items: end;
+}
+.qb-input .field .label { margin-bottom: 4px; }
+.qb-input .field small {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+  margin-left: 6px;
+}
+
+/* Filter row (timeline絞り込み) */
+.filter-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin: 24px 0 12px;
+}
+.filter-row .group {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--bg-sunken);
+}
+.filter-row .group .f {
+  padding: 4px 10px;
+  border-radius: var(--r-pill);
+  font-size: 12px;
+  color: var(--ink-mute);
+  cursor: pointer;
+}
+.filter-row .group .f:hover { color: var(--ink); }
+.filter-row .group .f[aria-pressed="true"] {
+  background: var(--ink);
+  color: var(--ink-inverse);
+}
+.filter-row .count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--ink-mute);
+}
+
+/* Day-grouped timeline */
+.tl-day { margin-bottom: 26px; }
+.tl-day .day-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 8px;
+}
+.tl-day .day {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 600;
+}
+.tl-day .date-mono {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+.tl-day .count {
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--ink-mute);
+}
+.tl-row {
+  display: grid;
+  grid-template-columns: 58px 80px 1fr 54px;
+  gap: 12px;
+  padding: 12px 4px;
+  align-items: center;
+  border-bottom: 1px solid var(--line);
+  transition: background 0.08s ease;
+}
+.tl-row:hover { background: var(--bg-sunken); border-radius: var(--r-sm); }
+.tl-row .time {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+.tl-row .body { font-size: 13px; }
+.tl-row .body .sub {
+  font-size: 11px;
+  color: var(--ink-mute);
+  margin-top: 2px;
+}
+.tl-row .thumb {
+  width: 54px;
+  height: 54px;
+  border-radius: var(--r-sm);
+}
+
+/* ==========================================================================
+   Sheet / Modal — QuickLogSheet 用
+   ========================================================================== */
+
+.sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  background: oklch(0 0 0 / 0.38);
+  backdrop-filter: blur(2px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  animation: sheet-fade-in 0.16s ease;
+}
+@keyframes sheet-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+.sheet-dialog {
+  width: min(520px, calc(100vw - 24px));
+  max-height: calc(100vh - 48px);
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-lg);
+  padding: 20px;
+  overflow-y: auto;
+  animation: sheet-pop-in 0.18s ease;
+}
+@keyframes sheet-pop-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.98); }
+  to   { opacity: 1; transform: none; }
+}
+.sheet-dialog .sheet-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+.sheet-dialog .sheet-head h3 {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  font-weight: 600;
+  margin: 0;
+}
+.sheet-dialog .sheet-head .for {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+.sheet-dialog .sheet-close {
+  margin-left: auto;
+  padding: 4px 8px;
+  font-size: 18px;
+  color: var(--ink-mute);
+  border-radius: var(--r-sm);
+}
+.sheet-dialog .sheet-close:hover { background: var(--bg-sunken); color: var(--ink); }
+
+/* FAB (モバイルのログ追加) */
+.fab {
+  position: fixed;
+  right: 18px;
+  bottom: calc(72px + env(safe-area-inset-bottom, 0));
+  width: 52px;
+  height: 52px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--ink-inverse);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 20px oklch(0 0 0 / 0.22);
+  font-size: 26px;
+  z-index: 30;
+}
+.fab:hover { background: oklch(0.12 0.01 80); }
+
+/* モバイルで sheet をボトムシート化 */
+@media (max-width: 640px) {
+  .sheet-backdrop {
+    align-items: flex-end;
+    justify-content: stretch;
+  }
+  .sheet-dialog {
+    width: 100%;
+    max-width: 100%;
+    max-height: 85vh;
+    border-radius: 14px 14px 0 0;
+    padding: 18px 16px env(safe-area-inset-bottom, 16px);
+    animation: sheet-slide-up 0.22s ease;
+  }
+  @keyframes sheet-slide-up {
+    from { transform: translateY(100%); }
+    to   { transform: translateY(0); }
+  }
+
+  .carte-hero {
+    grid-template-columns: 1fr;
+    padding: 16px;
+  }
+  .carte-hero .main-photo { height: 200px; }
+
+  .carte-overview {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .qb-input {
+    grid-template-columns: 1fr;
+  }
+
+  .tl-row {
+    grid-template-columns: 46px 1fr auto;
+  }
+  .tl-row .time { grid-column: 1; }
+  .tl-row .chip-col { order: 3; }
+  .tl-row .body { grid-column: 2 / span 2; }
+  .tl-row .thumb { display: none; }
+
+  /* FAB は電話サイズでは下部タブバー分を避ける */
+  .fab {
+    bottom: calc(78px + env(safe-area-inset-bottom, 0));
+    right: 14px;
+  }
 }
 
 /* ==========================================================================
