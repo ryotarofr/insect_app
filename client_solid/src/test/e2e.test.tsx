@@ -25,22 +25,22 @@ describe("E2E: route navigation via keyboard", () => {
 
     // default: mypage (no stored route)
     const initialHeader = container.querySelector(".cat")?.textContent ?? "";
-    expect(initialHeader).toMatch(/MY PAGE/);
+    expect(initialHeader).toMatch(/マイページ/);
 
     // "2" → products
     fireKey("2");
     await waitFor(10);
-    expect(container.querySelector(".cat")?.textContent).toMatch(/SHOP/);
+    expect(container.querySelector(".cat")?.textContent).toMatch(/ショップ/);
 
     // "5" → eclosion
     fireKey("5");
     await waitFor(10);
-    expect(container.querySelector(".cat")?.textContent).toMatch(/ECLOSION/);
+    expect(container.querySelector(".cat")?.textContent).toMatch(/羽化予測/);
 
     // "9" → cart
     fireKey("9");
     await waitFor(10);
-    expect(container.querySelector(".cat")?.textContent).toMatch(/CHECKOUT/);
+    expect(container.querySelector(".cat")?.textContent).toMatch(/お会計/);
   });
 
   it("persists route choice to localStorage", async () => {
@@ -115,7 +115,7 @@ describe("E2E: cart flow", () => {
 
     const text = container.textContent ?? "";
     // CartPage has an empty fallback with 60px padding
-    expect(text).toContain("CHECKOUT");
+    expect(text).toContain("お会計");
     // Make sure no item rows render
     expect(cartItems()).toEqual([]);
   });
@@ -129,9 +129,9 @@ describe("E2E: specimen carte tabs", () => {
 
     // Hero は最新KPI 3点を表示
     const heroText = container.querySelector(".carte-hero")?.textContent ?? "";
-    expect(heroText).toContain("WEIGHT");
-    expect(heroText).toContain("SIZE");
-    expect(heroText).toContain("NEXT ECLOSION");
+    expect(heroText).toContain("体重");
+    expect(heroText).toContain("サイズ");
+    expect(heroText).toContain("次の羽化");
 
     // タブは 3つ (概要 / ログ / 血統)
     const tabs = container.querySelectorAll(".carte-tabs button");
@@ -142,13 +142,13 @@ describe("E2E: specimen carte tabs", () => {
     fireEvent.click(tabs[1]);
     await waitFor(10);
     expect(tabs[1].getAttribute("aria-selected")).toBe("true");
-    expect(container.textContent).toContain("TIMELINE");
+    expect(container.textContent).toContain("タイムライン");
 
     // 血統タブへ切替
     fireEvent.click(tabs[2]);
     await waitFor(10);
     expect(tabs[2].getAttribute("aria-selected")).toBe("true");
-    expect(container.textContent).toContain("BLOODLINE");
+    expect(container.textContent).toContain("血統");
   });
 
   it("opens QuickLogSheet when 「この個体にログを追加」is clicked", async () => {

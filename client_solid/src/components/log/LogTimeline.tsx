@@ -81,7 +81,7 @@ export const LogTimeline = (p: LogTimelineProps) => {
                     fallback={<div class="thumb" aria-hidden="true" style={{ background: "transparent", border: 0 }} />}
                   >
                     <div class="thumb ph" aria-label="添付写真">
-                      <span class="mono" style={{ "font-size": "9px" }}>IMG</span>
+                      <span class="mono" style={{ "font-size": "9px" }}>写真</span>
                     </div>
                   </Show>
                 </div>

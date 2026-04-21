@@ -120,7 +120,7 @@ export const APP_DATA: AppData = {
   user: {
     name: "山田 徹",
     handle: "t_yamada",
-    role: "BREEDER · LV.3",
+    role: "ブリーダー · Lv.3",
     initial: "山",
     since: "2024.03",
   },
@@ -173,7 +173,7 @@ export const APP_DATA: AppData = {
       eclosionETA: null,
       eclosionInDays: null,
       status: "alive",
-      bloodline: { father: "WILD", mother: "WILD" },
+      bloodline: { father: "野生", mother: "野生" },
     },
     {
       id: "#CAT-0118",
@@ -253,7 +253,7 @@ export const APP_DATA: AppData = {
       eclosionETA: "2027-02-15",
       eclosionInDays: 668,
       status: "alive",
-      bloodline: { father: "WILD", mother: "WILD" },
+      bloodline: { father: "野生", mother: "野生" },
     },
   ],
 

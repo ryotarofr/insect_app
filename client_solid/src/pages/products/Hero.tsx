@@ -102,7 +102,7 @@ export const Hero = (props: HeroProps) => {
         <div class="hero-copy">
           <div class="hero-eyebrow mono">
             <span class="hero-eyebrow-rule" aria-hidden="true" />
-            WELCOME TO KOCHŪ
+ようこそ KOCHŪ へ
           </div>
 
           <h1 class="hero-title serif">
@@ -141,7 +141,7 @@ export const Hero = (props: HeroProps) => {
         >
           <div class="ph forest hero-feature-ph">
             <div class="hero-feature-chips">
-              <span class="chip ink mono">FEATURED</span>
+              <span class="chip ink mono">注目</span>
               <span class="chip amber">{featured().badge ?? "血統書付"}</span>
             </div>
             <div class="ph-label">{featured().phLabel}</div>
@@ -160,7 +160,7 @@ export const Hero = (props: HeroProps) => {
             <span>
               <strong>15日後に羽化予測</strong> · 2026-05-04 ±5日
             </span>
-            <span class="mono">ECLOSION FORECAST</span>
+            <span class="mono">羽化予測</span>
           </div>
         </article>
       </div>
@@ -170,14 +170,14 @@ export const Hero = (props: HeroProps) => {
         <div class="hero-promises-head">
           <div class="hero-eyebrow mono forest">
             <span class="hero-eyebrow-rule forest" aria-hidden="true" />
-            3 PROMISES
+            3つの約束
           </div>
           <h2 class="hero-promises-title serif">KOCHŪ の約束</h2>
-          <p class="hero-promises-sub mono">BUY · RAISE · TRADE</p>
+          <p class="hero-promises-sub mono">買う · 育てる · 継ぐ</p>
         </div>
 
         <PromiseItem
-          num="01 — BUY"
+          num="01 — 買う"
           icon={<IconCarte />}
           title="自動カルテ生成"
           body={
@@ -191,7 +191,7 @@ export const Hero = (props: HeroProps) => {
           onLink={() => props.setRoute("specimen")}
         />
         <PromiseItem
-          num="02 — RAISE"
+          num="02 — 育てる"
           icon={<IconTree />}
           title="血統・真贋の保証"
           body={
@@ -205,7 +205,7 @@ export const Hero = (props: HeroProps) => {
           onLink={() => props.setRoute("bloodline")}
         />
         <PromiseItem
-          num="03 — TRADE"
+          num="03 — 継ぐ"
           icon={<IconShield />}
           title="死着 24h 自動補償"
           body={

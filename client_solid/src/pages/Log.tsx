@@ -89,7 +89,7 @@ const QuickLogBar = (p: {
     <form class="quick-bar" onSubmit={submit} aria-label="ログ追加">
       <div class="qb-top">
         <span class="mono" style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em" }}>
-          NEW ENTRY
+          新規記録
         </span>
         <span class="qb-target">
           <span style={{ color: "var(--ink-faint)" }}>対象:</span>
@@ -285,7 +285,7 @@ export const LogPage = () => {
     <>
       <div class="page-head">
         <div>
-          <div class="cat">HUSBANDRY LOG</div>
+          <div class="cat">飼育ログ</div>
           <h1>飼育ログ</h1>
         </div>
         <div class="page-actions">
@@ -318,7 +318,7 @@ export const LogPage = () => {
       {/* Filters — 3軸 */}
       <div class="filter-row">
         <span class="mono" style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em" }}>
-          TIMELINE
+          タイムライン
         </span>
 
         <div class="group" aria-label="種別フィルタ">

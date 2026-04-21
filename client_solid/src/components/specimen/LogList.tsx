@@ -39,7 +39,7 @@ export const LogList = (p: { logs: LogEntry[]; compact?: boolean }) => (
           <Show when={l.photo}>
             <div class="ph" style={{ width: "60px", height: "60px" }}>
               <span class="mono" style={{ "font-size": "9px" }}>
-                IMG
+                写真
               </span>
             </div>
           </Show>

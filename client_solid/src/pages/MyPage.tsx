@@ -33,7 +33,7 @@ export const MyPage = (props: MyPageProps) => {
     <>
       <div class="page-head">
         <div>
-          <div class="cat">MY PAGE · MEMBER SINCE {getCurrentUser().since}</div>
+          <div class="cat">マイページ · 登録 {getCurrentUser().since} より</div>
           <h1>{getCurrentUser().name}</h1>
         </div>
         <div class="page-actions">
@@ -77,7 +77,7 @@ export const MyPage = (props: MyPageProps) => {
         >
           <div style={{ display: "flex", "align-items": "center", gap: "16px", padding: "14px 20px" }}>
             <div class="mono" style={{ "font-size": "11px", color: "oklch(0.45 0.1 70)", "letter-spacing": "0.1em" }}>
-              ECLOSION RADAR
+              羽化レーダー
             </div>
             <div style={{ "font-size": "13px", color: "oklch(0.35 0.08 70)" }}>
               もうすぐ羽化する個体があります。温度と湿度を確認してください。
@@ -175,28 +175,28 @@ export const MyPage = (props: MyPageProps) => {
                 </div>
                 <div style={{ display: "flex", gap: "18px", "margin-top": "12px", "font-size": "12px" }}>
                   <div>
-                    <div style={{ "font-size": "10px", color: "var(--ink-faint)" }}>SIZE</div>
+                    <div style={{ "font-size": "10px", color: "var(--ink-faint)" }}>サイズ</div>
                     <div class="mono">
                       <b>{s.sizeMm}</b>mm
                     </div>
                   </div>
                   <div>
-                    <div style={{ "font-size": "10px", color: "var(--ink-faint)" }}>WEIGHT</div>
+                    <div style={{ "font-size": "10px", color: "var(--ink-faint)" }}>体重</div>
                     <div class="mono">
                       <b>{s.weightG}</b>g
                     </div>
                   </div>
                   <div>
-                    <div style={{ "font-size": "10px", color: "var(--ink-faint)" }}>GEN</div>
+                    <div style={{ "font-size": "10px", color: "var(--ink-faint)" }}>累代</div>
                     <div class="mono">
                       <b>{s.generation}</b>
                     </div>
                   </div>
                   <Show when={s.eclosionInDays !== null}>
                     <div style={{ "margin-left": "auto", "text-align": "right" }}>
-                      <div style={{ "font-size": "10px", color: "var(--ink-faint)" }}>ECLOSION</div>
+                      <div style={{ "font-size": "10px", color: "var(--ink-faint)" }}>羽化</div>
                       <div class="mono">
-                        <b>{s.eclosionInDays}</b>d
+                        <b>{s.eclosionInDays}</b>日
                       </div>
                     </div>
                   </Show>

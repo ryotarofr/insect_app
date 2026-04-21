@@ -31,7 +31,7 @@ export const CartPage = () => {
     <>
       <div class="page-head">
         <div>
-          <div class="cat">CHECKOUT</div>
+          <div class="cat">お会計</div>
           <h1>カートとお届け先</h1>
         </div>
       </div>
@@ -233,7 +233,7 @@ export const CartPage = () => {
               class="mono"
               style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em" }}
             >
-              ORDER SUMMARY
+              注文サマリー
             </div>
             <div
               class="serif"

@@ -104,7 +104,7 @@ export const ProductDetailContent = (props: {
             "letter-spacing": "0.08em",
           }}
         >
-          CARE GUARANTEE
+安心保証
         </div>
         <div style={{ display: "flex", gap: "18px", "font-size": "12px" }}>
           <div>✓ 死着補償（24h 自動返金）</div>

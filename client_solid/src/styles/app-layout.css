@@ -332,44 +332,6 @@
   align-items: start;
 }
 
-/* 週次体重チャート (simple bar chart) */
-.weight-chart {
-  display: flex;
-  gap: 6px;
-  align-items: flex-end;
-  height: 120px;
-  margin: 18px 0 18px;
-  padding: 18px 0 18px;
-}
-.weight-chart .bar-wrap {
-  flex: 1;
-  position: relative;
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: flex-end;
-}
-.weight-chart .bar {
-  width: 100%;
-  background: var(--accent-forest);
-  border-radius: 3px 3px 0 0;
-}
-.weight-chart .val {
-  position: absolute;
-  top: -16px;
-  font-family: var(--font-mono);
-  font-size: 10px;
-  color: var(--ink-mute);
-}
-.weight-chart .wk {
-  position: absolute;
-  bottom: -16px;
-  font-family: var(--font-mono);
-  font-size: 9px;
-  color: var(--ink-faint);
-}
-
 /* 血統ペア */
 .bloodline-pair {
   display: grid;
@@ -423,6 +385,206 @@
   color: oklch(0.3 0.05 70);
 }
 .suggest-card li { padding: 4px 0; }
+
+/* ==========================================================================
+   Stage Bar — ライフサイクル現在地強調
+   ========================================================================== */
+
+.stage-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+/* Spotlight card: 現在地を大きく見せる */
+.stage-spot {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  padding: 16px 18px;
+  background: linear-gradient(
+    180deg,
+    var(--accent-amber-soft) 0%,
+    color-mix(in oklab, var(--accent-amber-soft) 60%, var(--bg-raised)) 100%
+  );
+  border: 1px solid color-mix(in oklab, var(--accent-amber) 30%, var(--line));
+  border-radius: var(--r-lg);
+}
+.stage-spot-ico {
+  width: 56px;
+  height: 56px;
+  flex: 0 0 56px;
+  border-radius: 50%;
+  background: var(--bg-raised);
+  border: 2px solid var(--accent-amber);
+  display: grid;
+  place-items: center;
+  font-size: 28px;
+  box-shadow: 0 0 0 4px color-mix(in oklab, var(--accent-amber) 18%, transparent);
+}
+.stage-spot-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.stage-spot-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+.stage-spot-eyebrow {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  color: oklch(0.45 0.1 70);
+}
+.stage-spot-eta {
+  font-size: 11px;
+  color: oklch(0.4 0.1 70);
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--bg-raised);
+  border: 1px solid color-mix(in oklab, var(--accent-amber) 35%, var(--line));
+}
+.stage-spot-name {
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.1;
+  margin: 2px 0 4px;
+  color: oklch(0.25 0.08 70);
+}
+.stage-spot-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ink-mute);
+  margin-bottom: 8px;
+}
+.stage-spot-meta b {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+/* 7段階ミニタイムライン */
+.stage-track {
+  position: relative;
+  padding: 22px 0 0;
+}
+.stage-track-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 30px;
+  height: 2px;
+  background: var(--line-strong);
+  border-radius: 2px;
+}
+.stage-track-fill {
+  position: absolute;
+  left: 0;
+  top: 30px;
+  height: 2px;
+  background: var(--accent-forest);
+  border-radius: 2px;
+  transition: width 320ms ease;
+}
+.stage-track-marker {
+  position: absolute;
+  top: 6px;
+  transform: translateX(-50%);
+  color: var(--accent-amber);
+  font-size: 12px;
+  line-height: 1;
+  pointer-events: none;
+}
+.stage-track-caret {
+  display: inline-block;
+  filter: drop-shadow(0 1px 0 color-mix(in oklab, var(--accent-amber) 40%, transparent));
+}
+.stage-track-steps {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  gap: 0;
+}
+.stage-step {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+.stage-step .dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--bg-raised);
+  border: 2px solid var(--line-strong);
+  position: relative;
+  z-index: 1;
+}
+.stage-step .dot .check {
+  font-size: 9px;
+  line-height: 1;
+  color: #fff;
+  font-weight: 700;
+}
+.stage-step .lbl {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  color: var(--ink-faint);
+  letter-spacing: 0.02em;
+}
+.stage-step.is-past .dot {
+  background: var(--accent-forest);
+  border-color: var(--accent-forest);
+}
+.stage-step.is-past .lbl {
+  color: var(--ink-mute);
+}
+.stage-step.is-now .dot {
+  width: 20px;
+  height: 20px;
+  margin-top: -3px;
+  background: var(--accent-amber);
+  border-color: var(--accent-amber);
+  box-shadow:
+    0 0 0 4px color-mix(in oklab, var(--accent-amber) 22%, transparent),
+    0 1px 2px rgba(0, 0, 0, 0.06);
+}
+.stage-step.is-now .lbl {
+  color: oklch(0.35 0.1 70);
+  font-weight: 700;
+  background: var(--accent-amber-soft);
+  padding: 2px 8px;
+  border-radius: 999px;
+}
+.stage-step.is-future .dot {
+  background: var(--bg-raised);
+}
+
+@media (max-width: 640px) {
+  .stage-spot {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 14px;
+  }
+  .stage-spot-ico {
+    width: 44px;
+    height: 44px;
+    flex-basis: 44px;
+    font-size: 22px;
+  }
+  .stage-spot-name {
+    font-size: 22px;
+  }
+  .stage-step .lbl {
+    font-size: 9px;
+  }
+}
 
 /* ==========================================================================
    Quick Log — バー／シート共通
@@ -927,6 +1089,470 @@
   .content .hscroll {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* ==========================================================================
+   Bloodline — 血統系図 (フォーカス + 俯瞰ツリー)
+   ========================================================================== */
+
+.blood-grid {
+  display: grid;
+  grid-template-columns: 1fr 320px;
+  gap: 24px;
+}
+.blood-main {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+}
+.blood-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.mode-toggle {
+  display: inline-flex;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 3px;
+}
+.mode-toggle button {
+  font-size: 12px;
+  padding: 6px 14px;
+  border: 0;
+  background: transparent;
+  border-radius: calc(var(--r-md) - 2px);
+  cursor: pointer;
+  color: var(--ink-mute);
+  display: inline-flex;
+  gap: 6px;
+  align-items: baseline;
+}
+.mode-toggle button .mono {
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+.mode-toggle button.active {
+  background: var(--bg);
+  color: var(--ink);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+}
+.mode-toggle button.active .mono {
+  color: var(--ink-mute);
+}
+.blood-crumb {
+  font-size: 12px;
+  color: var(--ink-mute);
+  margin-left: auto;
+}
+.blood-board {
+  padding: 28px;
+  overflow-x: auto;
+  position: relative;
+}
+.blood-legend {
+  display: flex;
+  gap: 18px;
+  justify-content: flex-end;
+  margin-top: 12px;
+  font-size: 11px;
+  color: var(--ink-mute);
+  flex-wrap: wrap;
+}
+.blood-legend .lg-dot {
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+.lg-dot.self { background: var(--accent-amber); box-shadow: 0 0 0 2px color-mix(in oklab, var(--accent-amber) 25%, transparent); }
+.lg-dot.ancestor { background: var(--ink); }
+.lg-dot.other { background: var(--line-strong); }
+.lg-dot.wild { border: 1px dashed var(--ink-mute); background: transparent; }
+
+/* --- Individual card ----------------------------------------------------- */
+
+.ind-card {
+  min-width: 168px;
+  max-width: 220px;
+  text-align: left;
+  padding: 10px 14px;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font: inherit;
+  color: var(--ink);
+}
+.ind-card:hover {
+  border-color: var(--ink-mute);
+  transform: translateY(-1px);
+}
+.ind-card:focus-visible {
+  outline: 2px solid var(--accent-amber);
+  outline-offset: 2px;
+}
+.ind-card.is-compact {
+  min-width: 140px;
+  padding: 8px 10px;
+}
+.ind-card.is-self {
+  border: 2px solid var(--accent-amber);
+  background: var(--accent-amber-soft);
+  box-shadow: 0 2px 10px color-mix(in oklab, var(--accent-amber) 25%, transparent);
+}
+.ind-card.is-ancestor {
+  border-color: var(--ink);
+  background: var(--bg-raised);
+}
+.ind-card.is-dim {
+  opacity: 0.45;
+  background: var(--bg-sunken);
+}
+.ind-card.is-dim:hover {
+  opacity: 0.85;
+}
+.ind-card.is-wild {
+  border-style: dashed;
+  background: var(--bg);
+}
+.ind-card .ind-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.ind-card .ind-sex {
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1;
+}
+.ind-card.sex-m .ind-sex { color: var(--accent-indigo); }
+.ind-card.sex-f .ind-sex { color: var(--accent-rose); }
+.ind-card.is-self.sex-m .ind-sex,
+.ind-card.is-self.sex-f .ind-sex { color: inherit; }
+.ind-card .ind-id {
+  font-size: 10px;
+  color: var(--ink-faint);
+  letter-spacing: 0.02em;
+}
+.ind-card.is-self .ind-id { color: oklch(0.45 0.1 70); }
+.ind-card .ind-name {
+  font-weight: 600;
+  font-size: 13px;
+  margin-top: 2px;
+  line-height: 1.2;
+}
+.ind-card.is-self .ind-name {
+  font-size: 16px;
+}
+.ind-card.is-compact .ind-name {
+  font-size: 12px;
+}
+.ind-card .ind-meta {
+  font-size: 10px;
+  color: var(--ink-faint);
+  margin-top: 4px;
+}
+.ind-card.is-self .ind-meta {
+  color: oklch(0.4 0.1 70);
+}
+
+.ind-slot {
+  min-width: 140px;
+  padding: 10px 14px;
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r-md);
+  background: transparent;
+  text-align: center;
+  color: var(--ink-faint);
+  font-size: 11px;
+  align-self: stretch;
+  display: grid;
+  place-items: center;
+}
+
+/* --- Focus tree (main view) --------------------------------------------- */
+
+.focus-tree {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 0;
+}
+.focus-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 36px;
+  padding: 14px 0;
+  position: relative;
+}
+.focus-row + .focus-row::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 1px;
+  height: 14px;
+  background: var(--line-strong);
+}
+.gp-row {
+  gap: 52px;
+  flex-wrap: wrap;
+}
+.gp-pair {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  background: var(--bg-sunken);
+  border: 1px dashed var(--line);
+  border-radius: var(--r-md);
+}
+.gp-pair[data-side="paternal"]::before,
+.gp-pair[data-side="maternal"]::before {
+  display: none;
+}
+.focus-row .cross {
+  color: var(--ink-faint);
+  font-family: var(--font-serif);
+  font-size: 14px;
+  line-height: 1;
+}
+.focus-row .cross.big {
+  font-size: 22px;
+  color: var(--ink-mute);
+}
+.parent-row {
+  gap: 20px;
+}
+.self-row {
+  gap: 36px;
+  align-items: flex-start;
+  padding-top: 20px;
+}
+.self-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: center;
+}
+.self-wrap .eyebrow {
+  font-size: 10px;
+  color: var(--ink-faint);
+  letter-spacing: 0.12em;
+}
+.sib-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 340px;
+  padding-left: 20px;
+  border-left: 1px dashed var(--line);
+}
+.sib-label {
+  font-size: 10px;
+  color: var(--ink-faint);
+  letter-spacing: 0.12em;
+}
+.sib-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.children-row {
+  flex-direction: column;
+  gap: 8px;
+  padding-top: 24px;
+}
+.ch-label {
+  font-size: 10px;
+  color: var(--ink-faint);
+  letter-spacing: 0.12em;
+}
+.ch-list {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: center;
+}
+
+/* --- Overview tree view -------------------------------------------------- */
+
+.tree-board {
+  position: relative;
+  min-height: 320px;
+}
+.tree-svg {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+.tree-svg .tw-line {
+  stroke: var(--line-strong);
+  stroke-width: 1.5;
+  fill: none;
+}
+.tree-svg .tw-line.hi {
+  stroke: var(--accent-amber);
+  stroke-width: 2.25;
+}
+.tree-row {
+  display: flex;
+  gap: 24px;
+  padding: 28px 0;
+  align-items: center;
+  position: relative;
+  z-index: 1;
+}
+.tree-row + .tree-row {
+  border-top: 1px dashed var(--line);
+}
+.tree-row .gen-label {
+  width: 120px;
+  flex-shrink: 0;
+}
+.tree-row .gen-label .eyebrow {
+  font-size: 10px;
+  color: var(--ink-faint);
+  letter-spacing: 0.1em;
+}
+.tree-row .gen-label .gen-title {
+  font-size: 28px;
+  font-weight: 600;
+  margin-top: 2px;
+}
+.tree-row .gen-label .gen-year {
+  font-size: 11px;
+  color: var(--ink-mute);
+}
+.tree-row .gen-cards {
+  display: flex;
+  gap: 28px;
+  flex-wrap: wrap;
+  flex: 1;
+}
+
+/* --- Side panel ---------------------------------------------------------- */
+
+.f-band {
+  margin-top: 14px;
+  padding: 12px;
+  background: var(--bg-sunken);
+  border-radius: var(--r-md);
+}
+.f-band-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  gap: 8px;
+}
+.f-band-desc {
+  font-size: 11px;
+  color: var(--ink-mute);
+  line-height: 1.5;
+}
+.ancestry-box {
+  margin-top: 10px;
+  padding: 12px;
+  background: var(--bg-sunken);
+  border-radius: var(--r-md);
+  font-size: 12px;
+}
+.ancestry-box .eyebrow {
+  font-size: 10px;
+  color: var(--ink-faint);
+  margin-bottom: 4px;
+}
+.audit-row {
+  display: grid;
+  grid-template-columns: 70px 1fr;
+  gap: 8px;
+  font-size: 11px;
+  padding: 6px 0;
+  border-bottom: 1px dashed var(--line);
+}
+.audit-row[data-last="true"] {
+  border-bottom: 0;
+}
+.audit-row .date {
+  color: var(--ink-faint);
+}
+.audit-row .actor {
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+.audit-verified {
+  font-size: 10px;
+  color: var(--accent-forest);
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+}
+
+/* --- Mobile / narrow ----------------------------------------------------- */
+
+@media (max-width: 960px) {
+  .blood-grid {
+    grid-template-columns: 1fr;
+  }
+  .blood-crumb {
+    margin-left: 0;
+  }
+}
+@media (max-width: 640px) {
+  .blood-board {
+    padding: 16px;
+  }
+  .focus-row {
+    gap: 12px;
+    padding: 10px 0;
+  }
+  .gp-row {
+    flex-direction: column;
+    gap: 10px;
+  }
+  .self-row {
+    flex-direction: column;
+    align-items: center;
+  }
+  .sib-group {
+    padding-left: 0;
+    border-left: 0;
+    border-top: 1px dashed var(--line);
+    padding-top: 10px;
+    max-width: 100%;
+    align-items: center;
+  }
+  .tree-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 12px;
+    padding: 20px 0;
+  }
+  .tree-row .gen-label {
+    width: auto;
+  }
+  .tree-row .gen-cards {
+    width: 100%;
+    gap: 12px;
+  }
+  .ind-card {
+    min-width: 140px;
+  }
+  /* 俯瞰ツリーのSVG線はモバイル縦積みでは意味が薄い */
+  .tree-svg {
+    display: none;
   }
 }
 

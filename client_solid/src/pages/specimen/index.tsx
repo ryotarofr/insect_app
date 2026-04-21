@@ -19,6 +19,8 @@ import { StageBar } from "../../components/specimen/StageBar";
 import { SpecimenMemoCard } from "../../components/specimen/SpecimenMemoCard";
 import { LogTimeline } from "../../components/log/LogTimeline";
 import { QuickLogSheet } from "../../components/log/QuickLogSheet";
+// NOTE: 体重チャート (WEIGHT · 7 WEEKS) は UX レビューで削除。
+// ヒーローのWEIGHT KPIと前回比デルタで十分に役割を果たせているため。
 
 type Tab = "overview" | "log" | "bloodline";
 
@@ -33,39 +35,9 @@ interface SpecimenDetailProps {
   setRoute: (r: RouteKey) => void;
 }
 
-/**
- * 体重推移のダミー series (7週分)。
- * 実装フェーズ2 で listLogsBySpecimen から weight ログを集計して差し替える想定。
- */
-const weightSeries = (current: number): number[] => {
-  const base = current - 10.2; // 7週前
-  const step = (current - base) / 6;
-  return Array.from({ length: 7 }, (_, i) =>
-    Math.round((base + step * i) * 10) / 10,
-  );
-};
-
-const WeightChart = (p: { current: number }) => {
-  const series = weightSeries(p.current);
-  const max = Math.max(...series);
-  return (
-    <div class="weight-chart" aria-label="週次体重推移">
-      <For each={series}>
-        {(v, i) => (
-          <div class="bar-wrap">
-            <span class="val">{v}</span>
-            <div class="bar" style={{ height: `${(v / max) * 100}%` }} />
-            <span class="wk">W{i() + 1}</span>
-          </div>
-        )}
-      </For>
-    </div>
-  );
-};
-
 const SuggestedActions = (p: { s: Specimen }) => (
   <div class="suggest-card">
-    <div class="title">SUGGESTED ACTIONS</div>
+    <div class="title">おすすめの世話</div>
     <ul>
       <Show when={p.s.stage.includes("幼虫")}>
         <li>⚖ 体重が順調に推移。次週も定点計測を。</li>
@@ -82,20 +54,13 @@ const OverviewTab = (p: { s: Specimen }) => (
   <div class="carte-overview">
     <div>
       <div class="mono" style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em" }}>
-        BIOMETRICS
+        計測値
       </div>
       <SpecDL s={p.s} />
 
-      <div style={{ "margin-top": "24px" }}>
-        <div class="mono" style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em", "margin-bottom": "4px" }}>
-          WEIGHT · 7 WEEKS
-        </div>
-        <WeightChart current={p.s.weightG} />
-      </div>
-
-      <div style={{ "margin-top": "24px" }}>
+      <div style={{ "margin-top": "28px" }}>
         <div class="mono" style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em", "margin-bottom": "10px" }}>
-          LIFECYCLE
+          ライフサイクル
         </div>
         <StageBar stage={p.s.stage} progress={p.s.stageProgress} eta={p.s.eclosionInDays} />
       </div>
@@ -123,7 +88,7 @@ const LogTab = (p: {
       }}
     >
       <div class="mono" style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em" }}>
-        TIMELINE · この個体
+        タイムライン · この個体
       </div>
       <span style={{ "font-size": "12px", color: "var(--ink-mute)" }}>
         {p.logs.length} 件
@@ -145,7 +110,7 @@ const BloodlineTab = (p: { s: Specimen; setRoute: (r: RouteKey) => void }) => (
   <div class="carte-overview">
     <div class="card" style={{ padding: "22px" }}>
       <div class="mono" style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em" }}>
-        BLOODLINE
+        血統
       </div>
       <div class="serif" style={{ "font-size": "20px", "font-weight": 600, margin: "4px 0 8px" }}>
         親世代
@@ -172,7 +137,7 @@ const BloodlineTab = (p: { s: Specimen; setRoute: (r: RouteKey) => void }) => (
 
     <div class="card" style={{ padding: "22px" }}>
       <div class="mono" style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em" }}>
-        GENERATION
+        累代情報
       </div>
       <div class="serif" style={{ "font-size": "20px", "font-weight": 600, margin: "4px 0 10px" }}>
         累代情報
@@ -220,7 +185,7 @@ export const SpecimenDetail = (props: SpecimenDetailProps) => {
     <>
       <div class="page-head">
         <div>
-          <div class="cat">INDIVIDUAL CARTE · {s().id}</div>
+          <div class="cat">個体カルテ · {s().id}</div>
           <h1>{s().name}</h1>
         </div>
       </div>
@@ -246,7 +211,7 @@ export const SpecimenDetail = (props: SpecimenDetailProps) => {
 
           <div class="kpi-row">
             <div class="kpi">
-              <div class="k-label">WEIGHT</div>
+              <div class="k-label">体重</div>
               <div class="k-value">
                 {s().weightG}
                 <small>g</small>
@@ -259,7 +224,7 @@ export const SpecimenDetail = (props: SpecimenDetailProps) => {
               </Show>
             </div>
             <div class="kpi">
-              <div class="k-label">SIZE</div>
+              <div class="k-label">サイズ</div>
               <div class="k-value">
                 {s().sizeMm}
                 <small>mm</small>
@@ -267,7 +232,7 @@ export const SpecimenDetail = (props: SpecimenDetailProps) => {
               <div class="k-delta muted">{s().stage}</div>
             </div>
             <div class="kpi accent">
-              <div class="k-label">NEXT ECLOSION</div>
+              <div class="k-label">次の羽化</div>
               <Show
                 when={s().eclosionInDays !== null}
                 fallback={

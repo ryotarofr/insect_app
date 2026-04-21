@@ -90,7 +90,7 @@ export const QuickLogSheet = (p: QuickLogSheetProps) => {
         >
           <div class="sheet-head">
             <div>
-              <div class="for">NEW ENTRY</div>
+              <div class="for">新規記録</div>
               <h3>記録を追加</h3>
             </div>
             <button

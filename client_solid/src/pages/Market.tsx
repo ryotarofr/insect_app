@@ -19,7 +19,7 @@ const MarketBrowse = () => (
         "border-color": "transparent",
       }}
     >
-      <span class="chip indigo">BLOODLINE 認証</span>
+      <span class="chip indigo">血統認証</span>
       <span style={{ "font-size": "13px", color: "var(--ink-mute)" }}>
         このバッジは、イベントログで累代を検証済の個体に付与されます。
       </span>
@@ -51,7 +51,7 @@ const MarketBrowse = () => (
                   {l.id}
                 </span>
                 <span class={`chip ${l.auction ? "amber" : "forest"}`}>
-                  {l.auction ? `AUCTION · 残 ${l.endsIn}` : "即決のみ"}
+                  {l.auction ? `オークション · 残 ${l.endsIn}` : "即決のみ"}
                 </span>
               </div>
               <div style={{ "font-weight": 600, "font-size": "14px" }}>{l.title}</div>
@@ -195,7 +195,7 @@ const MarketSell = () => {
 
       <div class="card" style={{ padding: "24px", position: "sticky", top: "72px", "align-self": "start" }}>
         <div class="mono" style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em" }}>
-          NEW LISTING
+          新規出品
         </div>
         <div class="serif" style={{ "font-size": "20px", "font-weight": 600, "margin-bottom": "16px" }}>
           出品情報
@@ -228,7 +228,7 @@ const MarketSell = () => {
             }}
           >
             <div class="mono" style={{ "font-size": "11px", color: "var(--accent-forest)" }}>
-              SELECTED
+              選択中
             </div>
             <div style={{ "font-weight": 500 }}>{pickedSpec()?.name}</div>
             <div class="mono" style={{ "font-size": "11px", color: "var(--ink-mute)" }}>
@@ -333,7 +333,7 @@ export const MarketPage = () => {
     <>
       <div class="page-head">
         <div>
-          <div class="cat">C2C MARKETPLACE</div>
+          <div class="cat">C2Cマーケット</div>
           <h1>個体を探す / 出品する</h1>
         </div>
         <div class="page-actions">

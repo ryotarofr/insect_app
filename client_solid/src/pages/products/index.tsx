@@ -41,7 +41,7 @@ export const ProductsList = (props: ProductsListProps) => {
 
       <div class="page-head">
         <div>
-          <div class="cat">SHOP · ANCHOR BEETLE CO. + MIYAMA FARM</div>
+          <div class="cat">ショップ · ANCHOR BEETLE CO. + MIYAMA FARM</div>
           <h1>生体と用品</h1>
         </div>
         <div class="page-actions">

@@ -35,7 +35,7 @@ const PLACEHOLDER_FILTERS = ["♂", "♀", "成虫", "幼虫", "CBF以上", "即
 export const TabSwitcher = (p: { tab: Tab; setTab: (t: Tab) => void }) => (
   <div class="variants">
     <button class={p.tab === "all" ? "active" : ""} onClick={() => p.setTab("all")}>
-      ALL
+      全て
     </button>
     <button class={p.tab === "live" ? "active" : ""} onClick={() => p.setTab("live")}>
       生体
@@ -68,7 +68,7 @@ export const SpeciesFilterBar = (p: {
         class="mono"
         style={{ "font-size": "11px", color: "var(--ink-faint)", "letter-spacing": "0.08em" }}
       >
-        FILTER
+絞り込み
       </span>
       <For each={SPECIES_FILTERS}>
         {(f) => {

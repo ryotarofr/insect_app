@@ -44,7 +44,7 @@ export const EclosionPage = (props: EclosionPageProps) => {
     <>
       <div class="page-head">
         <div>
-          <div class="cat">ECLOSION FORECAST · RULE-BASED v1</div>
+          <div class="cat">羽化予測 · ルールベース v1</div>
           <h1>羽化予測</h1>
         </div>
         <div class="page-actions">
@@ -98,13 +98,13 @@ export const EclosionPage = (props: EclosionPageProps) => {
             class="mono"
             style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em" }}
           >
-            RADAR · NEXT 365 DAYS
+            レーダー · 今後365日
           </span>
           <span class="serif" style={{ "font-size": "18px", "font-weight": 600 }}>
             羽化レーダー
           </span>
           <span style={{ "margin-left": "auto", "font-size": "12px", color: "var(--ink-mute)" }}>
-            Today · {today}
+            今日 · {today}
           </span>
         </div>
 
@@ -147,7 +147,7 @@ export const EclosionPage = (props: EclosionPageProps) => {
                       "white-space": "nowrap",
                     }}
                   >
-                    T+{d}d
+                    {d === 0 ? "今日" : `+${d}日`}
                   </span>
                 </div>
               );
@@ -244,7 +244,7 @@ export const EclosionPage = (props: EclosionPageProps) => {
                         border: "1px solid var(--line)",
                       }}
                     >
-                      T-{s.eclosionInDays}d
+                      あと{s.eclosionInDays}日
                     </div>
                   </div>
                 </div>

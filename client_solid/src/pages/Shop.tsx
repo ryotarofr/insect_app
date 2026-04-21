@@ -26,7 +26,7 @@ export const ShopPage = () => {
     <>
       <div class="page-head">
         <div>
-          <div class="cat">SHOP ADMIN · ANCHOR BEETLE CO.</div>
+          <div class="cat">ショップ管理 · ANCHOR BEETLE CO.</div>
           <h1>ショップ管理</h1>
         </div>
         <div class="page-actions">
@@ -81,7 +81,7 @@ export const ShopPage = () => {
               class="mono"
               style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em" }}
             >
-              REVENUE
+              売上
             </span>
             <span class="serif" style={{ "font-size": "18px", "font-weight": 600 }}>
               売上推移 (7日)
@@ -142,7 +142,7 @@ export const ShopPage = () => {
               "margin-bottom": "14px",
             }}
           >
-            LOW STOCK · 要補充
+            在庫僅少 · 要補充
           </div>
           <For each={LOW_STOCK}>
             {(x, i) => (
@@ -204,15 +204,14 @@ export const ShopPage = () => {
               "font-family": "var(--font-mono)",
               background: "var(--bg-sunken)",
               "border-bottom": "1px solid var(--line)",
-              "text-transform": "uppercase",
             }}
           >
-            <span>ORDER</span>
-            <span>BUYER</span>
-            <span>ITEMS</span>
-            <span>TOTAL</span>
-            <span>SHIPPING</span>
-            <span>STATUS</span>
+            <span>注文ID</span>
+            <span>購入者</span>
+            <span>商品</span>
+            <span>合計</span>
+            <span>配送</span>
+            <span>状態</span>
             <span />
           </div>
           <For each={orders}>

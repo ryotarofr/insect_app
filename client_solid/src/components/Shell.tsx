@@ -63,7 +63,7 @@ export const Shell = (props: ShellProps) => {
           </div>
           <div>
             <div class="brand-name">KOCHŪ</div>
-            <div class="brand-sub">昆虫EC × CARE LOG</div>
+            <div class="brand-sub">昆虫EC × 飼育ログ</div>
           </div>
         </div>
 

@@ -160,7 +160,10 @@ export const App = () => {
           <EclosionPage setRoute={setRoute} setSelectedSpecimen={setSelectedSpecimen} />
         </Show>
         <Show when={route() === "bloodline"}>
-          <BloodlinePage />
+          <BloodlinePage
+            setRoute={setRoute}
+            setSelectedSpecimen={setSelectedSpecimen}
+          />
         </Show>
         <Show when={route() === "shop"}>
           <ShopPage />

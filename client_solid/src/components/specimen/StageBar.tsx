@@ -1,8 +1,18 @@
 // StageBar.tsx — 卵 → 成虫 のライフサイクル進捗バー
-// horizontal (default) は時系列バー、vertical は縦リスト形式。
+//
+// 改善: 「現在どの段階か」を一目で分かるように再設計
+//  - 旧: 細い7セグメントバー + 下にラベル (現在地が色だけで表現されていた)
+//  - 新: 現在ステージをスポットライトカードで大きく見せ、
+//        その下に 7 段階のミニタイムラインを配置。
+//        現在ステージは ▼ ポインタ + 塗りドット + 進捗リング で強調する。
+//
+// vertical=true は個体カルテの旧レイアウト向け縦リスト (テスト互換のため維持)。
 import { For, Show } from "solid-js";
 
 const STAGES = ["卵", "幼虫1齢", "幼虫2齢", "幼虫3齢", "前蛹", "蛹", "成虫"];
+
+/** 各段階を 1 文字絵文字アイコンで表す */
+const STAGE_ICONS = ["🥚", "🐛", "🐛", "🐛", "🛋", "🛋", "🦋"];
 
 const stageIdx = (stage: string): number => {
   if (stage.includes("卵")) return 0;
@@ -15,8 +25,24 @@ const stageIdx = (stage: string): number => {
   return 0;
 };
 
-export const StageBar = (p: { stage: string; progress: number; eta: number | null; vertical?: boolean }) => {
+export const StageBar = (p: {
+  stage: string;
+  /** 0-100 の進捗。現状は目測ベースのため UI には表示しない (API 互換維持)。 */
+  progress?: number;
+  eta: number | null;
+  vertical?: boolean;
+}) => {
   const currentIdx = () => stageIdx(p.stage);
+  const currentStage = () => STAGES[currentIdx()];
+  const nextStage = () => STAGES[currentIdx() + 1] ?? null;
+  const currentIcon = () => STAGE_ICONS[currentIdx()];
+
+  // ポインタ / 塗り切り位置 = 現ステージの中心
+  // (進捗は目測なので「だいたい今このへん」に揃え、精度の錯覚を避ける)
+  const segCenter = () => {
+    const segW = 100 / STAGES.length;
+    return segW * currentIdx() + segW / 2;
+  };
 
   return (
     <Show
@@ -61,61 +87,66 @@ export const StageBar = (p: { stage: string; progress: number; eta: number | nul
         </div>
       }
     >
-      <div>
-        <div style={{ display: "flex", gap: "4px", "margin-bottom": "8px" }}>
-          <For each={STAGES}>
-            {(_, i) => (
-              <div
-                style={{
-                  flex: 1,
-                  height: "6px",
-                  "border-radius": "2px",
-                  background:
-                    i() < currentIdx()
-                      ? "var(--accent-forest)"
-                      : i() === currentIdx()
-                        ? "var(--accent-amber)"
-                        : "var(--line-strong)",
-                }}
-              />
-            )}
-          </For>
-        </div>
-        <div style={{ display: "flex", gap: "4px" }}>
-          <For each={STAGES}>
-            {(st, i) => (
-              <div style={{ flex: 1, "text-align": "center" }}>
-                <div
-                  class="mono"
-                  style={{
-                    "font-size": "10px",
-                    color: i() <= currentIdx() ? "var(--ink)" : "var(--ink-faint)",
-                    "font-weight": i() === currentIdx() ? 600 : 400,
-                  }}
-                >
-                  {st}
-                </div>
-              </div>
-            )}
-          </For>
-        </div>
-        <Show when={p.eta !== null && p.eta !== undefined}>
-          <div
-            style={{
-              "margin-top": "12px",
-              padding: "8px 12px",
-              background: "var(--accent-amber-soft)",
-              "border-radius": "var(--r-md)",
-              "font-size": "12px",
-              color: "oklch(0.4 0.1 70)",
-            }}
-          >
-            <span class="mono" style={{ "font-size": "11px", "margin-right": "6px" }}>
-              T-{p.eta}d
-            </span>
-            羽化予測日: 次のステージへ進行中
+      <div class="stage-wrap">
+        {/* Spotlight: 現在どのステージかを大きく提示 */}
+        <div class="stage-spot" role="group" aria-label="現在のライフサイクル">
+          <div class="stage-spot-ico" aria-hidden="true">
+            {currentIcon()}
           </div>
-        </Show>
+          <div class="stage-spot-body">
+            <div class="stage-spot-row">
+              <span class="stage-spot-eyebrow mono">現在 · {currentIdx() + 1} / {STAGES.length}</span>
+              <Show when={p.eta !== null && p.eta !== undefined}>
+                <span class="stage-spot-eta mono">あと {p.eta} 日</span>
+              </Show>
+            </div>
+            <div class="stage-spot-name serif">{currentStage()}</div>
+            <div class="stage-spot-meta">
+              <Show
+                when={nextStage()}
+                fallback={<span style={{ color: "var(--ink-mute)" }}>最終段階</span>}
+              >
+                <span>
+                  次: <b>{nextStage()}</b>
+                </span>
+                <Show when={p.eta !== null && p.eta !== undefined}>
+                  <span style={{ color: "var(--ink-mute)" }}>· あと {p.eta} 日</span>
+                </Show>
+              </Show>
+            </div>
+          </div>
+        </div>
+
+        {/* 7 段階ミニタイムライン */}
+        <div class="stage-track" aria-hidden="true">
+          <div class="stage-track-line" />
+          <div class="stage-track-fill" style={{ width: `${segCenter()}%` }} />
+          <div class="stage-track-marker" style={{ left: `${segCenter()}%` }}>
+            <span class="stage-track-caret">▼</span>
+          </div>
+          <div class="stage-track-steps">
+            <For each={STAGES}>
+              {(st, i) => {
+                const state = () =>
+                  i() < currentIdx()
+                    ? "past"
+                    : i() === currentIdx()
+                      ? "now"
+                      : "future";
+                return (
+                  <div class={`stage-step is-${state()}`}>
+                    <span class="dot">
+                      <Show when={state() === "past"}>
+                        <span class="check">✓</span>
+                      </Show>
+                    </span>
+                    <span class="lbl">{st}</span>
+                  </div>
+                );
+              }}
+            </For>
+          </div>
+        </div>
       </div>
     </Show>
   );

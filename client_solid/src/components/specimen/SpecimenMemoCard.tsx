@@ -52,13 +52,13 @@ export const SpecimenMemoCard = (p: { specimenId: string }) => {
           class="mono"
           style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em" }}
         >
-          NOTES
+          メモ
         </span>
         <span
           class="serif"
           style={{ "font-size": "18px", "font-weight": 600 }}
         >
-          メモ
+          観察ノート
         </span>
         <Show when={state().kind === "saving"}>
           <span
