@@ -48,12 +48,7 @@ export const SpecimenMemoCard = (p: { specimenId: string }) => {
           "margin-bottom": "8px",
         }}
       >
-        <span
-          class="mono"
-          style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em" }}
-        >
-          メモ
-        </span>
+        <span class="u-eyebrow">メモ</span>
         <span
           class="serif"
           style={{ "font-size": "18px", "font-weight": 600 }}

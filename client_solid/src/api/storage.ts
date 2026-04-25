@@ -6,6 +6,8 @@
 export const LS_KEYS = {
   logs: "kochu:logs",
   memos: "kochu:specimen-memos",
+  /** P4-22: Bloodline 交配記録 */
+  matingRecords: "kochu:mating-records",
 } as const;
 
 export const readJSON = <T>(key: string, fallback: T): T => {

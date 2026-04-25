@@ -52,29 +52,46 @@
 }
 
 .nav-group { display: flex; flex-direction: column; gap: 2px; }
+/* P3-13: nav-title を 10.5px uppercase 0.08em に */
 .nav-title {
   font-family: var(--font-mono);
-  font-size: 10px;
+  font-size: 10.5px;
   color: var(--ink-faint);
   text-transform: uppercase;
-  letter-spacing: 0.1em;
+  letter-spacing: 0.08em;
   padding: 0 8px 6px 8px;
 }
+/* P3-13: padding 9/10、active を左 3px indicator + 薄背景 へ
+ * 旧: 塗りつぶし (bg-inverse) 背景。濃すぎて "目立ち過ぎる"。
+ * 新: 左 3px の forest インジケータ + forest-soft 背景。
+ *     カルテの「栞」のような落ち着いた active 表現。 */
 .nav-item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 7px 8px;
+  padding: 9px 10px;
   font-size: 13px;
   color: var(--ink-mute);
-  border-radius: var(--r-md);
+  border-radius: var(--r-btn);
   cursor: pointer;
   transition: background 0.1s ease, color 0.1s ease;
 }
 .nav-item:hover { background: var(--bg-sunken); color: var(--ink); }
 .nav-item.active {
-  background: var(--bg-inverse);
-  color: var(--ink-inverse);
+  background: var(--accent-forest-soft);
+  color: var(--accent-forest);
+  font-weight: 500;
+}
+.nav-item.active::before {
+  content: "";
+  position: absolute;
+  left: -8px;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  background: var(--accent-forest);
+  border-radius: 0 2px 2px 0;
 }
 .nav-item .nav-icon {
   width: 16px; height: 16px;
@@ -91,7 +108,7 @@
   border-radius: var(--r-pill);
 }
 .nav-item.active .nav-badge {
-  background: oklch(1 0 0 / 0.15);
+  background: var(--accent-forest);
   color: var(--ink-inverse);
 }
 
@@ -123,10 +140,16 @@
   flex-direction: column;
 }
 
+/* P3-15: topbar の下をスクロールすると、下のコンテンツが
+ * すりガラス越しに透ける。背景は半透明 + blur。
+ * P4-7: ハードコード oklch(0.985 ...) を semantic 変数 --bg-glass*
+ * に置換してダークモード対応。 */
 .topbar {
   height: var(--header-h);
   border-bottom: 1px solid var(--line);
-  background: var(--bg);
+  background: var(--bg-glass);
+  -webkit-backdrop-filter: blur(10px) saturate(1.1);
+  backdrop-filter: blur(10px) saturate(1.1);
   display: flex;
   align-items: center;
   padding: 0 28px;
@@ -135,7 +158,7 @@
   top: 0;
   z-index: 10;
   backdrop-filter: blur(8px);
-  background: oklch(0.985 0.004 80 / 0.85);
+  background: var(--bg-glass-strong);
 }
 .topbar .crumb {
   font-family: var(--font-mono);
@@ -162,6 +185,39 @@
   border-color: var(--line-strong);
   outline: none;
 }
+/* P4-5: button 版の擬似検索バー (CommandPalette トリガー) */
+.topbar .search.search-trigger {
+  display: flex;
+  align-items: center;
+  gap: 0;
+  width: 320px;
+  padding: 6px 12px 6px 30px;
+  background: var(--bg-sunken);
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  font-size: 12px;
+  color: var(--ink-mute);
+  cursor: pointer;
+  text-align: left;
+  font: inherit;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.topbar .search.search-trigger:hover {
+  background: var(--bg-raised);
+  border-color: var(--line-strong);
+}
+.topbar .search.search-trigger:focus-visible {
+  outline: 2px solid var(--accent-indigo);
+  outline-offset: 2px;
+}
+.topbar .search .search-placeholder {
+  flex: 1;
+  font-size: 12px;
+  color: var(--ink-mute);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 .topbar .search .sicon {
   position: absolute;
   left: 10px; top: 50%;
@@ -172,6 +228,35 @@
   position: absolute;
   right: 6px; top: 50%;
   transform: translateY(-50%);
+}
+
+/* P4-8: 夜間赤色モード トグル (topbar 右側)
+ * 既定は目立たない ghost。is-active (夜モード ON) の時に赤で強調。 */
+.topbar .theme-toggle {
+  flex-shrink: 0;
+  display: inline-grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: var(--r-btn);
+  border: 1px solid var(--line);
+  background: transparent;
+  color: var(--ink-mute);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+}
+.topbar .theme-toggle:hover {
+  background: var(--bg-sunken);
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+.topbar .theme-toggle.is-active {
+  background: var(--accent-rose-soft);
+  color: var(--accent-rose);
+  border-color: color-mix(in oklab, var(--accent-rose) 40%, var(--line));
+}
+.topbar .theme-toggle.is-active:hover {
+  background: color-mix(in oklab, var(--accent-rose-soft) 80%, var(--accent-rose));
 }
 
 .content {
@@ -188,10 +273,13 @@
   gap: 16px;
   margin-bottom: 22px;
 }
+/* P3-16: 各ページ上部の「所属 (category)」ラベル。
+ * 11px / uppercase / letter-spacing 0.12em / ink-mute で統一し、
+ * どのページでも「今どこにいるか」が同じ視覚ヒエラルキーで判る。 */
 .page-head .cat {
   font-family: var(--font-mono);
   font-size: 11px;
-  color: var(--ink-faint);
+  color: var(--ink-mute);
   letter-spacing: 0.12em;
   text-transform: uppercase;
   margin-bottom: 4px;
@@ -207,6 +295,30 @@
   margin-left: auto;
   display: flex;
   gap: 8px;
+  align-items: center;
+}
+
+/* UX-3: Bloodline page-head の個体ピッカー。
+ *   .select は width:100% がデフォルトなので、page-actions 内で
+ *   インラインに収まる幅へ抑える。 */
+.head-picker {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  /* 中央右の他ボタンと高さを揃えるため、ラベルとセレクトをまとめる */
+}
+.head-picker-label {
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-faint);
+  white-space: nowrap;
+}
+.head-picker-select {
+  width: auto;
+  min-width: 220px;
+  padding: 8px 28px 8px 12px;
+  font-size: 13px;
 }
 
 /* ==========================================================================
@@ -282,7 +394,7 @@
   font-weight: 400;
   margin-left: 3px;
 }
-.carte-hero .kpi.accent .k-value { color: oklch(0.45 0.1 70); }
+.carte-hero .kpi.accent .k-value { color: var(--accent-amber-ink); }
 .carte-hero .kpi .k-delta {
   font-family: var(--font-mono);
   font-size: 10px;
@@ -293,9 +405,48 @@
 .carte-hero .actions {
   display: flex;
   gap: 8px;
-  margin-top: 16px;
+  margin-top: 12px;
   flex-wrap: wrap;
 }
+
+/* P4-10: 次のログ候補 5 ボタン (個体カルテ hero 内) */
+.quicklog-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 6px;
+  margin-top: 16px;
+}
+.quicklog-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-height: 56px;
+  padding: 8px 4px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-raised);
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, transform 0.08s;
+}
+.quicklog-btn:hover {
+  background: var(--bg-sunken);
+  border-color: var(--line-strong);
+}
+.quicklog-btn:active { transform: scale(0.97); }
+.quicklog-btn .ico {
+  font-size: 18px;
+  line-height: 1;
+}
+.quicklog-btn .lbl {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-mute);
+  letter-spacing: 0.02em;
+}
+.quicklog-btn:hover .lbl { color: var(--ink); }
 
 /* Carte tabs */
 .carte-tabs {
@@ -374,7 +525,7 @@
 .suggest-card .title {
   font-family: var(--font-mono);
   font-size: 10px;
-  color: oklch(0.45 0.1 70);
+  color: var(--accent-amber-ink);
   letter-spacing: 0.12em;
 }
 .suggest-card ul {
@@ -382,7 +533,7 @@
   padding: 0;
   list-style: none;
   font-size: 13px;
-  color: oklch(0.3 0.05 70);
+  color: var(--accent-amber-ink);
 }
 .suggest-card li { padding: 4px 0; }
 
@@ -435,11 +586,11 @@
 .stage-spot-eyebrow {
   font-size: 10px;
   letter-spacing: 0.12em;
-  color: oklch(0.45 0.1 70);
+  color: var(--accent-amber-ink);
 }
 .stage-spot-eta {
   font-size: 11px;
-  color: oklch(0.4 0.1 70);
+  color: var(--accent-amber-ink);
   padding: 2px 8px;
   border-radius: 999px;
   background: var(--bg-raised);
@@ -450,7 +601,8 @@
   font-weight: 600;
   line-height: 1.1;
   margin: 2px 0 4px;
-  color: oklch(0.25 0.08 70);
+  /* 見出しはもう少し主張を弱めるため ink 寄せ (amber のニュアンスは border や bg で既に出ている) */
+  color: var(--ink);
 }
 .stage-spot-meta {
   display: flex;
@@ -555,7 +707,7 @@
     0 1px 2px rgba(0, 0, 0, 0.06);
 }
 .stage-step.is-now .lbl {
-  color: oklch(0.35 0.1 70);
+  color: var(--accent-amber-ink);
   font-weight: 700;
   background: var(--accent-amber-soft);
   padding: 2px 8px;
@@ -698,6 +850,68 @@
 
 /* Day-grouped timeline */
 .tl-day { margin-bottom: 26px; }
+
+/* P3-23: 月区切り見出し — タイムラインを走査中に「あ、4月に入った」
+ * とすぐ判るように、水平 rule + ラベルでセクションを区切る。 */
+.tl-month {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 36px 0 14px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line-strong);
+}
+.tl-month::before,
+.tl-month::after {
+  content: "";
+  flex: 0 0 24px;
+  height: 1px;
+  background: var(--ink);
+}
+.tl-month::after { flex: 1; }
+.tl-month .tl-month-label {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--ink-mute);
+  padding: 2px 10px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  border-radius: var(--r-chip);
+}
+/* タイムラインの一番上の月区切りは、上の大 rule を消してすっきり */
+.tl-day:first-of-type .tl-month,
+.tl-month:first-child {
+  margin-top: 8px;
+  border-top: 0;
+  padding-top: 0;
+}
+
+/* P3-23: 週末 (土日) は day-head の背景を薄く色付け。
+ *   - 土: indigo 系薄め (カレンダーで土曜を青く塗る慣習)
+ *   - 日: rose 系薄め (日曜を赤く塗る慣習)
+ * 記録内容そのものは変えず、日付ヘッダ帯だけを淡く染めることで
+ * 視線の引っ掛かりを作る。 */
+.tl-day.is-weekend[data-dow="6"] .day-head {
+  background: color-mix(in oklab, var(--accent-indigo) 8%, transparent);
+  padding-left: 10px;
+  margin-left: -10px;
+  border-left: 3px solid var(--accent-indigo);
+}
+.tl-day.is-weekend[data-dow="0"] .day-head {
+  background: color-mix(in oklab, var(--accent-rose) 8%, transparent);
+  padding-left: 10px;
+  margin-left: -10px;
+  border-left: 3px solid var(--accent-rose);
+}
+.tl-day .tl-dow {
+  color: var(--ink-mute);
+  margin-left: 2px;
+}
+.tl-day.is-weekend[data-dow="6"] .tl-dow { color: var(--accent-indigo); }
+.tl-day.is-weekend[data-dow="0"] .tl-dow { color: var(--accent-rose); }
+
 .tl-day .day-head {
   display: flex;
   align-items: baseline;
@@ -721,9 +935,13 @@
   font-size: 12px;
   color: var(--ink-mute);
 }
+/* P4-23: date/time 列を mono 11px 固定幅 48px に。
+ *   - 複数日のタイムラインを縦に並べたときに時刻が "縦に一直線" で揃い、
+ *     斜め読みしやすくなる。
+ *   - 従来は 58px だったため、時刻が短い行でも右側がガタついていた。 */
 .tl-row {
   display: grid;
-  grid-template-columns: 58px 80px 1fr 54px;
+  grid-template-columns: 48px 80px 1fr 54px;
   gap: 12px;
   padding: 12px 4px;
   align-items: center;
@@ -732,9 +950,13 @@
 }
 .tl-row:hover { background: var(--bg-sunken); border-radius: var(--r-sm); }
 .tl-row .time {
+  /* P4-23: ガター幅 48px に対して mono 11px 右寄せで縦ラインを作る */
+  width: 48px;
   font-family: var(--font-mono);
   font-size: 11px;
   color: var(--ink-faint);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
 }
 .tl-row .body { font-size: 13px; }
 .tl-row .body .sub {
@@ -827,6 +1049,50 @@
 }
 .fab:hover { background: oklch(0.12 0.01 80); }
 
+/* ==========================================================================
+   P4-22: 交配記録モーダル (Bloodline)
+   .sheet-backdrop / .sheet-dialog の上にレイアウト CSS のみを追加
+   ========================================================================== */
+.mating-dialog {
+  width: min(560px, calc(100vw - 24px));
+}
+.mating-dialog .mating-fields {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  margin-top: 10px;
+}
+.mating-dialog .mating-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.mating-dialog .mating-field:nth-of-type(4) {
+  /* メモは横幅フル */
+  grid-column: 1 / 3;
+}
+.mating-dialog .mating-field .select,
+.mating-dialog .mating-field .input,
+.mating-dialog .mating-field .textarea {
+  width: 100%;
+}
+.mating-dialog .mating-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+@media (max-width: 640px) {
+  .mating-dialog .mating-fields {
+    grid-template-columns: 1fr;
+  }
+  .mating-dialog .mating-field:nth-of-type(4) {
+    grid-column: 1;
+  }
+}
+
 /* モバイルで sheet をボトムシート化 */
 @media (max-width: 640px) {
   .sheet-backdrop {
@@ -852,6 +1118,12 @@
   }
   .carte-hero .main-photo { height: 200px; }
 
+  /* P4-10: 電話サイズでは quicklog ボタンのアイコンを少し大きく、文字を詰める */
+  .quicklog-row { gap: 4px; }
+  .quicklog-btn { min-height: 60px; padding: 8px 2px; }
+  .quicklog-btn .ico { font-size: 20px; }
+  .quicklog-btn .lbl { font-size: 10px; }
+
   .carte-overview {
     grid-template-columns: 1fr;
     gap: 16px;
@@ -862,9 +1134,10 @@
   }
 
   .tl-row {
-    grid-template-columns: 46px 1fr auto;
+    /* P4-23: モバイルも 48px 固定幅で揃える */
+    grid-template-columns: 48px 1fr auto;
   }
-  .tl-row .time { grid-column: 1; }
+  .tl-row .time { grid-column: 1; width: 48px; }
   .tl-row .chip-col { order: 3; }
   .tl-row .body { grid-column: 2 / span 2; }
   .tl-row .thumb { display: none; }
@@ -894,6 +1167,42 @@
 .grid-cards-4 {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
+}
+
+/* P4-12: サンプルデータ バナー (Shop 等のダッシュボードで偽数値の誤解を避ける) */
+.sample-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 0 20px;
+  padding: 12px 16px;
+  background: var(--accent-amber-soft);
+  border: 1px solid color-mix(in oklch, var(--accent-amber) 32%, transparent);
+  border-left: 3px solid var(--accent-amber);
+  border-radius: var(--r-md);
+}
+.sample-banner .sb-ico {
+  font-size: 16px;
+  line-height: 1;
+  color: var(--accent-amber-ink);
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+.sample-banner .sb-body {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+.sample-banner .sb-title {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--accent-amber-ink);
+  margin-bottom: 2px;
+}
+.sample-banner .sb-desc {
+  font-size: 11px;
+  color: var(--ink-mute);
+  line-height: 1.5;
 }
 /* 詳細画面: 左カラムが主、右が補助 */
 .grid-detail {
@@ -969,77 +1278,15 @@
 
 /* ==========================================================================
    Phone breakpoint: <= 640px
-   サイドバーを下部固定のタブバーに変換し、コンテンツを広く使う。
-   インライン grid の 2 列以上は 1 列に畳む（最低限のフレキシブル対応）。
+   サイドバー (PC 用) を隠し、BottomTabBar コンポーネントに置き換える。
+   インライン grid の 2 列以上は 1 列に畳む。
    ========================================================================== */
 @media (max-width: 640px) {
-  /* .app は上下 2 段。sidebar は下に回す */
+  /* .app は 1 カラム。サイドバーは非表示、BottomTabBar が fixed で重なる */
   .app {
     grid-template-columns: 1fr;
-    grid-template-rows: 1fr auto;
-    grid-template-areas:
-      "main"
-      "nav";
   }
-  .main { grid-area: main; }
-
-  /* ===== Sidebar: 下部タブバー化 ===== */
-  .sidebar {
-    grid-area: nav;
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    top: auto;
-    height: auto;
-    width: 100%;
-    flex-direction: row;
-    overflow-x: auto;
-    overflow-y: hidden;
-    gap: 2px;
-    padding: 6px 6px env(safe-area-inset-bottom, 6px);
-    border-top: 1px solid var(--line);
-    border-right: 0;
-    z-index: 20;
-    background: oklch(0.99 0.004 80 / 0.96);
-    backdrop-filter: blur(8px);
-    scrollbar-width: none;
-  }
-  .sidebar::-webkit-scrollbar { display: none; }
-
-  /* ブランド・ユーザー情報・グループ見出しは隠す */
-  .brand,
-  .nav-title,
-  .sidebar-footer { display: none; }
-
-  .nav-group {
-    flex-direction: row;
-    gap: 2px;
-  }
-  .nav-item {
-    flex-direction: column;
-    justify-content: center;
-    gap: 2px;
-    padding: 6px 10px;
-    min-width: 56px;
-    flex-shrink: 0;
-    font-size: 10px;
-    letter-spacing: 0.02em;
-  }
-  .nav-item > span:not(.nav-badge):not(.dot):not(.nav-icon) {
-    display: inline;
-    font-size: 9px;
-    color: inherit;
-    white-space: nowrap;
-  }
-  .nav-item .nav-badge {
-    position: absolute;
-    top: 2px;
-    right: 4px;
-    transform: none;
-    font-size: 9px;
-    padding: 0 4px;
-  }
+  .sidebar { display: none; }
 
   /* ===== Topbar ===== */
   .topbar {
@@ -1052,7 +1299,8 @@
 
   /* ===== Content ===== */
   .content {
-    padding: 16px 14px 96px; /* 下部タブバー分の余白を確保 */
+    /* 下部タブバー (60-68px) + 余白 */
+    padding: 16px 14px 96px;
   }
   .page-head h1 { font-size: 20px; }
   .page-head { gap: 10px; margin-bottom: 16px; }
@@ -1069,10 +1317,7 @@
 
   /* ===== インライン grid の強制縦積み =====
      各ページが style={{ "grid-template-columns": "..." }} で
-     2 カラム以上を指定している箇所を、スマホでは 1 カラムに畳む。
-     リスト行（repeat(N, 1fr) が 2 以下で使われるケースや、
-     ヘッダ行＝データ行のような揃え目的のケースもあるため、
-     主要コンテナに限定して適用する。 */
+     2 カラム以上を指定している箇所を、スマホでは 1 カラムに畳む。 */
   .content > div[style*="grid-template-columns"],
   .content > section[style*="grid-template-columns"],
   .content > section > div[style*="grid-template-columns"],
@@ -1089,6 +1334,48 @@
   .content .hscroll {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+  }
+
+  /* ===== タップ領域 (P1-9) =====
+     モバイルで 36×36 以上を確保したいインタラクティブ要素。
+     chip 本体はデコラティブ利用が多いため触らず、filter-row / type-picker /
+     tabs / chip.interactive など明確に触れる要素だけ拡張する。 */
+  .filter-row .group .f {
+    padding: 8px 14px;
+    font-size: 13px;
+    min-height: 36px;
+    display: inline-flex;
+    align-items: center;
+  }
+  .type-picker .tp {
+    padding: 10px 16px;
+    font-size: 13px;
+    min-height: 40px;
+  }
+  .tabs .tab,
+  .carte-tabs button {
+    padding: 12px 14px;
+    font-size: 14px;
+    min-height: 44px;
+  }
+  /* chip に role="button" または onclick/cursor: pointer が付いた変種 */
+  .chip[role="button"],
+  .chip.interactive {
+    padding: 8px 12px;
+    min-height: 36px;
+    font-size: 12px;
+  }
+  /* アクションボタン: btn.sm はモバイルで 34px 以上 */
+  .btn.sm {
+    padding: 8px 14px;
+    font-size: 13px;
+    min-height: 36px;
+  }
+  /* mode-toggle (血統ページの list/tree 切替) */
+  .mode-toggle button {
+    padding: 10px 16px;
+    font-size: 13px;
+    min-height: 40px;
   }
 }
 
@@ -1179,10 +1466,11 @@
 /* --- Individual card ----------------------------------------------------- */
 
 .ind-card {
+  position: relative;
   min-width: 168px;
   max-width: 220px;
   text-align: left;
-  padding: 10px 14px;
+  padding: 10px 14px 10px 17px; /* +3px for left stripe */
   background: var(--bg-raised);
   border: 1px solid var(--line);
   border-radius: var(--r-md);
@@ -1190,6 +1478,62 @@
   transition: all 0.15s ease;
   font: inherit;
   color: var(--ink);
+}
+/* P3-22: Market カードに data-state 左ボーダー色分け。
+ *   - ending-soon: rose (残り 24h 以内 → すぐ動かないと取り逃がす)
+ *   - auction   : amber (オークション進行中)
+ *   - buynow    : forest (即決のみ、落ち着いて買える)
+ * 左端 4px 帯で一覧スキャン時にパッと状態が判る。 */
+.market-card {
+  position: relative;
+  overflow: hidden;
+}
+.market-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  background: var(--ink-faint);
+  pointer-events: none;
+}
+.market-card[data-state="ending-soon"]::before { background: var(--accent-rose); }
+.market-card[data-state="auction"]::before     { background: var(--accent-amber); }
+.market-card[data-state="buynow"]::before      { background: var(--accent-forest); }
+
+/* P3-20: data-gen / data-kind による左ストライプ色分け。
+ * 各世代で色相を変えることで、フォーカスビュー / 俯瞰ツリーの
+ * どちらで見ても「どの代の個体か」が一目で判る。
+ *   F0  : amber  (野生ルーツ)
+ *   CBF1: indigo (初代 CB)
+ *   CBF2: teal   (中間代)
+ *   CBF3: forest (現世代)
+ * is-self / is-ancestor の border は別レイヤなので干渉しない。 */
+.ind-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--ink-faint);
+  border-radius: var(--r-md) 0 0 var(--r-md);
+  pointer-events: none;
+}
+.ind-card[data-gen="F0"]::before   { background: var(--accent-amber); }
+.ind-card[data-gen="CBF1"]::before { background: var(--accent-indigo); }
+.ind-card[data-gen="CBF2"]::before { background: oklch(0.62 0.12 185); }
+.ind-card[data-gen="CBF3"]::before { background: var(--accent-forest); }
+/* 野生個体はストライプ幅を少し太く + パターン化して強調 */
+.ind-card[data-kind="wild"]::before {
+  width: 4px;
+  background-image:
+    repeating-linear-gradient(
+      45deg,
+      var(--accent-amber) 0 4px,
+      oklch(0.78 0.12 70) 4px 8px
+    );
 }
 .ind-card:hover {
   border-color: var(--ink-mute);
@@ -1223,6 +1567,49 @@
   border-style: dashed;
   background: var(--bg);
 }
+
+/* P4-3: 故個体 — opacity ダウン + 右上に喪章バッジ (::after)。
+ *   系図でスキャンしたとき "あの個体は退場済み" が即座に伝わるよう、
+ *   透過で背景に退き、右上に小さな黒バッジ (✝) を掲げる。
+ *   is-self (選択中) の場合は読みやすさ優先で不透明度を戻す。
+ *   ::before (左ストライプ) とは干渉しない。 */
+.ind-card.is-deceased {
+  opacity: 0.5;
+  background: var(--bg-sunken);
+}
+.ind-card.is-deceased:hover {
+  opacity: 0.85;
+}
+.ind-card.is-deceased.is-self {
+  /* 故個体を選択中のときは詳細を読めるように透過を緩める */
+  opacity: 0.9;
+}
+.ind-card.is-deceased::after {
+  content: "✝";
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 20px;
+  height: 20px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  line-height: 1;
+  color: var(--bg);
+  background: var(--ink);
+  border-radius: 0 var(--r-md) 0 6px;
+  pointer-events: none;
+  letter-spacing: 0;
+}
+.ind-card.is-deceased .ind-name {
+  color: var(--ink-mute);
+}
+.ind-card .ind-memorial {
+  color: var(--ink-mute);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
 .ind-card .ind-head {
   display: flex;
   justify-content: space-between;
@@ -1243,7 +1630,7 @@
   color: var(--ink-faint);
   letter-spacing: 0.02em;
 }
-.ind-card.is-self .ind-id { color: oklch(0.45 0.1 70); }
+.ind-card.is-self .ind-id { color: var(--accent-amber-ink); }
 .ind-card .ind-name {
   font-weight: 600;
   font-size: 13px;
@@ -1262,7 +1649,7 @@
   margin-top: 4px;
 }
 .ind-card.is-self .ind-meta {
-  color: oklch(0.4 0.1 70);
+  color: var(--accent-amber-ink);
 }
 
 .ind-slot {
@@ -1569,4 +1956,688 @@
   }
   .content { padding: 14px 12px 92px; }
   .page-head h1 { font-size: 18px; }
+}
+
+/* ==========================================================================
+   P4-4: /help/warranty 本実装
+   ========================================================================== */
+
+/* ---- 24h 返金フロー図 ------------------------------------------------------
+ * 4 ステップの横組みタイムライン。各ステップは "番号 / 時刻チップ / タイトル / 説明 / 担当"
+ * の縦並び。ステップ間は ::after で点線コネクタを引く。
+ * モバイルでは縦積みに切替え、コネクタは左側の点線に。 */
+.warranty-flow {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  counter-reset: wf;
+}
+.warranty-step {
+  position: relative;
+  padding: 14px 14px 16px;
+  background: var(--bg-sunken);
+  border-radius: var(--r-md);
+  border: 1px solid var(--line);
+}
+.warranty-step::after {
+  /* コネクタ — 最後のステップには引かない (:not(:last-child)) */
+  content: "";
+  position: absolute;
+  top: 50%;
+  right: -10px;
+  width: 8px;
+  border-top: 2px dotted var(--ink-faint);
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+.warranty-step:last-child::after {
+  display: none;
+}
+.wf-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.wf-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1;
+}
+.wf-time {
+  font-size: 11px;
+  color: var(--ink-mute);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.wf-title {
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  margin-bottom: 6px;
+}
+.wf-desc {
+  font-size: 12px;
+  line-height: 1.55;
+  color: var(--ink);
+}
+.wf-actor {
+  margin-top: 10px;
+  font-size: 10px;
+  color: var(--ink-faint);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.warranty-note {
+  margin-top: 14px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border-left: 3px solid var(--accent-amber);
+  border-radius: 0 var(--r-md) var(--r-md) 0;
+  font-size: 12px;
+  color: var(--ink-mute);
+  line-height: 1.6;
+}
+
+/* ---- 申請フォーム --------------------------------------------------------- */
+.warranty-form .wf-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px 16px;
+}
+.wf-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.wf-field-wide {
+  grid-column: 1 / -1;
+}
+.wf-req,
+.wf-opt {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  vertical-align: 1px;
+}
+.wf-req {
+  background: var(--accent-rose);
+  color: #fff;
+}
+.wf-opt {
+  background: var(--bg-sunken);
+  color: var(--ink-mute);
+  border: 1px solid var(--line);
+}
+.wf-hint {
+  font-size: 11px;
+  color: var(--ink-mute);
+  margin-top: 2px;
+}
+.wf-hint.warn {
+  color: var(--accent-amber);
+}
+.wf-actions {
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  padding-top: 14px;
+  border-top: 1px solid var(--line);
+}
+.wf-req-note {
+  font-size: 11px;
+  color: var(--ink-faint);
+  letter-spacing: 0.04em;
+  margin-right: auto;
+}
+
+@media (max-width: 900px) {
+  /* タブレット以下では 2 × 2 に畳む */
+  .warranty-flow {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .warranty-step:nth-child(2)::after {
+    /* 2x2 の 1 列目の右端から出ていた線は不要 */
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .warranty-flow {
+    grid-template-columns: 1fr;
+  }
+  .warranty-step::after {
+    /* 縦積み時は下方向の縦線に */
+    top: auto;
+    right: 50%;
+    bottom: -10px;
+    width: 0;
+    height: 8px;
+    border-top: 0;
+    border-left: 2px dotted var(--ink-faint);
+    transform: translateX(50%);
+  }
+  .warranty-step:nth-child(2)::after {
+    display: block;
+  }
+  .warranty-form .wf-grid {
+    grid-template-columns: 1fr;
+  }
+  .wf-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  .wf-req-note {
+    margin-right: 0;
+    text-align: center;
+  }
+}
+
+/* ==========================================================================
+   P4-5: ⌘K Command Palette
+   ========================================================================== */
+
+/* ---- Backdrop (モーダル背景) ------------------------------------------- */
+.cmdp-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: color-mix(in oklab, var(--ink) 42%, transparent);
+  backdrop-filter: blur(3px) saturate(1.1);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 10vh 16px 16px;
+  animation: cmdp-fade-in 0.12s ease-out;
+}
+@keyframes cmdp-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ---- Dialog (中身) ------------------------------------------------------- */
+.cmdp-dialog {
+  width: 100%;
+  max-width: 560px;
+  max-height: 72vh;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: 0 20px 48px color-mix(in oklab, var(--ink) 30%, transparent);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: cmdp-slide-in 0.14s ease-out;
+}
+@keyframes cmdp-slide-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+/* ---- Search row (入力) --------------------------------------------------- */
+.cmdp-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+}
+.cmdp-search > svg {
+  color: var(--ink-mute);
+  flex-shrink: 0;
+}
+.cmdp-input {
+  flex: 1;
+  min-width: 0;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 15px;
+  padding: 2px 0;
+  outline: none;
+}
+.cmdp-input::placeholder {
+  color: var(--ink-faint);
+}
+.cmdp-hint {
+  font-size: 10px;
+  color: var(--ink-faint);
+  padding: 2px 6px;
+  border: 1px solid var(--line);
+  border-radius: 4px;
+  letter-spacing: 0.06em;
+}
+
+/* ---- Results (スクロール部) --------------------------------------------- */
+.cmdp-results {
+  overflow-y: auto;
+  flex: 1;
+  padding: 6px 0;
+}
+.cmdp-group {
+  padding: 4px 0 8px;
+}
+.cmdp-group-head {
+  font-size: 10px;
+  color: var(--ink-faint);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 6px 16px;
+}
+.cmdp-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 10px 16px;
+  background: transparent;
+  border: 0;
+  text-align: left;
+  color: var(--ink);
+  cursor: pointer;
+  font: inherit;
+  transition: background 0.1s ease;
+}
+.cmdp-item.is-active {
+  background: color-mix(in oklab, var(--accent-indigo) 12%, transparent);
+}
+.cmdp-item:focus-visible {
+  outline: 2px solid var(--accent-indigo);
+  outline-offset: -2px;
+}
+.cmdp-item-body {
+  flex: 1;
+  min-width: 0;
+}
+.cmdp-item-label {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cmdp-item-sub {
+  font-size: 11px;
+  color: var(--ink-mute);
+  margin-top: 2px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.cmdp-item-kind {
+  flex-shrink: 0;
+  font-size: 10px;
+  color: var(--ink-faint);
+  padding: 2px 8px;
+  border-radius: 10px;
+  background: var(--bg-sunken);
+  border: 1px solid var(--line);
+  letter-spacing: 0.04em;
+}
+.cmdp-item[data-kind="page"] .cmdp-item-kind     { color: var(--accent-indigo); }
+.cmdp-item[data-kind="specimen"] .cmdp-item-kind { color: var(--accent-forest); }
+.cmdp-item[data-kind="product"] .cmdp-item-kind  { color: var(--accent-amber); }
+
+.cmdp-empty {
+  padding: 40px 20px;
+  text-align: center;
+  color: var(--ink-mute);
+  font-size: 13px;
+}
+.cmdp-empty-sub {
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+
+/* ---- Foot (キーヒント) --------------------------------------------------- */
+.cmdp-foot {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 8px 16px;
+  border-top: 1px solid var(--line);
+  background: var(--bg-sunken);
+  font-size: 10px;
+  color: var(--ink-faint);
+  letter-spacing: 0.04em;
+}
+.cmdp-foot kbd {
+  display: inline-block;
+  margin: 0 3px;
+  min-width: 18px;
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--bg-raised);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-align: center;
+}
+.cmdp-foot-count {
+  margin-left: auto;
+}
+
+@media (max-width: 640px) {
+  .cmdp-backdrop {
+    padding: 6vh 10px 10px;
+  }
+  .cmdp-dialog {
+    max-height: 86vh;
+  }
+  .cmdp-foot {
+    flex-wrap: wrap;
+    gap: 10px;
+  }
+}
+
+/* ==========================================================================
+   Next Actions (P4-9) — MyPage の "次のケア" カード列
+   3 列 × (最大) 2 行グリッド。モバイルでは 2 列 / 1 列。
+   data-priority でサイド色を変え、超過 = rose、今日 = amber、soon = forest。
+   ========================================================================== */
+.nextact-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.nextact-card {
+  position: relative;
+  padding: 14px 16px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow: hidden;
+}
+/* 左端の縦ストライプで優先度を瞬時に識別 */
+.nextact-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 3px;
+  background: var(--line-strong);
+}
+.nextact-card[data-priority="overdue"]::before { background: var(--accent-rose); }
+.nextact-card[data-priority="today"]::before   { background: var(--accent-amber); }
+.nextact-card[data-priority="soon"]::before    { background: var(--accent-forest); }
+
+.nextact-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.nextact-due {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-mute);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+.nextact-due[data-priority="overdue"] { color: var(--accent-rose); font-weight: 600; }
+.nextact-due[data-priority="today"]   { color: var(--accent-amber-ink); font-weight: 600; }
+.nextact-name {
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.3;
+  letter-spacing: 0.005em;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nextact-meta {
+  font-size: 11px;
+  color: var(--ink-faint);
+  letter-spacing: 0.02em;
+}
+
+@media (max-width: 900px) {
+  .nextact-grid { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 640px) {
+  .nextact-grid { grid-template-columns: 1fr; }
+}
+
+/* ==========================================================================
+   P4-19: ? キーのショートカット一覧モーダル
+   構造は CommandPalette (.cmdp-*) を踏襲し、table 風の keys | label レイアウト
+   ========================================================================== */
+.shelp-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: color-mix(in oklab, var(--ink) 42%, transparent);
+  backdrop-filter: blur(3px) saturate(1.1);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding: 8vh 16px 16px;
+  animation: shelp-fade-in 0.12s ease-out;
+}
+@keyframes shelp-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.shelp-dialog {
+  width: 100%;
+  max-width: 560px;
+  max-height: 80vh;
+  background: var(--bg-raised);
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  box-shadow: 0 20px 48px color-mix(in oklab, var(--ink) 30%, transparent);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  animation: shelp-slide-in 0.14s ease-out;
+}
+@keyframes shelp-slide-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to   { opacity: 1; transform: translateY(0)   scale(1); }
+}
+
+.shelp-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 18px 20px 14px;
+  border-bottom: 1px solid var(--line);
+}
+.shelp-close {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--bg-sunken);
+  color: var(--ink-mute);
+  font-size: 14px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.1s ease, color 0.1s ease, border-color 0.1s ease;
+}
+.shelp-close:hover {
+  background: var(--bg-raised);
+  color: var(--ink);
+  border-color: var(--line-strong);
+}
+.shelp-close:focus-visible {
+  outline: 2px solid var(--accent-indigo);
+  outline-offset: 2px;
+}
+
+.shelp-body {
+  overflow-y: auto;
+  flex: 1;
+  padding: 8px 0 14px;
+}
+.shelp-section {
+  padding: 8px 0 4px;
+}
+.shelp-section + .shelp-section {
+  border-top: 1px dashed var(--line);
+  margin-top: 4px;
+}
+.shelp-section-head {
+  font-size: 10px;
+  color: var(--ink-faint);
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  padding: 10px 20px 6px;
+}
+.shelp-rows {
+  display: flex;
+  flex-direction: column;
+}
+.shelp-row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 8px 20px;
+}
+.shelp-row:hover {
+  background: color-mix(in oklab, var(--accent-indigo) 6%, transparent);
+}
+.shelp-keys {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+  min-width: 96px;
+}
+.shelp-kbd {
+  display: inline-block;
+  min-width: 24px;
+  padding: 3px 8px;
+  border: 1px solid var(--line-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--bg-sunken);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  line-height: 1.2;
+  color: var(--ink);
+  text-align: center;
+  letter-spacing: 0.04em;
+}
+.shelp-plus {
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+.shelp-row-body {
+  flex: 1;
+  min-width: 0;
+}
+.shelp-row-label {
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.3;
+}
+.shelp-row-sub {
+  font-size: 11px;
+  color: var(--ink-mute);
+  margin-top: 2px;
+  letter-spacing: 0.01em;
+}
+
+.shelp-foot {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 10px 20px;
+  border-top: 1px solid var(--line);
+  background: var(--bg-sunken);
+  font-size: 10px;
+  color: var(--ink-faint);
+  letter-spacing: 0.04em;
+}
+.shelp-foot kbd {
+  display: inline-block;
+  margin: 0 3px;
+  min-width: 18px;
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: var(--bg-raised);
+  font-family: var(--font-mono);
+  font-size: 10px;
+  text-align: center;
+}
+.shelp-foot-esc {
+  margin-left: auto;
+}
+
+@media (max-width: 640px) {
+  .shelp-backdrop {
+    padding: 6vh 10px 10px;
+  }
+  .shelp-dialog {
+    max-height: 88vh;
+  }
+  .shelp-head {
+    padding: 14px 16px 12px;
+  }
+  .shelp-section-head {
+    padding: 10px 16px 6px;
+  }
+  .shelp-row {
+    padding: 8px 16px;
+    gap: 10px;
+  }
+  .shelp-keys {
+    min-width: 80px;
+  }
+  .shelp-foot {
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 10px 16px;
+  }
+}
+
+/* P4-24: MyPage KPI 数値に単位 data-unit を右肩に。
+   - 大数字は serif 34px。
+   - data-unit 属性を持つときだけ ::after で単位 (体 / 本 / 件 など) を
+     右肩に小さく出す。単位は sans 11px で ink-mute 色、vertical-align で
+     ベースラインから少し持ち上げて「右肩」ポジションにする。 */
+.kpi-num {
+  font-family: var(--font-serif);
+  font-size: 34px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  display: inline-block;
+}
+.kpi-num[data-unit]::after {
+  content: attr(data-unit);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--ink-mute);
+  margin-left: 3px;
+  vertical-align: 0.6em;
+  letter-spacing: 0;
 }

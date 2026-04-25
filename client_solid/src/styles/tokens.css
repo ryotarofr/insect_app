@@ -28,21 +28,37 @@
   --accent-forest-soft: oklch(0.93 0.03 150);
   --accent-amber: oklch(0.70 0.12 70);
   --accent-amber-soft: oklch(0.94 0.04 70);
+  /* P4-7: amber 系のテキスト色として使われていた oklch(0.45 0.1 70) を
+     semantic 変数化 (chip.amber / KPI accent / ind-id など多数で参照)。
+     ダークモードでは lightness を上げて視認性を確保する。 */
+  --accent-amber-ink: oklch(0.45 0.1 70);
   --accent-rose: oklch(0.60 0.12 25);
   --accent-rose-soft: oklch(0.94 0.03 25);
   --accent-indigo: oklch(0.50 0.08 265);
   --accent-indigo-soft: oklch(0.94 0.02 265);
+
+  /* P4-7: topbar のすりガラス用。--bg にアルファを付与した色。
+     ダークモードで bg が変わるのでハードコード禁止。 */
+  --bg-glass: oklch(0.985 0.004 80 / 0.75);
+  --bg-glass-strong: oklch(0.985 0.004 80 / 0.85);
 
   /* Elevation */
   --shadow-sm: 0 1px 0 oklch(0 0 0 / 0.04);
   --shadow-md: 0 1px 2px oklch(0 0 0 / 0.04), 0 4px 12px oklch(0 0 0 / 0.04);
   --shadow-lg: 0 2px 6px oklch(0 0 0 / 0.06), 0 16px 40px oklch(0 0 0 / 0.08);
 
-  /* Radius — restrained */
+  /* Radius — restrained
+     基本 3 段階 (sm/md/lg/pill) + 用途別セマンティック変数 (P3-12)
+     全コンポーネントは用途別変数を参照する。中間値は出さない。 */
   --r-sm: 3px;
   --r-md: 6px;
   --r-lg: 10px;
   --r-pill: 999px;
+
+  /* Semantic radii (P3-12) */
+  --r-card: 12px;   /* card / modal / dialog */
+  --r-btn: 8px;    /* button / input / select / textarea / pill-less interactive */
+  --r-chip: 999px; /* chip / badge / pill */
 
   /* Spacing scale */
   --s-1: 4px;
@@ -58,6 +74,10 @@
   --sidebar-w: 240px;
   --header-h: 56px;
   --page-max: 1440px;
+
+  /* Focus ring (P3-1) */
+  --ring: 2px solid var(--accent-indigo);
+  --ring-offset: 2px;
 }
 
 * { box-sizing: border-box; }
@@ -77,61 +97,143 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 input, textarea, select { font-family: inherit; font-size: inherit; color: inherit; }
 
 /* ==========================================================================
+   Focus ring (P3-1) — unified :focus-visible style
+   :where() で specificity を 0 にしておく。個別に outline: none; を指定した
+   要素は既存ルールが勝つので、設計済みの search 等の動作は維持される。
+   キーボード操作時 (=:focus-visible) のみ出るため、マウスクリックでは出ない。
+   ========================================================================== */
+:where(
+  a, button, input, select, textarea, summary,
+  [role="button"], [role="tab"], [role="link"], [role="menuitem"],
+  [tabindex]:not([tabindex="-1"])
+):focus-visible {
+  outline: var(--ring);
+  outline-offset: var(--ring-offset);
+  border-radius: 4px;
+}
+
+/* ==========================================================================
    Utility primitives
    ========================================================================== */
 
 .mono { font-family: var(--font-mono); font-feature-settings: "tnum" 1; }
 .serif { font-family: var(--font-serif); }
 
+/* P3-14: 価格表示の標準パターン
+ *   <span class="price"><span class="price-yen">¥</span>48,000</span>
+ * 桁揃え用に tabular-nums + feature-settings "tnum" を適用。
+ * ¥ は mono 0.7em で分離し、数字の高さに対して主張しすぎないようにする。
+ * 大きな hero 価格は .price.lg で 38px 想定 (font-size は呼び出し側で上書き)。 */
+.price {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  letter-spacing: -0.01em;
+}
+.price-yen {
+  font-family: var(--font-mono);
+  font-size: 0.7em;
+  color: var(--ink-mute);
+  margin-right: 2px;
+  font-weight: 400;
+  letter-spacing: 0;
+}
+
 .hair { border: 0; border-top: 1px solid var(--line); margin: 0; }
 .hair-v { border: 0; border-left: 1px solid var(--line); align-self: stretch; }
 
+/* P3-10: chip を 1 本化 (height 24px / padding 0 10px / font-size 11px)
+   色は modifier クラス (forest/amber/rose/indigo/ink) のみで差別化する。
+   ドット (.chip .dot) もこのサイズに合わせて調整。 */
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  padding: 2px 8px;
-  border-radius: var(--r-pill);
+  height: 24px;
+  padding: 0 10px;
+  border-radius: var(--r-chip);
   font-size: 11px;
   font-weight: 500;
   background: var(--bg-sunken);
   color: var(--ink-mute);
   border: 1px solid var(--line);
   letter-spacing: 0.02em;
+  line-height: 1;
+  white-space: nowrap;
 }
 .chip.forest { background: var(--accent-forest-soft); color: var(--accent-forest); border-color: transparent; }
-.chip.amber  { background: var(--accent-amber-soft);  color: oklch(0.45 0.1 70); border-color: transparent; }
+.chip.amber  { background: var(--accent-amber-soft);  color: var(--accent-amber-ink); border-color: transparent; }
 .chip.rose   { background: var(--accent-rose-soft);   color: var(--accent-rose); border-color: transparent; }
 .chip.indigo { background: var(--accent-indigo-soft); color: var(--accent-indigo); border-color: transparent; }
 .chip.ink    { background: var(--bg-inverse); color: var(--ink-inverse); border-color: transparent; }
 
+/* P4-2: life-badge — 故個体は黒地 / それ以外は通常の chip tone 併用 */
+.chip.life-badge[data-life="deceased"] {
+  background: var(--ink);
+  color: var(--bg);
+  border-color: transparent;
+}
+
+/* P3-10: chip は --r-chip を参照 (999px 固定) */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   padding: 8px 14px;
-  border-radius: var(--r-md);
+  /* P3-12: radius は semantic 変数を参照 */
+  border-radius: var(--r-btn);
   background: var(--bg-raised);
   border: 1px solid var(--line-strong);
   font-weight: 500;
   font-size: 13px;
   color: var(--ink);
-  transition: background 0.12s ease, border-color 0.12s ease;
+  transition: background 0.12s ease, border-color 0.12s ease, transform 0.08s ease;
   white-space: nowrap;
 }
 .btn:hover { background: var(--bg-sunken); border-color: var(--ink-mute); }
+/* P3-3: 押下時の軽微なスケール (accessibility: reduced-motion 時は解除) */
+.btn:active { transform: scale(0.98); }
+/* P3-11: primary を森緑 (forest) に。CTA に自然な緑が主役として登場 */
 .btn.primary {
-  background: var(--ink);
+  background: var(--accent-forest);
   color: var(--ink-inverse);
-  border-color: var(--ink);
+  border-color: var(--accent-forest);
 }
-.btn.primary:hover { background: oklch(0.12 0.01 80); }
-.btn.ghost { border-color: transparent; background: transparent; }
-.btn.ghost:hover { background: var(--bg-sunken); }
+.btn.primary:hover { background: oklch(0.40 0.09 150); border-color: oklch(0.40 0.09 150); }
+/* ghost: 背景透明 + hover のみ sunken。border は strong より薄くして消失感を防ぐ */
+.btn.ghost {
+  border-color: var(--line-strong);
+  background: transparent;
+}
+.btn.ghost:hover { background: var(--bg-sunken); border-color: var(--ink-mute); }
 .btn.sm { padding: 5px 10px; font-size: 12px; }
 .btn.lg { padding: 12px 20px; font-size: 14px; }
 .btn.block { width: 100%; }
+
+/* P4-15: カート削除ボタンは .btn.sm だが 44×44 のタップ領域を確保する。
+ *   視覚的には sm のままだが、透明な ::after を中央に 44×44 張って hitbox を拡大し、
+ *   指タップ精度を上げる (WCAG 2.5.5 Target Size AAA / Apple HIG 44pt)。
+ *   色は faint でサイレント、hover/focus で rose に上がる。 */
+.btn.sm.cart-remove {
+  position: relative;
+  min-height: 32px;
+  color: var(--ink-faint);
+}
+.btn.sm.cart-remove::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 44px;
+  height: 44px;
+  transform: translate(-50%, -50%);
+  /* タップは親の onClick に委ねる。視覚的には透明。 */
+}
+.btn.sm.cart-remove:hover,
+.btn.sm.cart-remove:focus-visible {
+  color: var(--accent-rose);
+  border-color: var(--accent-rose);
+}
 .btn:disabled,
 .btn[aria-disabled="true"] {
   opacity: 0.4;
@@ -163,12 +265,13 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
 .input, .textarea, .select {
   display: block;
   width: 100%;
-  padding: 8px 12px;
-  border-radius: var(--r-md);
+  padding: 10px 12px;
+  /* P3-12: form 入力 radius は btn と揃える */
+  border-radius: var(--r-btn);
   background: var(--bg-raised);
   border: 1px solid var(--line-strong);
-  font-size: 13px;
-  line-height: 1.4;
+  font-size: 14px;
+  line-height: 1.5;
   transition: border-color 0.12s ease, box-shadow 0.12s ease;
 }
 .input:focus, .textarea:focus, .select:focus {
@@ -188,12 +291,24 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
   margin-bottom: 6px;
 }
 
+/* P3-2: 極薄シャドウ + hover で 1px 浮く (accessible な押下感)
+ * P3-3: :active で 0.98 スケール (:where() 低 specificity なので btn 等でも有効)
+ * P3-12: radius は semantic --r-card */
 .card {
   background: var(--bg-raised);
   border: 1px solid var(--line);
-  border-radius: var(--r-lg);
+  border-radius: var(--r-card);
+  box-shadow: 0 1px 2px oklch(0 0 0 / 0.03);
   transition: box-shadow 0.18s ease, transform 0.18s ease;
 }
+/* hover は「クリック可能に見える」場合のみ lift する (cursor:pointer 目安) */
+.card:hover {
+  box-shadow: 0 2px 6px oklch(0 0 0 / 0.06);
+  transform: translateY(-1px);
+}
+/* クリック可能でない staticなカードは hover しない方が良いが、
+   Solid の style 属性 (cursor:pointer) が付く前提で広めに適用する */
+.card:active { transform: translateY(0) scale(0.995); }
 
 /* スクリーンリーダー専用 */
 .visually-hidden {
@@ -266,6 +381,42 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
   padding-top: 2px;
 }
 .spec dd { margin: 0; }
+
+/* P3-17: 2×2 spec grid — 商品カードなど狭い領域で 4 つの属性を
+ * スキャナブルに並べるためのレイアウト。ラベルは mono uppercase 9px、
+ * 値は 12px。背景をごく薄いサンクンにしてスペック塊として分離する。 */
+.spec-grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 14px;
+  margin-top: 12px;
+  padding: 10px 12px;
+  background: var(--bg-sunken);
+  border-radius: var(--r-btn);
+}
+.spec-grid-2 .spec-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.spec-grid-2 .spec-label {
+  font-family: var(--font-mono);
+  font-size: 9px;
+  color: var(--ink-faint);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.spec-grid-2 .spec-value {
+  font-size: 12px;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.spec-grid-2 .spec-value.is-empty {
+  color: var(--ink-faint);
+}
 
 /* Placeholder imagery — diagonal hatch */
 .ph {
@@ -358,4 +509,229 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
 @keyframes fade-in {
   from { opacity: 0; transform: translateY(4px); }
   to   { opacity: 1; transform: translateY(0); }
+}
+
+/* ==========================================================================
+   Reduced motion — ユーザーがモーション抑制を希望している場合は
+   P3-3 の press / P3-2 の lift / fade-enter を静かにする。
+   ========================================================================== */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+  .btn:active, .card:active, .card:hover { transform: none; }
+}
+
+/* ==========================================================================
+   Dark mode (P4-7)
+   OS 設定が "dark" の時に有効化。すべての変数を上書きするだけで
+   コンポーネント側の CSS は触らない方針 (bg/ink/line/accent 変数に
+   依存している限り自動で切り替わる)。
+   例外的にハードコード色が残っている箇所 (topbar glass, fab hover,
+   .ph のハッチ, Bloodline 系統色) はここで個別に上書きする。
+   ========================================================================== */
+@media (prefers-color-scheme: dark) {
+  :root {
+    /* 温かみのある warm 80° を保ちつつ lightness を反転 */
+    --bg: oklch(0.16 0.008 80);
+    --bg-raised: oklch(0.21 0.008 80);
+    --bg-sunken: oklch(0.12 0.006 80);
+    --bg-inverse: oklch(0.96 0.004 80);
+
+    --ink: oklch(0.94 0.004 80);
+    --ink-mute: oklch(0.72 0.006 80);
+    --ink-faint: oklch(0.52 0.008 80);
+    --ink-inverse: oklch(0.20 0.01 80);
+
+    --line: oklch(0.28 0.008 80);
+    --line-strong: oklch(0.38 0.008 80);
+
+    /* Accents — dark 背景に対して主色は lightness を上げる。
+       soft 版 (chip 背景など) は暗くしておく。 */
+    --accent-forest: oklch(0.68 0.09 150);
+    --accent-forest-soft: oklch(0.26 0.04 150);
+    --accent-amber: oklch(0.78 0.12 70);
+    --accent-amber-soft: oklch(0.28 0.05 70);
+    --accent-amber-ink: oklch(0.80 0.12 70);
+    --accent-rose: oklch(0.72 0.12 25);
+    --accent-rose-soft: oklch(0.28 0.05 25);
+    --accent-indigo: oklch(0.72 0.10 265);
+    --accent-indigo-soft: oklch(0.28 0.05 265);
+
+    /* ダークでは影は濃くしないと認識されない */
+    --shadow-sm: 0 1px 0 oklch(0 0 0 / 0.35);
+    --shadow-md: 0 1px 2px oklch(0 0 0 / 0.35), 0 4px 12px oklch(0 0 0 / 0.35);
+    --shadow-lg: 0 2px 6px oklch(0 0 0 / 0.45), 0 16px 40px oklch(0 0 0 / 0.55);
+
+    /* topbar glass — 暗い bg に alpha */
+    --bg-glass: oklch(0.16 0.008 80 / 0.72);
+    --bg-glass-strong: oklch(0.16 0.008 80 / 0.85);
+  }
+
+  /* .card の極薄シャドウもダークでは強める */
+  .card {
+    box-shadow: 0 1px 2px oklch(0 0 0 / 0.30);
+  }
+  .card:hover {
+    box-shadow: 0 2px 6px oklch(0 0 0 / 0.45);
+  }
+
+  /* .btn.primary:hover のハードコード forest を、ダークで明るめに */
+  .btn.primary:hover {
+    background: oklch(0.75 0.09 150);
+    border-color: oklch(0.75 0.09 150);
+  }
+
+  /* input focus の box-shadow は ink ベースで弱めに */
+  .input:focus, .textarea:focus, .select:focus {
+    box-shadow: 0 0 0 3px oklch(1 0 0 / 0.08);
+  }
+
+  /* FAB は bg: var(--ink) (=明色) / color: var(--ink-inverse) (=暗色) が
+     ダークでも入れ替わって正しく動く。hover のハードコード暗色は逆転するので
+     ここで上書き — ダークでは hover で "少し暗い (=ink を落とす)" ではなく
+     "少し暗くした ink" = オフホワイトを落として淡いグレー。 */
+  .fab:hover {
+    background: oklch(0.85 0.006 80);
+  }
+
+  /* Bloodline の野生個体ストライプ — ライト時は amber (0.70) と淡 amber (0.78) の
+     組合せ。ダーク時は amber が 0.78 なので淡色と同化してしまうため、
+     濃い amber を対側に置く。 */
+  .ind-card[data-kind="wild"]::before {
+    background-image:
+      repeating-linear-gradient(
+        45deg,
+        var(--accent-amber) 0 4px,
+        oklch(0.55 0.14 70) 4px 8px
+      );
+  }
+
+  /* .ph のハッチは default で 0.9 系のグレーが描かれるが、
+     ダークではそれが bg-sunken より明るくなってしまい逆転する。
+     同じ lightness で stripe 化 (わずかに濃い線) する。 */
+  .ph {
+    background-image:
+      repeating-linear-gradient(
+        135deg,
+        oklch(0.26 0.008 80) 0,
+        oklch(0.26 0.008 80) 1px,
+        transparent 1px,
+        transparent 9px
+      );
+  }
+  .ph.forest {
+    background-color: oklch(0.20 0.04 150);
+    background-image:
+      repeating-linear-gradient(135deg,
+        oklch(0.30 0.05 150) 0, oklch(0.30 0.05 150) 1px,
+        transparent 1px, transparent 9px);
+  }
+  .ph.amber {
+    background-color: oklch(0.22 0.05 70);
+    background-image:
+      repeating-linear-gradient(135deg,
+        oklch(0.32 0.06 70) 0, oklch(0.32 0.06 70) 1px,
+        transparent 1px, transparent 9px);
+  }
+}
+
+/* ==========================================================================
+   Night-red theme (P4-8)
+   夜間、カブトムシ / クワガタの飼育ケア時に青色光を避けるためのモード。
+   赤色は昆虫の複眼の感度が低いため、刺激を与えずに観察・作業ができる。
+
+   適用:
+     <html data-theme="night-red"> で有効化。store/theme.ts のトグル経由。
+   色設計:
+     全変数を 赤 (hue ≈ 25-30) 単色に振り、白/青を排除。
+     背景は真っ黒寄り、ink は減光した赤。chroma は抑えて長時間見ても疲れないトーン。
+   ========================================================================== */
+[data-theme="night-red"] {
+  --bg: oklch(0.07 0.02 28);
+  --bg-raised: oklch(0.11 0.03 28);
+  --bg-sunken: oklch(0.05 0.02 28);
+  --bg-inverse: oklch(0.55 0.14 28);
+
+  --ink: oklch(0.62 0.13 28);
+  --ink-mute: oklch(0.48 0.12 28);
+  --ink-faint: oklch(0.34 0.10 28);
+  --ink-inverse: oklch(0.07 0.02 28);
+
+  --line: oklch(0.20 0.06 28);
+  --line-strong: oklch(0.30 0.09 28);
+
+  /* Accents — 全部単色の赤に寄せる。区別は明度だけで付ける。 */
+  --accent-forest: oklch(0.58 0.13 28);
+  --accent-forest-soft: oklch(0.16 0.05 28);
+  --accent-amber: oklch(0.66 0.14 28);
+  --accent-amber-soft: oklch(0.15 0.05 28);
+  --accent-amber-ink: oklch(0.66 0.14 28);
+  --accent-rose: oklch(0.62 0.14 28);
+  --accent-rose-soft: oklch(0.16 0.06 28);
+  --accent-indigo: oklch(0.55 0.12 28);
+  --accent-indigo-soft: oklch(0.14 0.04 28);
+
+  /* Shadow は非常に薄くしておく (赤い光で疑似反射に見えるのを避ける) */
+  --shadow-sm: 0 1px 0 oklch(0 0 0 / 0.5);
+  --shadow-md: 0 1px 2px oklch(0 0 0 / 0.55), 0 4px 12px oklch(0 0 0 / 0.55);
+  --shadow-lg: 0 2px 6px oklch(0 0 0 / 0.6), 0 16px 40px oklch(0 0 0 / 0.65);
+
+  --bg-glass: oklch(0.07 0.02 28 / 0.78);
+  --bg-glass-strong: oklch(0.07 0.02 28 / 0.9);
+}
+[data-theme="night-red"] .card {
+  box-shadow: 0 1px 2px oklch(0 0 0 / 0.4);
+}
+[data-theme="night-red"] .card:hover {
+  box-shadow: 0 2px 6px oklch(0 0 0 / 0.55);
+}
+[data-theme="night-red"] .btn.primary:hover {
+  background: oklch(0.66 0.14 28);
+  border-color: oklch(0.66 0.14 28);
+}
+[data-theme="night-red"] .input:focus,
+[data-theme="night-red"] .textarea:focus,
+[data-theme="night-red"] .select:focus {
+  box-shadow: 0 0 0 3px oklch(0.62 0.13 28 / 0.2);
+}
+[data-theme="night-red"] .fab:hover {
+  background: oklch(0.42 0.11 28);
+}
+[data-theme="night-red"] .ph {
+  background-color: var(--bg-sunken);
+  background-image:
+    repeating-linear-gradient(
+      135deg,
+      oklch(0.20 0.06 28) 0,
+      oklch(0.20 0.06 28) 1px,
+      transparent 1px,
+      transparent 9px
+    );
+  color: var(--ink-faint);
+}
+[data-theme="night-red"] .ph.forest,
+[data-theme="night-red"] .ph.amber {
+  background-color: oklch(0.13 0.05 28);
+  background-image:
+    repeating-linear-gradient(135deg,
+      oklch(0.22 0.08 28) 0, oklch(0.22 0.08 28) 1px,
+      transparent 1px, transparent 9px);
+  color: var(--accent-amber-ink);
+}
+/* Bloodline 野生ストライプ — 赤単色では 2 色差が出しにくいが、
+   少し明度を下げた対が見える程度にしておく。 */
+[data-theme="night-red"] .ind-card[data-kind="wild"]::before {
+  background-image:
+    repeating-linear-gradient(
+      45deg,
+      var(--accent-amber) 0 4px,
+      oklch(0.42 0.12 28) 4px 8px
+    );
+}
+/* CBF2 は通常 cyan だが night-red では系統色もすべて赤寄せ */
+[data-theme="night-red"] .ind-card[data-gen="CBF2"]::before {
+  background: oklch(0.50 0.12 28);
 }

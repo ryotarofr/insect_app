@@ -1,23 +1,30 @@
 // QuickLogSheet.tsx — 個体カルテ／FABから起動する「記録追加」モーダル
 // 対象個体は props.specimenId で事前プリセット可能。未指定の場合は select で変更可。
+//
+// P2-9: open 時に focusTrap をインストール。閉じたらトリガー要素にフォーカスを戻す。
 import { createEffect, createSignal, For, Show, onMount, onCleanup } from "solid-js";
 import { addLog, listSpecimens, type LogType } from "../../api";
 import { LOG_TYPES, buildLogTitle } from "./types";
+import { installFocusTrap, type FocusTrapHandle } from "../../utils/focusTrap";
 
 interface QuickLogSheetProps {
   open: boolean;
   onClose: () => void;
   /** 指定すると対象個体を固定 (個体カルテから起動した場合) */
   specimenId?: string;
+  /** P4-10: 初期選択される LogType。個体カルテの 5 ボタンショートカットから
+   *  "体重" / "給餌" など、目的別に開くために使う。 */
+  initialType?: LogType;
   /** 保存成功時のコールバック */
   onSaved?: () => void;
 }
 
 export const QuickLogSheet = (p: QuickLogSheetProps) => {
   const specimens = listSpecimens();
-  const [type, setType] = createSignal<LogType>("weight");
+  const [type, setType] = createSignal<LogType>(p.initialType ?? "weight");
   const [target, setTarget] = createSignal(p.specimenId ?? specimens[0]?.id ?? "");
-  const [value, setValue] = createSignal("28.4");
+  // 値は空で開始し、placeholder "28.4" に留める (誤送信防止)
+  const [value, setValue] = createSignal("");
   const [memo, setMemo] = createSignal("");
   const [error, setError] = createSignal<string | null>(null);
 
@@ -26,20 +33,31 @@ export const QuickLogSheet = (p: QuickLogSheetProps) => {
     if (p.specimenId) setTarget(p.specimenId);
   });
 
-  // open が false になったらフォーム初期化、true になったら weight の初期値に
+  // P4-10: 開いた瞬間に props.initialType を反映する。
+  //   - initialType が無ければ weight にリセット。
+  //   - open の false → true 遷移でのみ走る (閉じている間の型変更は無視)。
+  createEffect(() => {
+    if (p.open) {
+      setType(p.initialType ?? "weight");
+      setValue("");
+      setError(null);
+    }
+  });
+
+  // open が false になったらフォーム初期化
   createEffect(() => {
     if (!p.open) {
-      setType("weight");
-      setValue("28.4");
+      setType(p.initialType ?? "weight");
+      setValue("");
       setMemo("");
       setError(null);
     }
   });
 
-  // 種別変更時、値を種別ごとのデフォルトへ
+  // 種別変更時はフィールドをクリアし、placeholder が見える状態にする
   const selectType = (t: LogType) => {
     setType(t);
-    setValue(t === "weight" ? "28.4" : "");
+    setValue("");
     setError(null);
   };
 
@@ -50,6 +68,22 @@ export const QuickLogSheet = (p: QuickLogSheetProps) => {
     };
     window.addEventListener("keydown", onKey);
     onCleanup(() => window.removeEventListener("keydown", onKey));
+  });
+
+  // Focus trap: open 中は Tab/Shift+Tab を dialog 内にとどめる
+  let dialogRef: HTMLFormElement | undefined;
+  let trap: FocusTrapHandle | null = null;
+  createEffect(() => {
+    if (p.open && dialogRef) {
+      trap = installFocusTrap(dialogRef);
+    } else if (!p.open && trap) {
+      trap.release();
+      trap = null;
+    }
+  });
+  onCleanup(() => {
+    trap?.release();
+    trap = null;
   });
 
   const currentMeta = () => LOG_TYPES.find((t) => t.key === type())!;
@@ -84,6 +118,7 @@ export const QuickLogSheet = (p: QuickLogSheetProps) => {
         onClick={p.onClose}
       >
         <form
+          ref={dialogRef}
           class="sheet-dialog"
           onClick={(e) => e.stopPropagation()}
           onSubmit={submit}
@@ -185,6 +220,10 @@ export const QuickLogSheet = (p: QuickLogSheetProps) => {
                 class="input mono"
                 type="number"
                 step="0.1"
+                /* P4-14: 数字キーパッド (iOS/Android 共通) に小数点ドットを出す。
+                 * inputmode="decimal" は type="number" と併用可能で、
+                 * iOS Safari で "." を含むテンキーが出る。 */
+                inputmode="decimal"
                 placeholder="28.4"
                 value={value()}
                 onInput={(e) => setValue(e.currentTarget.value)}

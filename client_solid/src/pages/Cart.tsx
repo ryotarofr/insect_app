@@ -1,6 +1,20 @@
 // Cart.tsx — カート・チェックアウト
 import { createMemo, createSignal, For, Show } from "solid-js";
 import { cartItems, cartSubtotal, removeItem, updateQty } from "../store/cart";
+import {
+  PREFECTURES,
+  shippingName,
+  shippingTel,
+  shippingZip,
+  shippingPref,
+  shippingAddr,
+  setShippingName,
+  setShippingTel,
+  setShippingZip,
+  setShippingPref,
+  setShippingAddr,
+  isShippingComplete,
+} from "../store/checkout";
 
 interface ShippingOption {
   id: "cold" | "normal";
@@ -128,20 +142,22 @@ export const CartPage = () => {
                           ＋
                         </button>
                       </div>
+                      {/* P4-15: 44×44 のタップ領域を確保 (WCAG / Apple HIG 準拠) */}
                       <button
-                        class="btn sm ghost"
-                        style={{ color: "var(--ink-faint)" }}
+                        class="btn sm ghost cart-remove"
                         onClick={() => removeItem(it.id)}
+                        aria-label={`${it.title} をカートから削除`}
                       >
                         削除
                       </button>
                     </div>
                   </div>
                   <div
-                    class="serif"
+                    class="serif price"
                     style={{ "font-size": "20px", "font-weight": 600, "align-self": "center" }}
                   >
-                    ¥{(it.price * it.qty).toLocaleString()}
+                    <span class="price-yen">¥</span>
+                    {(it.price * it.qty).toLocaleString()}
                   </div>
                 </div>
               )}
@@ -159,35 +175,83 @@ export const CartPage = () => {
                   <label class="label" for="ship-name">
                     氏名
                   </label>
-                  <input id="ship-name" class="input" value="山田 徹" />
+                  <input
+                    id="ship-name"
+                    class="input"
+                    value={shippingName()}
+                    onInput={(e) => setShippingName(e.currentTarget.value)}
+                    autocomplete="name"
+                  />
                 </div>
                 <div>
                   <label class="label" for="ship-tel">
                     電話
                   </label>
-                  <input id="ship-tel" class="input mono" value="080-0000-0000" />
+                  <input
+                    id="ship-tel"
+                    class="input mono"
+                    type="tel"
+                    value={shippingTel()}
+                    onInput={(e) => setShippingTel(e.currentTarget.value)}
+                    autocomplete="tel"
+                    inputmode="tel"
+                  />
                 </div>
                 <div>
                   <label class="label" for="ship-zip">
                     郵便番号
                   </label>
-                  <input id="ship-zip" class="input mono" value="150-0001" />
+                  <input
+                    id="ship-zip"
+                    class="input mono"
+                    value={shippingZip()}
+                    onInput={(e) => setShippingZip(e.currentTarget.value)}
+                    autocomplete="postal-code"
+                    inputmode="numeric"
+                    placeholder="150-0001"
+                  />
                 </div>
                 <div>
                   <label class="label" for="ship-pref">
                     都道府県
                   </label>
-                  <select id="ship-pref" class="select">
-                    <option>東京都</option>
+                  <select
+                    id="ship-pref"
+                    class="select"
+                    value={shippingPref()}
+                    onChange={(e) => setShippingPref(e.currentTarget.value)}
+                    autocomplete="address-level1"
+                  >
+                    <For each={PREFECTURES}>
+                      {(p) => <option value={p}>{p}</option>}
+                    </For>
                   </select>
                 </div>
                 <div style={{ "grid-column": "1 / 3" }}>
                   <label class="label" for="ship-addr">
                     住所
                   </label>
-                  <input id="ship-addr" class="input" value="渋谷区神宮前..." />
+                  <input
+                    id="ship-addr"
+                    class="input"
+                    value={shippingAddr()}
+                    onInput={(e) => setShippingAddr(e.currentTarget.value)}
+                    autocomplete="street-address"
+                  />
                 </div>
               </div>
+              <Show when={!isShippingComplete()}>
+                <div
+                  style={{
+                    "margin-top": "10px",
+                    "font-size": "12px",
+                    color: "var(--accent-amber)",
+                  }}
+                  role="status"
+                >
+                  未入力項目があります。決済前に全て埋めてください。
+                </div>
+              </Show>
             </div>
 
             <div class="sec-head" style={{ "margin-top": "28px" }}>
@@ -229,12 +293,7 @@ export const CartPage = () => {
             class="card"
             style={{ padding: "22px", position: "sticky", top: "72px" }}
           >
-            <div
-              class="mono"
-              style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em" }}
-            >
-              注文サマリー
-            </div>
+            <div class="u-eyebrow">注文サマリー</div>
             <div
               class="serif"
               style={{ "font-size": "20px", "font-weight": 600, "margin-bottom": "16px" }}
@@ -304,8 +363,9 @@ export const CartPage = () => {
                 }}
               >
                 <span style={{ "font-weight": 600 }}>合計（税込）</span>
-                <span class="serif" style={{ "font-size": "22px", "font-weight": 600 }}>
-                  ¥{total().toLocaleString()}
+                <span class="serif price" style={{ "font-size": "22px", "font-weight": 600 }}>
+                  <span class="price-yen">¥</span>
+                  {total().toLocaleString()}
                 </span>
               </div>
             </div>
@@ -323,7 +383,13 @@ export const CartPage = () => {
               ✓ 購入後、生体は自動でカルテに登録されます
             </div>
 
-            <button class="btn primary lg block" style={{ "margin-top": "14px" }}>
+            <button
+              class="btn primary lg block"
+              style={{ "margin-top": "14px" }}
+              disabled={!isShippingComplete()}
+              aria-disabled={!isShippingComplete()}
+              title={isShippingComplete() ? undefined : "お届け先を入力してください"}
+            >
               Stripeで決済 →
             </button>
           </div>

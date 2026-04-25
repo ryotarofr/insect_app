@@ -1,1 +1,6 @@
 /target
+
+# ts-rs が `cargo test` 時に生成する TypeScript 型定義の中間出力。
+# これを集約した最終物 `client_solid/src/generated/sdui.ts` のみ Git 管理する
+# (集約スクリプト: client_solid/scripts/gen-sdui-types.mjs)
+/bindings

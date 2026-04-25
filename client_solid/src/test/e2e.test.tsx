@@ -1,17 +1,29 @@
 // e2e.test.tsx — ページ統合テスト
 // App をマウントし、実際のキーボード操作とカート追加フローを再現する
-import { render, fireEvent, screen } from "@solidjs/testing-library";
+//
+// P2-1 以降、App は @solidjs/router の useLocation/useNavigate を使うため、
+// テストでは MemoryRouter (Router + memoryIntegration) で包む必要がある。
+import { render, fireEvent } from "@solidjs/testing-library";
 import { beforeEach, describe, expect, it } from "vitest";
+import { Router, Route } from "@solidjs/router";
 import { App } from "../App";
 import { clearCart, addItem, cartItems, type CartItem } from "../store/cart";
 
 // fade-enter 等の CSS transition は jsdom では不要なので無視
 
-// App は localStorage の "kochu:route" を参照するため、beforeEach でクリア済。
-// module-scoped cart 状態も beforeEach でクリアする。
+// module-scoped cart 状態は beforeEach でクリアする。
+// history API も mypage に戻す (各テスト独立)。
 beforeEach(() => {
   clearCart();
+  window.history.replaceState({}, "", "/");
 });
+
+/** App を Router で包むヘルパ */
+const AppInRouter = () => (
+  <Router>
+    <Route path="*" component={App} />
+  </Router>
+);
 
 const waitFor = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -21,7 +33,7 @@ const fireKey = (key: string) => {
 
 describe("E2E: route navigation via keyboard", () => {
   it("starts on mypage and responds to numeric shortcuts", async () => {
-    const { container } = render(() => <App />);
+    const { container } = render(() => <AppInRouter />);
 
     // default: mypage (no stored route)
     const initialHeader = container.querySelector(".cat")?.textContent ?? "";
@@ -32,22 +44,25 @@ describe("E2E: route navigation via keyboard", () => {
     await waitFor(10);
     expect(container.querySelector(".cat")?.textContent).toMatch(/ショップ/);
 
-    // "5" → eclosion
-    fireKey("5");
+    // UX-1: 個体カルテをショートカットから外したので 1-8 連番。
+    // "4" → eclosion
+    fireKey("4");
     await waitFor(10);
     expect(container.querySelector(".cat")?.textContent).toMatch(/羽化予測/);
 
-    // "9" → cart
-    fireKey("9");
+    // "8" → cart
+    fireKey("8");
     await waitFor(10);
     expect(container.querySelector(".cat")?.textContent).toMatch(/お会計/);
   });
 
-  it("persists route choice to localStorage", async () => {
-    const { container } = render(() => <App />);
-    fireKey("3"); // specimen
+  it("reflects numeric shortcut in URL pathname", async () => {
+    const { container } = render(() => <AppInRouter />);
+    // UX-1: "3" → log (個体カルテのショートカットは廃止)
+    fireKey("3");
     await waitFor(10);
-    expect(localStorage.getItem("kochu:route")).toBe("specimen");
+    expect(window.location.pathname).toBe("/log");
+    void container;
   });
 });
 
@@ -65,7 +80,7 @@ describe("E2E: cart flow", () => {
   it("sidebar cart badge reflects cartCount", async () => {
     addItem(item);
     addItem({ ...item, id: "e2e-2", qty: 2 });
-    const { container } = render(() => <App />);
+    const { container } = render(() => <AppInRouter />);
 
     // cart nav item should show badge = 3
     const navItems = container.querySelectorAll(".nav-item");
@@ -77,8 +92,8 @@ describe("E2E: cart flow", () => {
 
   it("cart page shows added item and total", async () => {
     addItem(item);
-    const { container } = render(() => <App />);
-    fireKey("9"); // navigate to cart
+    const { container } = render(() => <AppInRouter />);
+    fireKey("8"); // UX-1: navigate to cart (renumbered)
     await waitFor(10);
 
     const text = container.textContent ?? "";
@@ -89,8 +104,8 @@ describe("E2E: cart flow", () => {
   it("removeItem button removes row from cart display", async () => {
     addItem(item);
     addItem({ ...item, id: "e2e-3", title: "E2E 用品" });
-    const { container } = render(() => <App />);
-    fireKey("9");
+    const { container } = render(() => <AppInRouter />);
+    fireKey("8");
     await waitFor(10);
 
     // Find the first row and click its 削除 button
@@ -109,8 +124,8 @@ describe("E2E: cart flow", () => {
 
   it("empty cart shows fallback message", async () => {
     clearCart();
-    const { container } = render(() => <App />);
-    fireKey("9");
+    const { container } = render(() => <AppInRouter />);
+    fireKey("8");
     await waitFor(10);
 
     const text = container.textContent ?? "";
@@ -122,10 +137,19 @@ describe("E2E: cart flow", () => {
 });
 
 describe("E2E: specimen carte tabs", () => {
-  it("renders 1-hero-3-tabs layout and switches tabs", async () => {
-    const { container } = render(() => <App />);
-    fireKey("3"); // specimen
+  // UX-1: 個体カルテはサイドバー / ショートカットから外したので、
+  //   テストでは直接 URL で個体ページにジャンプする (実運用では MyPage 所有個体カードから遷移)。
+  //   id の "#" は fragment と区別するため encodeURIComponent で %23 にエンコードする。
+  const enterSpecimen = async () => {
+    const id = encodeURIComponent("#DHH-0271");
+    window.history.replaceState({}, "", `/specimen/${id}`);
+    const { container } = render(() => <AppInRouter />);
     await waitFor(10);
+    return container;
+  };
+
+  it("renders 1-hero-3-tabs layout and switches tabs", async () => {
+    const container = await enterSpecimen();
 
     // Hero は最新KPI 3点を表示
     const heroText = container.querySelector(".carte-hero")?.textContent ?? "";
@@ -151,22 +175,34 @@ describe("E2E: specimen carte tabs", () => {
     expect(container.textContent).toContain("血統");
   });
 
-  it("opens QuickLogSheet when 「この個体にログを追加」is clicked", async () => {
-    const { container } = render(() => <App />);
-    fireKey("3");
-    await waitFor(10);
+  it("opens QuickLogSheet when a quicklog shortcut button is clicked", async () => {
+    // P4-10: 「この個体にログを追加」単一ボタン → 5 ボタンショートカット (体重/給餌/観察/脱皮/マット)
+    const container = await enterSpecimen();
 
     // シートは初期状態では非表示
     expect(container.querySelector(".sheet-dialog")).toBeNull();
 
-    const primary = Array.from(container.querySelectorAll("button")).find((b) =>
-      b.textContent?.includes("この個体にログを追加"),
-    );
-    expect(primary).toBeTruthy();
-    fireEvent.click(primary!);
+    // quicklog-row 内に 5 ボタンが存在し、それぞれの LogType を preset してシートを開く
+    const row = container.querySelector(".quicklog-row");
+    expect(row).not.toBeNull();
+    const buttons = row!.querySelectorAll("button.quicklog-btn");
+    expect(buttons.length).toBe(5);
+
+    // 体重ボタン (先頭) をクリック
+    fireEvent.click(buttons[0]);
     await waitFor(10);
 
     expect(container.querySelector(".sheet-dialog")).not.toBeNull();
     expect(container.querySelector(".sheet-dialog")?.textContent).toContain("記録を追加");
+  });
+});
+
+describe("E2E: /specimen no-id redirects to mypage (UX-1)", () => {
+  it("strips /specimen (no id) URL back to mypage on mount", async () => {
+    window.history.replaceState({}, "", "/specimen");
+    render(() => <AppInRouter />);
+    await waitFor(20);
+    // redirect が走った直後の pathname は "/" になっているはず
+    expect(window.location.pathname).toBe("/");
   });
 });

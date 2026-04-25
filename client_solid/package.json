@@ -9,9 +9,12 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "gen:sdui": "node scripts/gen-sdui-types.mjs",
+    "gen:sdui:fast": "node scripts/gen-sdui-types.mjs --skip-cargo"
   },
   "dependencies": {
+    "@solidjs/router": "^0.16.1",
     "solid-js": "^1.9.3"
   },
   "devDependencies": {

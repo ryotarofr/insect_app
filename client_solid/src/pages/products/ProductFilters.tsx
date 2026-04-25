@@ -1,114 +1,20 @@
-// ProductFilters.tsx — 種類 (tab) + 種 (active species chip) + placeholder chips
-import { For, Show } from "solid-js";
-import type { Product } from "../../api";
+// TOMBSTONE — このファイルは廃止されました (Strangler Fig 完了 / cleanup task #34)。
+//
+// 旧 `<TabSwitcher>` / `<SpeciesFilterBar>` / `SPECIES_FILTERS` / `ATTRIBUTE_FILTERS`
+// は `/products` の静的フィルタ UI でした。SDUI 化に伴いフィルタ UI は一旦撤去
+// (サーバ side に query param が入った段階で再設計予定)。
+//
+// 詳細: docs/sdui-three-layer-model-v5.md §11 (移行戦略)
+//
+// **次の手順 (ローカルで実行してください)**:
+//   git rm client_solid/src/pages/products/ProductFilters.tsx
+//
+// このプレースホルダはサンドボックスからファイル削除ができないため残しています。
+// import している場所はもうありません (確認済み)。
+//
+// **将来再設計時の参考**:
+//   - SPECIES (単一選択 / radio): ヘラクレス系 / コーカサス系 / ネプチューン系 / 国産
+//   - ATTRIBUTE (多選択 / toggle): ♂ / ♀ / 成虫 / 幼虫 / CBF以上 / 血統書付
+//   復活する際は git history (旧版) を参照すること。
 
-export type Tab = "all" | "live" | "goods";
-
-export interface SpeciesFilter {
-  label: string;
-  match: (p: Product) => boolean;
-}
-
-/** タイトル/学名にキーワードが含まれるかでフィルタする */
-export const SPECIES_FILTERS: SpeciesFilter[] = [
-  {
-    label: "ヘラクレス系",
-    match: (p) => /Dynastes hercules/i.test(p.sci ?? "") || /ヘラクレス/.test(p.title),
-  },
-  {
-    label: "コーカサス系",
-    match: (p) => /Chalcosoma/i.test(p.sci ?? "") || /コーカサス/.test(p.title),
-  },
-  {
-    label: "ネプチューン系",
-    match: (p) => /Dynastes neptunus/i.test(p.sci ?? "") || /ネプチューン/.test(p.title),
-  },
-  {
-    label: "国産",
-    match: (p) => /Trypoxylus/i.test(p.sci ?? "") || /国産/.test(p.title),
-  },
-];
-
-// 未実装のフィルタ：UI 表示はするが title で「準備中」と知らせる
-const PLACEHOLDER_FILTERS = ["♂", "♀", "成虫", "幼虫", "CBF以上", "即決"];
-
-export const TabSwitcher = (p: { tab: Tab; setTab: (t: Tab) => void }) => (
-  <div class="variants">
-    <button class={p.tab === "all" ? "active" : ""} onClick={() => p.setTab("all")}>
-      全て
-    </button>
-    <button class={p.tab === "live" ? "active" : ""} onClick={() => p.setTab("live")}>
-      生体
-    </button>
-    <button class={p.tab === "goods" ? "active" : ""} onClick={() => p.setTab("goods")}>
-      用品
-    </button>
-  </div>
-);
-
-export const SpeciesFilterBar = (p: {
-  activeSpecies: string | null;
-  setActiveSpecies: (v: string | null) => void;
-  resultCount: number;
-}) => {
-  const toggle = (label: string) =>
-    p.setActiveSpecies(p.activeSpecies === label ? null : label);
-
-  return (
-    <div
-      style={{
-        display: "flex",
-        gap: "8px",
-        "margin-bottom": "20px",
-        "align-items": "center",
-        "flex-wrap": "wrap",
-      }}
-    >
-      <span
-        class="mono"
-        style={{ "font-size": "11px", color: "var(--ink-faint)", "letter-spacing": "0.08em" }}
-      >
-絞り込み
-      </span>
-      <For each={SPECIES_FILTERS}>
-        {(f) => {
-          const isActive = () => p.activeSpecies === f.label;
-          return (
-            <button
-              class={`chip ${isActive() ? "ink" : ""}`}
-              style={{ cursor: "pointer", padding: "4px 10px" }}
-              aria-pressed={isActive()}
-              onClick={() => toggle(f.label)}
-            >
-              {f.label}
-            </button>
-          );
-        }}
-      </For>
-      <For each={PLACEHOLDER_FILTERS}>
-        {(f) => (
-          <button
-            class="chip"
-            style={{ padding: "4px 10px", opacity: 0.5, cursor: "not-allowed" }}
-            title="準備中"
-            aria-disabled="true"
-          >
-            {f}
-          </button>
-        )}
-      </For>
-      <Show when={p.activeSpecies}>
-        <button
-          class="btn sm ghost"
-          style={{ "font-size": "11px", color: "var(--ink-mute)" }}
-          onClick={() => p.setActiveSpecies(null)}
-        >
-          クリア
-        </button>
-      </Show>
-      <span style={{ "margin-left": "auto", "font-size": "12px", color: "var(--ink-mute)" }}>
-        {p.resultCount} 点 · 並び: <b>おすすめ</b>
-      </span>
-    </div>
-  );
-};
+export {};

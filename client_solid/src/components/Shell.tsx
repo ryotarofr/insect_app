@@ -1,8 +1,24 @@
 // Shell.tsx — sidebar + topbar shell (Solid.js port of poc/components/shell.jsx)
-import { For, Show, type JSX } from "solid-js";
+//
+// P2-2: nav-item を <A href> 化。
+//   - <A> が <a> を描画するため、middle-click / Cmd+click / 新しいタブ が効く。
+//   - setRoute は keyboard shortcut 経由では残す (prop として受ける)。
+//   - 実際のナビゲーションは <A> が router.navigate を呼ぶので setRoute は不要。
+//
+// P4-20: ルート遷移で毎回 .fade-enter をリトリガー。
+//   - <main> に static で付いている .fade-enter は初回マウント時しか発火しない。
+//   - useLocation().pathname を watch し、変わったタイミングで class を一度外して
+//     強制 reflow 後に再付与することで CSS アニメーションを再生する。
+import { createEffect, For, Show, type JSX } from "solid-js";
+import { A, useLocation } from "@solidjs/router";
 import { type RouteKey } from "../data";
 import { getCurrentUser } from "../api";
 import { Icons } from "./Icons";
+import { BottomTabBar } from "./BottomTabBar";
+import { Breadcrumb, type Crumb } from "./Breadcrumb";
+import { ROUTE_PATHS, sidebarRouteKey } from "../router";
+import { openCommandPalette } from "../store/commandPalette";
+import { getThemeMode, toggleNightRed } from "../store/theme";
 
 interface NavEntry {
   key: RouteKey;
@@ -19,7 +35,8 @@ const GROUPS: Array<NavEntry["group"]> = ["EC", "飼育", "取引", "運営"];
 interface ShellProps {
   current: RouteKey;
   setRoute: (r: RouteKey) => void;
-  crumb: JSX.Element;
+  /** P2-14: パンくずは構造化した Crumb[] で渡す (JSX ではない) */
+  crumbs: Crumb[];
   children: JSX.Element;
   topActions?: JSX.Element;
   /** カート内の合計点数 */
@@ -29,6 +46,25 @@ interface ShellProps {
 }
 
 export const Shell = (props: ShellProps) => {
+  // P4-20: route 変更で <main> の fade アニメを再生する
+  const location = useLocation();
+  let mainRef: HTMLElement | undefined;
+  let prevPath: string | null = null;
+  createEffect(() => {
+    const path = location.pathname;
+    if (!mainRef) {
+      prevPath = path;
+      return;
+    }
+    if (prevPath !== null && prevPath !== path) {
+      mainRef.classList.remove("fade-enter");
+      // reflow を強制して animation を確実にリスタートさせる
+      void mainRef.offsetWidth;
+      mainRef.classList.add("fade-enter");
+    }
+    prevPath = path;
+  });
+
   const nav: NavEntry[] = [
     { key: "products", label: "生体・用品", icon: Icons.grid, group: "EC" },
     { key: "product-detail", label: "商品詳細", icon: Icons.tag, group: "EC", hidden: true },
@@ -40,7 +76,9 @@ export const Shell = (props: ShellProps) => {
       badge: () => props.cartCount?.(),
     },
     { key: "mypage", label: "マイページ", icon: Icons.home, group: "飼育" },
-    { key: "specimen", label: "個体カルテ", icon: Icons.card, group: "飼育" },
+    // 個体カルテは詳細ビュー (`:id` パラメトリック) なので、サイドバーには出さない。
+    // マイページの所有個体カード / 羽化レーダー / Bloodline 等から id 付きで開く。
+    { key: "specimen", label: "個体カルテ", icon: Icons.card, group: "飼育", hidden: true },
     { key: "log", label: "飼育ログ", icon: Icons.timeline, group: "飼育" },
     {
       key: "eclosion",
@@ -73,21 +111,15 @@ export const Shell = (props: ShellProps) => {
               <div class="nav-title">{g}</div>
               <For each={nav.filter((n) => n.group === g && !n.hidden)}>
                 {(n) => {
-                  const isActive = () => props.current === n.key;
+                  // UX-1: 詳細ビュー (specimen / product-detail) は親ルートの子として扱う。
+                  //   個体カルテ表示中もサイドバー上ではマイページを active にする。
+                  const isActive = () => sidebarRouteKey(props.current) === n.key;
                   const badgeVal = () => n.badge?.();
                   return (
-                    <div
+                    <A
+                      href={ROUTE_PATHS[n.key]}
                       class={"nav-item" + (isActive() ? " active" : "")}
-                      role="button"
-                      tabindex="0"
                       aria-current={isActive() ? "page" : undefined}
-                      onClick={() => props.setRoute(n.key)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          props.setRoute(n.key);
-                        }
-                      }}
                     >
                       {n.icon()}
                       <span>{n.label}</span>
@@ -96,7 +128,7 @@ export const Shell = (props: ShellProps) => {
                           {badgeVal()}
                         </span>
                       </Show>
-                    </div>
+                    </A>
                   );
                 }}
               </For>
@@ -117,8 +149,14 @@ export const Shell = (props: ShellProps) => {
 
       <div class="main">
         <header class="topbar">
-          <div class="crumb">{props.crumb}</div>
-          <div class="search" title="検索はまだ実装されていません">
+          <Breadcrumb items={props.crumbs} />
+          {/* P4-5: 擬似検索バー — クリックで CommandPalette を開く (input ではなく button) */}
+          <button
+            type="button"
+            class="search search-trigger"
+            aria-label="検索 (Command+K)"
+            onClick={openCommandPalette}
+          >
             <svg
               class="sicon"
               width="14"
@@ -132,25 +170,65 @@ export const Shell = (props: ShellProps) => {
               <circle cx="11" cy="11" r="7" />
               <path d="M20 20l-4-4" />
             </svg>
-            <label for="topbar-search" class="visually-hidden">
-              検索
-            </label>
-            <input
-              id="topbar-search"
-              placeholder="個体ID・種名・商品を検索（準備中）"
-              disabled
-              aria-disabled="true"
-            />
+            <span class="search-placeholder">
+              個体ID・種名・商品を検索...
+            </span>
             <span class="kbd skbd" aria-hidden="true">
               ⌘K
             </span>
-          </div>
+          </button>
+          {/* P4-8: 夜間赤色テーマ トグル */}
+          <button
+            type="button"
+            class={
+              "theme-toggle" +
+              (getThemeMode() === "night-red" ? " is-active" : "")
+            }
+            onClick={toggleNightRed}
+            aria-pressed={getThemeMode() === "night-red"}
+            aria-label={
+              getThemeMode() === "night-red"
+                ? "夜間赤色モードをオフ"
+                : "夜間赤色モードをオン"
+            }
+            title={
+              getThemeMode() === "night-red"
+                ? "夜間赤色モード: オン"
+                : "夜間赤色モード: オフ (自動)"
+            }
+          >
+            <svg
+              width="16"
+              height="16"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              stroke-width="1.7"
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              aria-hidden="true"
+            >
+              <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+            </svg>
+          </button>
           {props.topActions}
         </header>
-        <main class="content fade-enter" role="main">
+        <main
+          class="content fade-enter"
+          role="main"
+          ref={(el) => (mainRef = el)}
+        >
           {props.children}
         </main>
       </div>
+
+      {/* モバイル下部タブ — desktop/tablet では CSS で非表示 */}
+      <BottomTabBar
+        current={props.current}
+        setRoute={props.setRoute}
+        cartCount={props.cartCount}
+        eclosionCount={props.eclosionCount}
+      />
     </div>
   );
 };

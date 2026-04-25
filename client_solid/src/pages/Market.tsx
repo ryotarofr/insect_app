@@ -1,9 +1,29 @@
 // Market.tsx — C2Cマーケットプレイス
-import { createSignal, For, Show } from "solid-js";
+//
+// P2-12: 出品ドラフトの商品説明 textarea を signal 化し、
+//   選択中個体のカルテから templateFor(s) で自動流し込みする。
+//     - 個体選択直後: signal を template に上書き
+//     - ユーザー編集後: 上書きしない (isEdited フラグで追跡)
+//     - 別個体に切替: isEdited をリセットし再生成
+//   これにより「プレースホルダは書き換え不可 / value 固定」問題を解消する。
+import { createEffect, createSignal, For, Show } from "solid-js";
 import { getSpecimen, listMarketListings, listSpecimens } from "../api";
+import type { Listing, Specimen } from "../data";
 
 type Tab = "browse" | "sell";
 type SellMode = "auction" | "fixed";
+
+/** P3-22: 出品カードの「状態」を 3 分類し、左ボーダーで色分けする。
+ *   - ending-soon: オークションで 24h 以内 (rose)
+ *   - auction    : オークションで 1 日以上あり (amber)
+ *   - buynow     : 即決のみ (forest)
+ * endsIn の文字列は「2日 14h / 18h / 4h 32m / 即決のみ」など雑多なので、
+ * "日" を含むかで 24h+ を判定し、含まない場合は短時間とみなす。 */
+type ListingState = "ending-soon" | "auction" | "buynow";
+export const deriveListingState = (l: Listing): ListingState => {
+  if (!l.auction) return "buynow";
+  return l.endsIn.includes("日") ? "auction" : "ending-soon";
+};
 
 const MarketBrowse = () => (
   <>
@@ -31,7 +51,11 @@ const MarketBrowse = () => (
     <div class="grid-cards-2">
       <For each={listMarketListings()}>
         {(l) => (
-          <div class="card" style={{ display: "flex", gap: 0, overflow: "hidden", cursor: "pointer" }}>
+          <div
+            class="card market-card"
+            data-state={deriveListingState(l)}
+            style={{ display: "flex", gap: 0, overflow: "hidden", cursor: "pointer" }}
+          >
             <div
               class="ph forest"
               style={{
@@ -42,6 +66,8 @@ const MarketBrowse = () => (
                 border: "none",
                 "border-right": "1px solid var(--line)",
               }}
+              role="img"
+              aria-label={`${l.title} 出品画像 (プレースホルダ)`}
             >
               <span class="ph-label">出品画像</span>
             </div>
@@ -84,8 +110,9 @@ const MarketBrowse = () => (
                   "padding-top": "14px",
                 }}
               >
-                <span class="serif" style={{ "font-size": "24px", "font-weight": 600 }}>
-                  ¥{l.price.toLocaleString()}
+                <span class="serif price" style={{ "font-size": "24px", "font-weight": 600 }}>
+                  <span class="price-yen">¥</span>
+                  {l.price.toLocaleString()}
                 </span>
                 <span style={{ "font-size": "11px", color: "var(--ink-mute)", "margin-left": "4px" }}>
                   {l.auction ? "現在価格" : "即決"}
@@ -130,13 +157,78 @@ const MarketBrowse = () => (
   </>
 );
 
+/**
+ * カルテ情報から出品ドラフト本文を生成する。
+ *   - サイズ・性別・累代・血統・産地(shop)・羽化目安を箇条書きで盛り込む
+ *   - 累代未登録 (F0 / WILD) の場合は「野生個体」として文面を切替
+ *   - photo / 死着補償 の案内は固定
+ */
+export const templateFor = (s: Specimen): string => {
+  const size = s.sizeMm ? `${s.sizeMm}mm` : "サイズ未計測";
+  const weight = s.weightG ? ` / ${s.weightG}g` : "";
+  const gen = s.generation || "累代不明";
+  const isWild = /WILD|F0/i.test(gen);
+  const parents =
+    s.bloodline && (s.bloodline.father || s.bloodline.mother)
+      ? `父 ${s.bloodline.father || "—"} / 母 ${s.bloodline.mother || "—"}`
+      : "親個体情報なし";
+  const eclo = s.eclosionETA
+    ? `羽化目安 ${s.eclosionETA} (あと約 ${s.eclosionInDays ?? "?"} 日)`
+    : "羽化済み / 成虫";
+
+  const head = `${s.name} (${s.sex})`;
+  const lines = [
+    head,
+    "",
+    `■ サイズ: ${size}${weight}`,
+    `■ 累代: ${gen}${isWild ? " (野生個体)" : ""}`,
+    `■ 血統: ${parents}`,
+    `■ 産地: ${s.shop || "—"}`,
+    `■ ステータス: ${s.stage} / ${eclo}`,
+    "",
+    "血統書付・認証ブリーダーによる累代管理個体です。",
+    "死着補償および温度制御便に対応しております。",
+  ];
+  return lines.join("\n");
+};
+
 const MarketSell = () => {
   const [picked, setPicked] = createSignal<string | null>(null);
   const [mode, setMode] = createSignal<SellMode>("auction");
+  const [desc, setDesc] = createSignal("");
+  // ユーザーがテキストを編集したか (編集済み個体を切替えても上書きしないためのフラグ)
+  const [descEdited, setDescEdited] = createSignal(false);
   const myStock = listSpecimens();
   const pickedSpec = () => {
     const id = picked();
     return id ? getSpecimen(id) : undefined;
+  };
+
+  // 個体選択が変わったらテンプレートを流し込む。
+  // 編集済みフラグはリセットする (新しい個体の説明として書き直す前提)。
+  createEffect(() => {
+    const s = pickedSpec();
+    if (!s) {
+      setDesc("");
+      setDescEdited(false);
+      return;
+    }
+    setDesc(templateFor(s));
+    setDescEdited(false);
+  });
+
+  const onDescInput = (e: InputEvent) => {
+    const t = e.currentTarget as HTMLTextAreaElement;
+    setDesc(t.value);
+    setDescEdited(true);
+  };
+
+  // テンプレートへ手動で戻すボタン用
+  const resetDesc = () => {
+    const s = pickedSpec();
+    if (!s) return;
+    setDesc(templateFor(s));
+    setDescEdited(false);
   };
 
   return (
@@ -161,7 +253,12 @@ const MarketSell = () => {
                 }}
               >
                 <div style={{ display: "flex", gap: "10px" }}>
-                  <div class="ph forest" style={{ width: "50px", height: "50px", "flex-shrink": 0 }} />
+                  <div
+                    class="ph forest"
+                    style={{ width: "50px", height: "50px", "flex-shrink": 0 }}
+                    role="img"
+                    aria-label={`${s.name} ${s.sex} サムネイル (プレースホルダ)`}
+                  />
                   <div style={{ flex: 1, "min-width": 0 }}>
                     <div class="mono" style={{ "font-size": "10px", color: "var(--ink-faint)" }}>
                       {s.id}
@@ -194,9 +291,7 @@ const MarketSell = () => {
       </div>
 
       <div class="card" style={{ padding: "24px", position: "sticky", top: "72px", "align-self": "start" }}>
-        <div class="mono" style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em" }}>
-          新規出品
-        </div>
+        <div class="u-eyebrow">新規出品</div>
         <div class="serif" style={{ "font-size": "20px", "font-weight": 600, "margin-bottom": "16px" }}>
           出品情報
         </div>
@@ -289,16 +384,37 @@ const MarketSell = () => {
           </select>
         </Show>
 
-        <label class="label" style={{ "margin-top": "12px" }}>
-          商品説明（自動生成 / 編集可）
-        </label>
+        <div
+          style={{
+            display: "flex",
+            "align-items": "center",
+            "justify-content": "space-between",
+            "margin-top": "12px",
+          }}
+        >
+          <label class="label" for="market-desc" style={{ margin: 0 }}>
+            商品説明（自動生成 / 編集可）
+          </label>
+          <Show when={picked() && descEdited()}>
+            <button
+              type="button"
+              class="btn sm ghost"
+              onClick={resetDesc}
+              style={{ "font-size": "11px", padding: "2px 8px" }}
+              title="カルテから再生成してテンプレに戻す"
+            >
+              ↺ テンプレに戻す
+            </button>
+          </Show>
+        </div>
         <textarea
+          id="market-desc"
           class="textarea"
-          value={
-            picked()
-              ? `ヘラクレスオオカブト ♂ 142mm。CBF3個体。父 #DHH-0213、母 #DHH-0244。血統書付、認証ブリーダーによる累代。蛹期を経ての出品、状態良好。`
-              : ""
-          }
+          rows={8}
+          placeholder="左から個体を選択すると、カルテ情報から下書きを生成します"
+          value={desc()}
+          onInput={onDescInput}
+          disabled={!picked()}
         />
 
         <div

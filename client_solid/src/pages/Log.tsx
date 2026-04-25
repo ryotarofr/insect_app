@@ -51,14 +51,15 @@ const QuickLogBar = (p: {
 }) => {
   const specimens = listSpecimens();
   const [type, setType] = createSignal<LogType>("weight");
-  const [value, setValue] = createSignal("28.4");
+  // 初期値は空にし、プレースホルダ "28.4" のみを見せる。送信誤りを避ける。
+  const [value, setValue] = createSignal("");
   const [memo, setMemo] = createSignal("");
   const [collapsed, setCollapsed] = createSignal(false);
   const [error, setError] = createSignal<string | null>(null);
 
   const selectType = (t: LogType) => {
     setType(t);
-    setValue(t === "weight" ? "28.4" : "");
+    setValue("");
     setError(null);
   };
 
@@ -78,7 +79,7 @@ const QuickLogBar = (p: {
       body: memo().trim() || v,
       specimen: p.target,
     });
-    setValue(t === "weight" ? "28.4" : "");
+    setValue("");
     setMemo("");
     p.onSaved("記録を追加しました");
   };
@@ -88,7 +89,7 @@ const QuickLogBar = (p: {
   return (
     <form class="quick-bar" onSubmit={submit} aria-label="ログ追加">
       <div class="qb-top">
-        <span class="mono" style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em" }}>
+        <span class="u-eyebrow">
           新規記録
         </span>
         <span class="qb-target">
@@ -317,7 +318,7 @@ export const LogPage = () => {
 
       {/* Filters — 3軸 */}
       <div class="filter-row">
-        <span class="mono" style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em" }}>
+        <span class="u-eyebrow">
           タイムライン
         </span>
 

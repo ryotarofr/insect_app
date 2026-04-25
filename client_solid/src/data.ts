@@ -11,7 +11,12 @@ export type RouteKey =
   | "bloodline"
   | "shop"
   | "market"
-  | "cart";
+  | "cart"
+  // Phase 7: SDUI 駆動のカート画面 (Strangler Fig 段階 1, 旧 cart と並行運用)
+  | "cart-sdui"
+  | "warranty"
+  // どの URL にもマッチしない時に使う擬似ルート (画面側で 404 を表示する)
+  | "not-found";
 
 export interface User {
   name: string;
@@ -26,6 +31,18 @@ export interface Species {
   ja: string;
   sci: string;
   region: string;
+}
+
+/** P4-2: 個体のライフ状態。生存 / 故個体 / 譲渡済 / 脱走 の 4 値。
+ *  旧 `status: "alive"` より意味が厳密で、StageBar 横の終了バッジに直接使える。 */
+export type LifeStatus = "active" | "deceased" | "transferred" | "escaped";
+
+/** P4-2: 終了理由のメタ情報 (lifeStatus !== "active" のときに表示) */
+export interface LifeStatusDetail {
+  /** 発生日 (ISO) */
+  date: string;
+  /** 備考 (死因 / 譲渡先 / 脱走状況 など) */
+  note?: string;
 }
 
 export interface Specimen {
@@ -45,7 +62,11 @@ export interface Specimen {
   price: number;
   eclosionETA: string | null;
   eclosionInDays: number | null;
+  /** @deprecated 旧 "alive" 表示。新コードは lifeStatus を使うこと */
   status: string;
+  /** P4-2: 生存 / 故 / 譲渡 / 脱走。未設定は "active" とみなす */
+  lifeStatus?: LifeStatus;
+  lifeStatusDetail?: LifeStatusDetail;
   bloodline: { father: string; mother: string };
   notes?: string;
 }
@@ -254,6 +275,32 @@ export const APP_DATA: AppData = {
       eclosionInDays: 668,
       status: "alive",
       bloodline: { father: "野生", mother: "野生" },
+    },
+    /* P4-2: デモ用 — 故個体 (Bloodline で喪章表示 / カルテ で終了バッジ)
+     *   Bloodline.tsx 側では同 ID を "月影" (CBF1 F₀ 世代父) として登録している。
+     *   Specimen 名は species 接頭辞付き慣例に従い "ヘラクレス 月影" と表記。 */
+    {
+      id: "#DHH-0198",
+      name: "ヘラクレス 月影",
+      species: "ヘラクレスオオカブト",
+      sci: "Dynastes hercules hercules",
+      sex: "♂",
+      stage: "成虫",
+      stageProgress: 1,
+      sizeMm: 158,
+      weightG: 22.6,
+      birthDate: "2022-05-10",
+      purchasedAt: "2023-07-12",
+      shop: "ANCHOR BEETLE CO.",
+      generation: "CBF1",
+      price: 68000,
+      eclosionETA: null,
+      eclosionInDays: null,
+      status: "deceased",
+      lifeStatus: "deceased",
+      lifeStatusDetail: { date: "2025-10-02", note: "自然死 (推定寿命 15 ヶ月)" },
+      bloodline: { father: "野生", mother: "野生" },
+      notes: "2025-10-02 享年。CBF2 の父個体として多数の子孫を残した。",
     },
   ],
 

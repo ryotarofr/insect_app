@@ -11,14 +11,17 @@ import {
   listSpecimens,
   listLogsBySpecimen,
   type LogEntry,
+  type LogType,
   type Specimen,
 } from "../../api";
 import { Icons } from "../../components/Icons";
 import { SpecDL } from "../../components/specimen/SpecDL";
 import { StageBar } from "../../components/specimen/StageBar";
+import { LifeStatusBadge } from "../../components/specimen/LifeStatusBadge";
 import { SpecimenMemoCard } from "../../components/specimen/SpecimenMemoCard";
 import { LogTimeline } from "../../components/log/LogTimeline";
 import { QuickLogSheet } from "../../components/log/QuickLogSheet";
+import { LOG_TYPES } from "../../components/log/types";
 // NOTE: 体重チャート (WEIGHT · 7 WEEKS) は UX レビューで削除。
 // ヒーローのWEIGHT KPIと前回比デルタで十分に役割を果たせているため。
 
@@ -33,6 +36,8 @@ const TAB_LABELS: Record<Tab, string> = {
 interface SpecimenDetailProps {
   specimenId: string;
   setRoute: (r: RouteKey) => void;
+  /** UX-2: 所有個体一覧を前後にめくるための個体選択ハンドラ */
+  setSelectedSpecimen?: (id: string) => void;
 }
 
 const SuggestedActions = (p: { s: Specimen }) => (
@@ -53,14 +58,25 @@ const SuggestedActions = (p: { s: Specimen }) => (
 const OverviewTab = (p: { s: Specimen }) => (
   <div class="carte-overview">
     <div>
-      <div class="mono" style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em" }}>
+      <div class="u-eyebrow">
         計測値
       </div>
       <SpecDL s={p.s} />
 
       <div style={{ "margin-top": "28px" }}>
-        <div class="mono" style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em", "margin-bottom": "10px" }}>
-          ライフサイクル
+        <div
+          style={{
+            display: "flex",
+            "align-items": "center",
+            gap: "10px",
+            "margin-bottom": "10px",
+          }}
+        >
+          <div class="u-eyebrow">
+            ライフサイクル
+          </div>
+          {/* P4-2: StageBar 横に終了バッジ */}
+          <LifeStatusBadge status={p.s.lifeStatus} detail={p.s.lifeStatusDetail} />
         </div>
         <StageBar stage={p.s.stage} progress={p.s.stageProgress} eta={p.s.eclosionInDays} />
       </div>
@@ -87,7 +103,7 @@ const LogTab = (p: {
         "margin-bottom": "14px",
       }}
     >
-      <div class="mono" style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em" }}>
+      <div class="u-eyebrow">
         タイムライン · この個体
       </div>
       <span style={{ "font-size": "12px", color: "var(--ink-mute)" }}>
@@ -109,7 +125,7 @@ const LogTab = (p: {
 const BloodlineTab = (p: { s: Specimen; setRoute: (r: RouteKey) => void }) => (
   <div class="carte-overview">
     <div class="card" style={{ padding: "22px" }}>
-      <div class="mono" style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em" }}>
+      <div class="u-eyebrow">
         血統
       </div>
       <div class="serif" style={{ "font-size": "20px", "font-weight": 600, margin: "4px 0 8px" }}>
@@ -136,7 +152,7 @@ const BloodlineTab = (p: { s: Specimen; setRoute: (r: RouteKey) => void }) => (
     </div>
 
     <div class="card" style={{ padding: "22px" }}>
-      <div class="mono" style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em" }}>
+      <div class="u-eyebrow">
         累代情報
       </div>
       <div class="serif" style={{ "font-size": "20px", "font-weight": 600, margin: "4px 0 10px" }}>
@@ -166,6 +182,35 @@ export const SpecimenDetail = (props: SpecimenDetailProps) => {
   const logs = createMemo(() => listLogsBySpecimen(s().id));
   const [tab, setTab] = createSignal<Tab>("overview");
   const [sheetOpen, setSheetOpen] = createSignal(false);
+  // P4-10: どの種別で QuickLogSheet を開くか。5 ボタンショートカットで設定。
+  const [quickLogType, setQuickLogType] = createSignal<LogType>("weight");
+  const openQuickLog = (t: LogType) => {
+    setQuickLogType(t);
+    setSheetOpen(true);
+  };
+
+  // UX-2: 所有個体一覧の前後個体への navigation。
+  //   listSpecimens() の並びを source-of-truth にし、現在位置の前後を計算する。
+  //   先頭/末尾では disabled になる (これ自体が「リストの端にいる」サイン)。
+  const orderedIds = createMemo<string[]>(() => listSpecimens().map((x) => x.id));
+  const currentIndex = createMemo<number>(() => orderedIds().indexOf(s().id));
+  const prevId = createMemo<string | null>(() => {
+    const i = currentIndex();
+    return i > 0 ? orderedIds()[i - 1] : null;
+  });
+  const nextId = createMemo<string | null>(() => {
+    const i = currentIndex();
+    const ids = orderedIds();
+    return i >= 0 && i < ids.length - 1 ? ids[i + 1] : null;
+  });
+  const goPrev = () => {
+    const id = prevId();
+    if (id) props.setSelectedSpecimen?.(id);
+  };
+  const goNext = () => {
+    const id = nextId();
+    if (id) props.setSelectedSpecimen?.(id);
+  };
 
   // 体重差分 (直近2件のweightログから算出)
   const weightDelta = createMemo<number | null>(() => {
@@ -188,11 +233,39 @@ export const SpecimenDetail = (props: SpecimenDetailProps) => {
           <div class="cat">個体カルテ · {s().id}</div>
           <h1>{s().name}</h1>
         </div>
+        {/* UX-2: 所有個体一覧の前後個体へめくる stepper。
+            先頭 / 末尾では disabled。disabled 状態が「端にいる」サインになる。 */}
+        <div class="page-actions head-stepper" aria-label="個体ナビゲーション">
+          <button
+            type="button"
+            class="btn ghost sm"
+            onClick={goPrev}
+            disabled={prevId() === null}
+            aria-label="前の個体"
+            title={prevId() ? `前の個体へ` : "これ以上前の個体はありません"}
+          >
+            ← 前
+          </button>
+          <button
+            type="button"
+            class="btn ghost sm"
+            onClick={goNext}
+            disabled={nextId() === null}
+            aria-label="次の個体"
+            title={nextId() ? `次の個体へ` : "これ以上後ろの個体はありません"}
+          >
+            次 →
+          </button>
+        </div>
       </div>
 
       {/* HERO */}
       <div class="carte-hero">
-        <div class="main-photo ph forest">
+        <div
+          class="main-photo ph forest"
+          role="img"
+          aria-label={`${s().name} ${s().sex} 最新写真 (プレースホルダ)`}
+        >
           <span class="ph-label">{s().id} · 最新写真</span>
         </div>
         <div>
@@ -250,14 +323,23 @@ export const SpecimenDetail = (props: SpecimenDetailProps) => {
             </div>
           </div>
 
+          {/* P4-10: 次のログ候補 5 ボタン (体重/給餌/観察/脱皮/マット) */}
+          <div class="quicklog-row" role="group" aria-label="記録の追加">
+            <For each={LOG_TYPES}>
+              {(t) => (
+                <button
+                  type="button"
+                  class="quicklog-btn"
+                  aria-label={`${t.label}を記録`}
+                  onClick={() => openQuickLog(t.key)}
+                >
+                  <span class="ico" aria-hidden="true">{t.icon}</span>
+                  <span class="lbl">{t.label}</span>
+                </button>
+              )}
+            </For>
+          </div>
           <div class="actions">
-            <button
-              type="button"
-              class="btn primary"
-              onClick={() => setSheetOpen(true)}
-            >
-              {Icons.plus()} この個体にログを追加
-            </button>
             <button type="button" class="btn">
               {Icons.camera()} 写真
             </button>
@@ -289,17 +371,18 @@ export const SpecimenDetail = (props: SpecimenDetailProps) => {
         <OverviewTab s={s()} />
       </Show>
       <Show when={tab() === "log"}>
-        <LogTab s={s()} logs={logs()} onAdd={() => setSheetOpen(true)} />
+        <LogTab s={s()} logs={logs()} onAdd={() => openQuickLog("weight")} />
       </Show>
       <Show when={tab() === "bloodline"}>
         <BloodlineTab s={s()} setRoute={props.setRoute} />
       </Show>
 
-      {/* Quick Log Sheet */}
+      {/* Quick Log Sheet (P4-10: initialType で 5 ボタン起動に対応) */}
       <QuickLogSheet
         open={sheetOpen()}
         onClose={() => setSheetOpen(false)}
         specimenId={s().id}
+        initialType={quickLogType()}
       />
     </>
   );

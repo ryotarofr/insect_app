@@ -1,0 +1,63 @@
+{
+  "name": "昆虫アプリ / KOCHŪ",
+  "short_name": "KOCHŪ",
+  "description": "昆虫EC × 飼育管理プラットフォーム。個体記録・羽化予測・血統管理を一元化。",
+  "lang": "ja",
+  "dir": "ltr",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#f7f5ee",
+  "theme_color": "#191716",
+  "categories": ["lifestyle", "shopping", "utilities"],
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-maskable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "羽化予測",
+      "short_name": "羽化",
+      "description": "個体の羽化予測タイムラインを開く",
+      "url": "/?route=eclosion",
+      "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "記録",
+      "short_name": "記録",
+      "description": "クイック飼育ログを開く",
+      "url": "/?route=log",
+      "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    },
+    {
+      "name": "市場",
+      "short_name": "市場",
+      "description": "昆虫マーケットを開く",
+      "url": "/?route=market",
+      "icons": [{ "src": "/favicon.svg", "sizes": "any", "type": "image/svg+xml" }]
+    }
+  ]
+}

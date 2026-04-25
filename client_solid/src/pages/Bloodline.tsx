@@ -11,23 +11,29 @@
 //   本実装はすべてを解消する。
 import {
   createEffect,
+  createMemo,
   createSignal,
   For,
   onCleanup,
   onMount,
   Show,
 } from "solid-js";
-import { specimenExists } from "../api";
+import { useLocation, useNavigate } from "@solidjs/router";
+import { getAuditLog, specimenExists, type LifeStatus } from "../api";
 import { type RouteKey } from "../data";
+import { bloodlineUrl } from "../router";
+import { LifeStatusBadge } from "../components/specimen/LifeStatusBadge";
+import { MatingRecordModal } from "../components/bloodline/MatingRecordModal";
+import { showToast } from "../store/toast";
 
 // ============================================================================
 //  Data model (flat lookup)
 // ============================================================================
 
-type Sex = "m" | "f";
+export type Sex = "m" | "f";
 type GenKey = "F0" | "CBF1" | "CBF2" | "CBF3";
 
-interface Individual {
+export interface Individual {
   id: string;
   name: string;
   sex: Sex;
@@ -37,6 +43,10 @@ interface Individual {
   parents: string[]; // [] (WILD) or [father, mother]
   isWild: boolean;
   status?: string;
+  /** P4-3: ライフ状態。"deceased" の場合は系図で喪章表示 + opacity ダウン。 */
+  lifeStatus?: LifeStatus;
+  /** P4-3: 故個体の逝去日 (YYYY-MM-DD)。サイドパネルで参照。 */
+  lifeStatusDate?: string;
   eclosionInDays?: number;
   /** Wright の近交係数。サンプルデータでは 親ペアの F と親同士の血縁から算出した値を手動設定。 */
   inbreedingCoef?: number;
@@ -84,6 +94,10 @@ const INDIVIDUALS_LIST: Individual[] = [
     parents: ["#DHH-WILD-A", "#DHH-WILD-B"],
     isWild: false,
     inbreedingCoef: 0,
+    /* P4-3: 2025-10-02 自然死。CBF2 (漆黒・マリア) を残して退場した初代父。
+     * 系図では opacity 0.5 + 右上の喪章 (✝) バッジで識別。 */
+    lifeStatus: "deceased",
+    lifeStatusDate: "2025-10-02",
   },
   {
     id: "#DHH-0204",
@@ -162,6 +176,11 @@ const INDIVIDUALS: Record<string, Individual> = Object.fromEntries(
 const allIndividuals = () => INDIVIDUALS_LIST;
 const getIndividual = (id: string): Individual | undefined => INDIVIDUALS[id];
 
+/** P4-22: MatingRecordModal から個体一覧を参照できるよう export。 */
+export const listBloodlineIndividuals = (): Individual[] => INDIVIDUALS_LIST;
+export const getBloodlineIndividual = (id: string): Individual | undefined =>
+  INDIVIDUALS[id];
+
 const getParentsOrdered = (
   id: string,
 ): [Individual | null, Individual | null] => {
@@ -228,12 +247,7 @@ const fBand = (
   };
 };
 
-const AUDIT_LOG = [
-  { d: "2025-11-18", ev: "羽化予測登録", actor: "system" },
-  { d: "2025-11-03", ev: "所有権移転 ANCHOR→徹", actor: "event" },
-  { d: "2024-08-12", ev: "個体登録 CBF3", actor: "ANCHOR" },
-  { d: "2024-08-10", ev: "交配記録 0213×0244", actor: "ANCHOR" },
-];
+// P4-21: AUDIT_LOG は api.getAuditLog(id) に一元化。固定サンプルは削除。
 
 // ============================================================================
 //  Shared UI pieces
@@ -257,10 +271,21 @@ const IndividualCard = (p: {
         [`sex-${p.ind.sex}`]: true,
         "is-wild": p.ind.isWild,
         "is-compact": !!p.compact,
+        /* P4-3: 故個体を視覚的にトーンダウン + 喪章 (::after) */
+        "is-deceased": p.ind.lifeStatus === "deceased",
       }}
       data-ind={p.ind.id}
+      /* P3-20: 世代 / 野生・累代 で左ストライプを色分け (CSS 側で ::before) */
+      data-gen={p.ind.generation}
+      data-kind={p.ind.isWild ? "wild" : "cb"}
+      /* P4-3: ライフ状態。CSS 側で喪章 / 色味を切替 */
+      data-life={p.ind.lifeStatus ?? "active"}
       onClick={p.onClick}
-      aria-label={`${p.ind.name} ${p.ind.id}`}
+      aria-label={
+        p.ind.lifeStatus === "deceased"
+          ? `${p.ind.name} ${p.ind.id} (故)`
+          : `${p.ind.name} ${p.ind.id}`
+      }
     >
       <div class="ind-head">
         <span class="ind-sex" aria-hidden="true">
@@ -285,6 +310,14 @@ const IndividualCard = (p: {
         </Show>
         <Show when={p.ind.eclosionInDays != null}>
           <span>{" · あと"}{p.ind.eclosionInDays}日</span>
+        </Show>
+        <Show when={p.ind.lifeStatus === "deceased"}>
+          <span class="ind-memorial">
+            {" · 故"}
+            <Show when={p.ind.lifeStatusDate}>
+              {" "}{p.ind.lifeStatusDate}
+            </Show>
+          </span>
         </Show>
       </div>
     </button>
@@ -631,6 +664,8 @@ const SidePanel = (props: {
   const depth = () => GEN_ORDER.indexOf(gen());
   const kids = () => getChildren(props.selectedId);
   const carteAvailable = () => specimenExists(props.selectedId);
+  // P4-21: 固定サンプルから api.getAuditLog() に差し替え
+  const auditEntries = () => getAuditLog(props.selectedId);
 
   return (
     <div>
@@ -649,10 +684,30 @@ const SidePanel = (props: {
           </Show>
         </div>
         <div
-          class="mono"
-          style={{ "font-size": "11px", color: "var(--ink-mute)" }}
+          style={{
+            display: "flex",
+            "align-items": "center",
+            gap: "8px",
+            "flex-wrap": "wrap",
+          }}
         >
-          {props.selectedId}
+          <span
+            class="mono"
+            style={{ "font-size": "11px", color: "var(--ink-mute)" }}
+          >
+            {props.selectedId}
+          </span>
+          {/* P4-3: 故個体はサイドパネル側にも LifeStatusBadge を表示 */}
+          <Show when={ind()?.lifeStatus}>
+            <LifeStatusBadge
+              status={ind()!.lifeStatus}
+              detail={
+                ind()!.lifeStatusDate
+                  ? { date: ind()!.lifeStatusDate! }
+                  : undefined
+              }
+            />
+          </Show>
         </div>
 
         <Show when={ind()}>
@@ -741,17 +796,32 @@ const SidePanel = (props: {
         <div class="mono eyebrow" style={{ "margin-bottom": "10px" }}>
           変更履歴
         </div>
-        <For each={AUDIT_LOG}>
-          {(e, i) => (
-            <div class="audit-row" data-last={i() === AUDIT_LOG.length - 1}>
-              <span class="mono date">{e.d.slice(5)}</span>
-              <div>
-                <div>{e.ev}</div>
-                <div class="mono actor">by {e.actor}</div>
-              </div>
+        <Show
+          when={auditEntries().length > 0}
+          fallback={
+            <div
+              class="mono"
+              style={{ "font-size": "11px", color: "var(--ink-faint)" }}
+            >
+              履歴がありません
             </div>
-          )}
-        </For>
+          }
+        >
+          <For each={auditEntries()}>
+            {(e, i) => (
+              <div
+                class="audit-row"
+                data-last={i() === auditEntries().length - 1}
+              >
+                <span class="mono date">{e.date.slice(5)}</span>
+                <div>
+                  <div>{e.event}</div>
+                  <div class="mono actor">by {e.actor}</div>
+                </div>
+              </div>
+            )}
+          </For>
+        </Show>
         <div class="audit-verified mono">✓ イベントログで改ざん検知済</div>
       </div>
     </div>
@@ -767,9 +837,55 @@ interface BloodlinePageProps {
   setSelectedSpecimen?: (id: string) => void;
 }
 
+/** /bloodline/:id から id を抽出 (App と同等の処理を page 内で持つ) */
+const extractBloodlineIdFromPath = (pathname: string): string | null => {
+  const normalized = pathname.replace(/\/+$/, "");
+  if (!normalized.startsWith("/bloodline/")) return null;
+  const rest = normalized.slice("/bloodline/".length);
+  if (!rest) return null;
+  try {
+    return decodeURIComponent(rest.split("/")[0]);
+  } catch {
+    return null;
+  }
+};
+
+const DEFAULT_BLOODLINE_ID = "#DHH-0271";
+
 export const BloodlinePage = (props: BloodlinePageProps) => {
-  const [selected, setSelected] = createSignal("#DHH-0271");
+  // P2-5: URL /bloodline/:id の id から selected を初期化する。
+  //   - useParams は現状のフラットな wildcard ルーティングでは機能しないため、
+  //     useLocation().pathname を自前で解釈する。
+  //   - 個体選択 → URL 更新 の sync も両方向で行う。
+  const location = useLocation();
+  const navigate = useNavigate();
+
+  const initialFromUrl = extractBloodlineIdFromPath(location.pathname);
+  const initialId =
+    initialFromUrl && getIndividual(initialFromUrl)
+      ? initialFromUrl
+      : DEFAULT_BLOODLINE_ID;
+
+  const [selected, setSelected] = createSignal(initialId);
   const [mode, setMode] = createSignal<"focus" | "tree">("focus");
+
+  // URL が外部で変わったら selected に反映
+  const urlId = createMemo(() => extractBloodlineIdFromPath(location.pathname));
+  createEffect(() => {
+    const id = urlId();
+    if (id && getIndividual(id) && id !== selected()) {
+      setSelected(id);
+    }
+  });
+
+  // 選択変更 → URL を静かに更新 (同一 URL への navigate はガード)
+  createEffect(() => {
+    const id = selected();
+    const target = bloodlineUrl(id);
+    if (target !== location.pathname) {
+      navigate(target, { replace: true });
+    }
+  });
 
   const ind = () => getIndividual(selected());
 
@@ -777,6 +893,45 @@ export const BloodlinePage = (props: BloodlinePageProps) => {
     props.setSelectedSpecimen?.(id);
     props.setRoute?.("specimen");
   };
+
+  // P4-11: PDF出力ハンドラ。本格的な PDF 生成は後続で差替えるが、
+  //   現状はブラウザの印刷ダイアログ (Save as PDF) で代替しつつ、
+  //   トーストで操作の成立をフィードバックする。
+  const handleExportPdf = () => {
+    const indNow = ind();
+    const label = indNow ? `${indNow.id} · ${indNow.name}` : "血統系図";
+    showToast({
+      message: `${label} を PDF 出力します`,
+      tone: "info",
+    });
+    // setTimeout で一瞬待って、トースト描画後に印刷 UI を開く
+    if (typeof window !== "undefined") {
+      setTimeout(() => {
+        try {
+          window.print();
+        } catch {
+          /* 印刷 UI 非対応環境 (テスト等) では無視 */
+        }
+      }, 50);
+    }
+  };
+
+  // P4-22: 「+ 交配記録」モーダル。選択中個体を seed に父 or 母を自動プリセット。
+  const [matingOpen, setMatingOpen] = createSignal(false);
+  const handleAddMating = () => setMatingOpen(true);
+
+  // UX-3: page-head の個体ピッカー。
+  //   選択中個体が「一覧の最初の要素 (デフォルト)」であることをユーザに明示し、
+  //   かつ他個体への切り替えをワンタップで行えるようにする。
+  //   世代でグループ化して認知コストを下げる。
+  const groupedByGen = createMemo(() => {
+    const map = new Map<GenKey, Individual[]>();
+    for (const g of GEN_ORDER) map.set(g, []);
+    for (const i of INDIVIDUALS_LIST) map.get(i.generation)!.push(i);
+    return GEN_ORDER.map((g) => [g, map.get(g)!] as const).filter(
+      ([, list]) => list.length > 0,
+    );
+  });
 
   return (
     <>
@@ -786,8 +941,37 @@ export const BloodlinePage = (props: BloodlinePageProps) => {
           <h1>血統系図</h1>
         </div>
         <div class="page-actions">
-          <button class="btn">PDF出力</button>
-          <button class="btn primary">+ 交配記録</button>
+          {/* UX-3: 個体ピッカー。サイドバーから個体カルテを外したため、
+                ここで「いま誰の系図を見ているか」を明示する。 */}
+          <label class="head-picker" aria-label="表示する個体を選択">
+            <span class="mono head-picker-label">対象</span>
+            <select
+              class="select head-picker-select"
+              value={selected()}
+              onChange={(e) => setSelected(e.currentTarget.value)}
+            >
+              <For each={groupedByGen()}>
+                {([gen, list]) => (
+                  <optgroup label={`${GENS[gen].label} · ${GENS[gen].year}`}>
+                    <For each={list}>
+                      {(i) => (
+                        <option value={i.id}>
+                          {i.id} · {i.name} {i.sex === "m" ? "♂" : "♀"}
+                        </option>
+                      )}
+                    </For>
+                  </optgroup>
+                )}
+              </For>
+            </select>
+          </label>
+          {/* P4-11: 見た目だけのボタンを排し、トースト + print dialog / 準備中トーストにつなぐ */}
+          <button type="button" class="btn" onClick={handleExportPdf}>
+            PDF出力
+          </button>
+          <button type="button" class="btn primary" onClick={handleAddMating}>
+            + 交配記録
+          </button>
         </div>
       </div>
 
@@ -852,6 +1036,13 @@ export const BloodlinePage = (props: BloodlinePageProps) => {
           onOpenCarte={openCarte}
         />
       </div>
+
+      {/* P4-22: 交配記録モーダル */}
+      <MatingRecordModal
+        open={matingOpen()}
+        onClose={() => setMatingOpen(false)}
+        seedSelectedId={selected()}
+      />
     </>
   );
 };

@@ -4,9 +4,7 @@ use axum::{Router, routing::get};
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
-mod error;
-mod handlers;
-mod routes;
+use insect_app_server::{handlers, routes};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

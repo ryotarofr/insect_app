@@ -68,12 +68,7 @@ export const EclosionPage = (props: EclosionPageProps) => {
         <For each={summary}>
           {(x) => (
             <div style={{ background: "var(--bg-raised)", padding: "20px" }}>
-              <div
-                class="mono"
-                style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em" }}
-              >
-                {x.label}
-              </div>
+              <div class="u-eyebrow">{x.label}</div>
               <div style={{ display: "flex", "align-items": "baseline", gap: "4px", "margin-top": "4px" }}>
                 <span
                   class="serif"
@@ -94,12 +89,7 @@ export const EclosionPage = (props: EclosionPageProps) => {
 
       <div class="card" style={{ padding: "24px", "margin-bottom": "32px" }}>
         <div style={{ display: "flex", "align-items": "baseline", gap: "12px", "margin-bottom": "20px" }}>
-          <span
-            class="mono"
-            style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em" }}
-          >
-            レーダー · 今後365日
-          </span>
+          <span class="u-eyebrow">レーダー · 今後365日</span>
           <span class="serif" style={{ "font-size": "18px", "font-weight": 600 }}>
             羽化レーダー
           </span>

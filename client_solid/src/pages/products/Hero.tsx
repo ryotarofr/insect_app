@@ -102,7 +102,7 @@ export const Hero = (props: HeroProps) => {
         <div class="hero-copy">
           <div class="hero-eyebrow mono">
             <span class="hero-eyebrow-rule" aria-hidden="true" />
-ようこそ KOCHŪ へ
+            ようこそ KOCHŪ へ
           </div>
 
           <h1 class="hero-title serif">
@@ -139,7 +139,11 @@ export const Hero = (props: HeroProps) => {
           tabIndex={0}
           onKeyDown={(e) => e.key === "Enter" && props.setRoute("product-detail")}
         >
-          <div class="ph forest hero-feature-ph">
+          <div
+            class="ph forest hero-feature-ph"
+            role="img"
+            aria-label={`${featured().title} 注目商品 (プレースホルダ画像)`}
+          >
             <div class="hero-feature-chips">
               <span class="chip ink mono">注目</span>
               <span class="chip amber">{featured().badge ?? "血統書付"}</span>

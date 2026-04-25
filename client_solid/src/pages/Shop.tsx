@@ -10,6 +10,26 @@ const LOW_STOCK = [
 
 const DAY_LABELS = ["月", "火", "水", "木", "金", "土", "日"];
 
+/** P3-19: shop chart の系列色分け。
+ *   - 平日 (月〜金): forest 緑 (通常営業)
+ *   - 週末 (土日):   amber 橙 (需要ピーク)
+ *   - 今日:          ink 黒 (現在位置を強調)
+ * todayIdx は revenue7d の最終要素 (i === 6) を「今日」とみなす。 */
+type BarSeries = "weekday" | "weekend" | "today";
+const DAY_SERIES: BarSeries[] = [
+  "weekday", "weekday", "weekday", "weekday", "weekday", "weekend", "weekend",
+];
+const SERIES_COLOR: Record<BarSeries, string> = {
+  weekday: "var(--accent-forest)",
+  weekend: "var(--accent-amber)",
+  today: "var(--ink)",
+};
+const SERIES_LABEL: Record<BarSeries, string> = {
+  weekday: "平日",
+  weekend: "週末",
+  today: "今日",
+};
+
 export const ShopPage = () => {
   const st = getShopStats();
   const orders = listOrders();
@@ -49,12 +69,7 @@ export const ShopPage = () => {
         <For each={topCards}>
           {(x) => (
             <div style={{ background: "var(--bg-raised)", padding: "20px" }}>
-              <div
-                class="mono"
-                style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em" }}
-              >
-                {x.label}
-              </div>
+              <div class="u-eyebrow">{x.label}</div>
               <div
                 class="serif"
                 style={{
@@ -74,15 +89,26 @@ export const ShopPage = () => {
         </For>
       </div>
 
+      {/* P4-12: ダッシュボードの数値はすべて固定フィクスチャ (APP_DATA)。
+          本番データ差替え前に "偽数値" の誤解を避けるため、バナーで明示する。 */}
+      <div
+        class="sample-banner"
+        role="note"
+        aria-label="このページの数値は実データではありません"
+      >
+        <span class="sb-ico" aria-hidden="true">ⓘ</span>
+        <div class="sb-body">
+          <div class="sb-title">サンプルデータ表示中</div>
+          <div class="sb-desc">
+            KPI / チャート / 在庫は固定のデモ値です。実店舗 API 接続後に置き換わります。
+          </div>
+        </div>
+      </div>
+
       <div class="grid-detail-narrow">
         <div class="card" style={{ padding: "24px" }}>
           <div style={{ display: "flex", "align-items": "baseline", gap: "10px", "margin-bottom": "20px" }}>
-            <span
-              class="mono"
-              style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em" }}
-            >
-              売上
-            </span>
+            <span class="u-eyebrow">売上</span>
             <span class="serif" style={{ "font-size": "18px", "font-weight": 600 }}>
               売上推移 (7日)
             </span>
@@ -100,50 +126,78 @@ export const ShopPage = () => {
           </div>
           <div style={{ display: "flex", "align-items": "flex-end", gap: "10px", height: "180px" }}>
             <For each={st.revenue7d}>
-              {(v, i) => (
-                <div
-                  style={{
-                    flex: 1,
-                    height: "100%",
-                    display: "flex",
-                    "flex-direction": "column",
-                    "align-items": "center",
-                    "justify-content": "flex-end",
-                    gap: "6px",
-                  }}
-                >
-                  <div class="mono" style={{ "font-size": "10px", color: "var(--ink-mute)" }}>
-                    ¥{(v / 1000).toFixed(0)}k
-                  </div>
+              {(v, i) => {
+                const series: BarSeries = i() === 6 ? "today" : DAY_SERIES[i()];
+                return (
                   <div
                     style={{
-                      width: "100%",
-                      height: `${(v / maxRev) * 100}%`,
-                      background: i() === 6 ? "var(--ink)" : "var(--accent-forest)",
-                      "border-radius": "3px 3px 0 0",
+                      flex: 1,
+                      height: "100%",
+                      display: "flex",
+                      "flex-direction": "column",
+                      "align-items": "center",
+                      "justify-content": "flex-end",
+                      gap: "6px",
+                    }}
+                  >
+                    <div class="mono" style={{ "font-size": "10px", color: "var(--ink-mute)" }}>
+                      ¥{(v / 1000).toFixed(0)}k
+                    </div>
+                    <div
+                      title={`${DAY_LABELS[i()]} (${SERIES_LABEL[series]}): ¥${v.toLocaleString()}`}
+                      style={{
+                        width: "100%",
+                        height: `${(v / maxRev) * 100}%`,
+                        background: SERIES_COLOR[series],
+                        "border-radius": "3px 3px 0 0",
+                      }}
+                    />
+                    <div class="mono" style={{ "font-size": "10px", color: "var(--ink-faint)" }}>
+                      {DAY_LABELS[i()]}
+                    </div>
+                  </div>
+                );
+              }}
+            </For>
+          </div>
+          {/* P3-19: chart 凡例 */}
+          <div
+            style={{
+              display: "flex",
+              gap: "14px",
+              "margin-top": "14px",
+              "padding-top": "10px",
+              "border-top": "1px dashed var(--line)",
+              "font-size": "10px",
+              color: "var(--ink-mute)",
+              "flex-wrap": "wrap",
+            }}
+            aria-label="凡例"
+          >
+            <For each={["weekday", "weekend", "today"] as BarSeries[]}>
+              {(s) => (
+                <span style={{ display: "inline-flex", "align-items": "center", gap: "6px" }}>
+                  <span
+                    aria-hidden="true"
+                    style={{
+                      width: "10px",
+                      height: "10px",
+                      "border-radius": "2px",
+                      background: SERIES_COLOR[s],
+                      display: "inline-block",
                     }}
                   />
-                  <div class="mono" style={{ "font-size": "10px", color: "var(--ink-faint)" }}>
-                    {DAY_LABELS[i()]}
-                  </div>
-                </div>
+                  <span class="mono" style={{ "letter-spacing": "0.04em" }}>
+                    {SERIES_LABEL[s]}
+                  </span>
+                </span>
               )}
             </For>
           </div>
         </div>
 
         <div class="card" style={{ padding: "24px" }}>
-          <div
-            class="mono"
-            style={{
-              "font-size": "10px",
-              color: "var(--ink-faint)",
-              "letter-spacing": "0.12em",
-              "margin-bottom": "14px",
-            }}
-          >
-            在庫僅少 · 要補充
-          </div>
+          <div class="u-eyebrow u-mb-3">在庫僅少 · 要補充</div>
           <For each={LOW_STOCK}>
             {(x, i) => (
               <div
@@ -155,7 +209,12 @@ export const ShopPage = () => {
                   "border-bottom": i() < LOW_STOCK.length - 1 ? "1px dashed var(--line)" : "none",
                 }}
               >
-                <div class={`ph ${x.img}`} style={{ width: "40px", height: "40px" }} />
+                <div
+                  class={`ph ${x.img}`}
+                  style={{ width: "40px", height: "40px" }}
+                  role="img"
+                  aria-label={`${x.name} 商品画像 (プレースホルダ)`}
+                />
                 <div style={{ flex: 1 }}>
                   <div style={{ "font-size": "13px", "font-weight": 500 }}>{x.name}</div>
                   <div class="mono" style={{ "font-size": "10px", color: "var(--ink-faint)" }}>

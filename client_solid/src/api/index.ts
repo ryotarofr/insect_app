@@ -26,6 +26,13 @@ export {
 } from "./logs";
 export { listMarketListings } from "./market";
 export { getShopStats, listOrders } from "./shop";
+export { getUserMetrics, type UserMetrics } from "./metrics";
+export {
+  getUpcomingActions,
+  type UpcomingAction,
+  type ActionKind,
+} from "./nextActions";
+export { getAuditLog, type AuditLogEntry } from "./audit";
 
 // 型も api/ 経由で参照できるように re-export しておく
 export type {
@@ -38,4 +45,6 @@ export type {
   Order,
   Listing,
   Species,
+  LifeStatus,
+  LifeStatusDetail,
 } from "../data";

@@ -14,6 +14,14 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    proxy: {
+      // SDUI バックエンド (axum, port 3000) に dev サーバから直接 fetch できるようにする。
+      // 本番では同一オリジンに置く想定なので、フロントは常に `/api` 相対で叩けばよい。
+      "/api": {
+        target: "http://localhost:3000",
+        changeOrigin: true,
+      },
+    },
   },
   test: {
     environment: "jsdom",
