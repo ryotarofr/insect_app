@@ -42,13 +42,9 @@ pub fn api_v1() -> Router {
         .route("/cart", post(handlers::cart::add_to_cart))
         .route(
             "/cart/items/{token}",
-            delete(handlers::cart::delete_cart_item)
-                .patch(handlers::cart::patch_cart_item),
+            delete(handlers::cart::delete_cart_item).patch(handlers::cart::patch_cart_item),
         )
-        .route(
-            "/watch/{product_id}",
-            post(handlers::watch::toggle_watch),
-        )
+        .route("/watch/{product_id}", post(handlers::watch::toggle_watch))
         // Phase 8: チェックアウト (配送先 / 配送方法) 用 PATCH エンドポイント。
         //   - PATCH /checkout/shipping_field/{name} → 配送先 1 フィールドを更新
         //   - PATCH /checkout/shipping_method      → 配送方法 (cold / normal) を切替
@@ -62,10 +58,7 @@ pub fn api_v1() -> Router {
             "/checkout/shipping_method",
             patch(handlers::checkout::patch_shipping_method),
         )
-        .route(
-            "/checkout",
-            get(handlers::checkout::get_checkout_snapshot),
-        )
+        .route("/checkout", get(handlers::checkout::get_checkout_snapshot))
         // SDUI Analytics ingest (Phase 3):
         //   - POST /events           → batch ingest (impression / click)
         //   - GET  /events?limit=N   → 直近 N 件 (debug 用、新しい順)

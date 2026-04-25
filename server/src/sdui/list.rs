@@ -301,10 +301,16 @@ mod tests {
             analytics_id: Some("filter.category.live".to_string()),
         };
         let json = serde_json::to_string(&chip).expect("serialize");
-        assert!(json.contains(r#""selected":false"#), "selected:false must be emitted: {json}");
+        assert!(
+            json.contains(r#""selected":false"#),
+            "selected:false must be emitted: {json}"
+        );
         assert!(json.contains(r#""analyticsId":"filter.category.live""#));
         assert!(json.contains(r#""href":"/products?category=live""#));
-        assert!(!json.contains(r#""count":"#), "None count must be omitted: {json}");
+        assert!(
+            !json.contains(r#""count":"#),
+            "None count must be omitted: {json}"
+        );
     }
 
     #[test]
@@ -339,13 +345,18 @@ mod tests {
             cards: vec![],
         };
         let json = serde_json::to_string(&resp).expect("serialize");
-        let parsed: ProductListResponse =
-            serde_json::from_str(&json).expect("deserialize");
+        let parsed: ProductListResponse = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(parsed, resp);
         // count は Some(4) なので `"count":4` が出ているはず
-        assert!(json.contains(r#""count":4"#), "count must be emitted: {json}");
+        assert!(
+            json.contains(r#""count":4"#),
+            "count must be emitted: {json}"
+        );
         // sortBar も camelCase で出ること
-        assert!(json.contains(r#""sortBar":"#), "sortBar must be emitted: {json}");
+        assert!(
+            json.contains(r#""sortBar":"#),
+            "sortBar must be emitted: {json}"
+        );
         assert!(
             json.contains(r#""current":"name""#),
             "sort_bar.current must be present: {json}",
@@ -380,7 +391,10 @@ mod tests {
             cards: vec![],
         };
         let json = serde_json::to_string(&resp).expect("serialize");
-        assert!(!json.contains("sortBar"), "sortBar should be omitted: {json}");
+        assert!(
+            !json.contains("sortBar"),
+            "sortBar should be omitted: {json}"
+        );
     }
 
     #[test]
@@ -393,7 +407,10 @@ mod tests {
             cards: vec![],
         };
         let json = serde_json::to_string(&resp).expect("serialize");
-        assert!(!json.contains("filterBar"), "filterBar should be omitted: {json}");
+        assert!(
+            !json.contains("filterBar"),
+            "filterBar should be omitted: {json}"
+        );
     }
 
     // ── Phase 6 ──────────────────────────────────────────────────
@@ -408,7 +425,10 @@ mod tests {
             analytics_id: Some("search.submit".to_string()),
         };
         let json = serde_json::to_string(&sb).expect("serialize");
-        assert!(!json.contains(r#""query":"#), "query=None should be omitted: {json}");
+        assert!(
+            !json.contains(r#""query":"#),
+            "query=None should be omitted: {json}"
+        );
         assert!(json.contains(r#""paramName":"q""#));
         assert!(json.contains(r#""submitHref":"/products""#));
     }
@@ -435,7 +455,10 @@ mod tests {
         };
         let json = serde_json::to_string(&l).expect("serialize");
         // tag は "kind" でディスクリミネート (camelCase)
-        assert!(json.contains(r#""kind":"page""#), "kind tag missing: {json}");
+        assert!(
+            json.contains(r#""kind":"page""#),
+            "kind tag missing: {json}"
+        );
         assert!(json.contains(r#""number":2"#));
         assert!(json.contains(r#""selected":true"#));
     }
@@ -475,7 +498,10 @@ mod tests {
         let parsed: Pagination = serde_json::from_str(&json).expect("deserialize");
         assert_eq!(parsed, p);
         // last page なので nextHref は出ないこと (skip_serializing_if)
-        assert!(!json.contains("nextHref"), "nextHref=None must be omitted: {json}");
+        assert!(
+            !json.contains("nextHref"),
+            "nextHref=None must be omitted: {json}"
+        );
         assert!(json.contains(r#""prevHref":"/products""#));
         assert!(json.contains(r#""totalPages":2"#));
         assert!(json.contains(r#""perPage":3"#));
@@ -492,7 +518,13 @@ mod tests {
             cards: vec![],
         };
         let json = serde_json::to_string(&resp).expect("serialize");
-        assert!(!json.contains("searchBox"), "searchBox should be omitted: {json}");
-        assert!(!json.contains("pagination"), "pagination should be omitted: {json}");
+        assert!(
+            !json.contains("searchBox"),
+            "searchBox should be omitted: {json}"
+        );
+        assert!(
+            !json.contains("pagination"),
+            "pagination should be omitted: {json}"
+        );
     }
 }

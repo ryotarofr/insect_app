@@ -127,6 +127,8 @@ describe("CardRenderer", () => {
           },
         ],
         items: [],
+        shipping: [],
+        shippingMethod: [],
         summary: [],
         cta: [],
       },

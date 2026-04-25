@@ -88,7 +88,10 @@ mod tests {
             context: BTreeMap::new(),
         };
         let json = serde_json::to_string(&e).unwrap();
-        assert!(!json.contains("context"), "empty context should be omitted: {json}");
+        assert!(
+            !json.contains("context"),
+            "empty context should be omitted: {json}"
+        );
     }
 
     #[test]

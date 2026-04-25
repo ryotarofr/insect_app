@@ -42,17 +42,13 @@ fn buffer() -> &'static Mutex<VecDeque<AnalyticsEvent>> {
 /// - 1 件でも `analyticsId` が空なら 400 で **全件** リジェクト。
 /// - 受理時は 202 Accepted (= 受け取ったが処理を保証しない、という意味で暗に
 ///   集計は別経路という設計を表現)。
-pub async fn post_events(
-    Json(req): Json<AnalyticsEventBatch>,
-) -> Result<StatusCode, AppError> {
+pub async fn post_events(Json(req): Json<AnalyticsEventBatch>) -> Result<StatusCode, AppError> {
     if req.events.is_empty() {
         return Ok(StatusCode::ACCEPTED);
     }
     for ev in &req.events {
         if ev.analytics_id.is_empty() {
-            return Err(AppError::BadRequest(
-                "analyticsId is empty".to_string(),
-            ));
+            return Err(AppError::BadRequest("analyticsId is empty".to_string()));
         }
     }
 
@@ -139,7 +135,11 @@ mod tests {
         let _g = GUARD.lock().unwrap();
         reset_events_for_test();
         post_events(Json(AnalyticsEventBatch {
-            events: vec![ev("home.hero", AnalyticsEventType::Impression, 1_700_000_000_000)],
+            events: vec![ev(
+                "home.hero",
+                AnalyticsEventType::Impression,
+                1_700_000_000_000,
+            )],
         }))
         .await
         .unwrap();
@@ -195,11 +195,7 @@ mod tests {
         }))
         .await
         .unwrap();
-        let list = list_events(Query(ListQuery {
-            limit: usize::MAX,
-        }))
-        .await
-        .0;
+        let list = list_events(Query(ListQuery { limit: usize::MAX })).await.0;
         assert_eq!(list.len(), 1);
     }
 
@@ -256,14 +252,21 @@ mod tests {
 
         let mut e = ev("p.detail.cta", AnalyticsEventType::Click, 1);
         e.context.insert("productId".to_string(), "p-x".to_string());
-        e.context.insert("variant".to_string(), "featured".to_string());
+        e.context
+            .insert("variant".to_string(), "featured".to_string());
         post_events(Json(AnalyticsEventBatch { events: vec![e] }))
             .await
             .unwrap();
 
         let list = list_events(Query(ListQuery { limit: 1 })).await.0;
         assert_eq!(list.len(), 1);
-        assert_eq!(list[0].context.get("productId").map(String::as_str), Some("p-x"));
-        assert_eq!(list[0].context.get("variant").map(String::as_str), Some("featured"));
+        assert_eq!(
+            list[0].context.get("productId").map(String::as_str),
+            Some("p-x")
+        );
+        assert_eq!(
+            list[0].context.get("variant").map(String::as_str),
+            Some("featured")
+        );
     }
 }

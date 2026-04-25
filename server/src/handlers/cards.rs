@@ -54,9 +54,7 @@ pub async fn get_product_card(Path(id): Path<String>) -> Result<Json<CardBlock>,
 /// 一覧用 (`product_feature`) とは別の `product_detail` テンプレートを返す。
 /// 詳細ページは region 構成 (gallery / hero / spec / pricing / cta) が違うため、
 /// 同 id でも別エンドポイントに分離している (§5: テンプレート毎にレスポンスを分ける)。
-pub async fn get_product_detail_card(
-    Path(id): Path<String>,
-) -> Result<Json<CardBlock>, AppError> {
+pub async fn get_product_detail_card(Path(id): Path<String>) -> Result<Json<CardBlock>, AppError> {
     let card = detail_mock_store()
         .get(id.as_str())
         .cloned()
@@ -105,9 +103,7 @@ pub async fn get_cart_card() -> Result<Json<CardBlock>, AppError> {
 ///   - `regions.summary`         : OrderSummary に shipping_amount を反映
 ///   - `regions.cta`             : `is_shipping_complete && !is_empty` の時のみ primary 「決済へ」
 /// を出す。空カート時は shipping / shipping_method / summary を空配列 (= section 省略)。
-fn build_cart_card(
-    snapshot: Vec<(String, crate::handlers::cart::CartEntry)>,
-) -> CardBlock {
+fn build_cart_card(snapshot: Vec<(String, crate::handlers::cart::CartEntry)>) -> CardBlock {
     let checkout = crate::handlers::checkout::snapshot_checkout();
     build_cart_card_with_checkout(snapshot, checkout)
 }
@@ -298,9 +294,7 @@ fn build_cart_card_with_checkout(
 ///
 /// **PostalCode / Tel の inputmode 切替**: client renderer が `kind` で分岐するので
 /// server 側は kind を正しく付けるだけで OK (= input mode は HTML 標準にお任せ)。
-fn build_shipping_form_blocks(
-    checkout: &crate::handlers::checkout::CheckoutState,
-) -> Vec<Block> {
+fn build_shipping_form_blocks(checkout: &crate::handlers::checkout::CheckoutState) -> Vec<Block> {
     let prefectures = japan_prefectures()
         .iter()
         .map(|p| SelectOption {
@@ -348,7 +342,9 @@ fn build_shipping_form_blocks(
             true,
             Some("address-level1"),
             None,
-            FormFieldKind::Select { options: prefectures },
+            FormFieldKind::Select {
+                options: prefectures,
+            },
         ),
         build_form_field(
             "ff-addr",
@@ -406,9 +402,7 @@ fn build_form_field(
 }
 
 /// 配送方法ピッカーを 1 件組む (Phase 8)。
-fn build_shipping_method_picker(
-    checkout: &crate::handlers::checkout::CheckoutState,
-) -> Block {
+fn build_shipping_method_picker(checkout: &crate::handlers::checkout::CheckoutState) -> Block {
     let options = crate::handlers::checkout::SHIPPING_METHODS
         .iter()
         .map(|m| ShippingMethodOption {
@@ -464,14 +458,51 @@ fn is_shipping_complete(checkout: &crate::handlers::checkout::CheckoutState) -> 
 fn japan_prefectures() -> &'static [&'static str] {
     &[
         "北海道",
-        "青森県", "岩手県", "宮城県", "秋田県", "山形県", "福島県",
-        "茨城県", "栃木県", "群馬県", "埼玉県", "千葉県", "東京都", "神奈川県",
-        "新潟県", "富山県", "石川県", "福井県", "山梨県", "長野県",
-        "岐阜県", "静岡県", "愛知県", "三重県",
-        "滋賀県", "京都府", "大阪府", "兵庫県", "奈良県", "和歌山県",
-        "鳥取県", "島根県", "岡山県", "広島県", "山口県",
-        "徳島県", "香川県", "愛媛県", "高知県",
-        "福岡県", "佐賀県", "長崎県", "熊本県", "大分県", "宮崎県", "鹿児島県",
+        "青森県",
+        "岩手県",
+        "宮城県",
+        "秋田県",
+        "山形県",
+        "福島県",
+        "茨城県",
+        "栃木県",
+        "群馬県",
+        "埼玉県",
+        "千葉県",
+        "東京都",
+        "神奈川県",
+        "新潟県",
+        "富山県",
+        "石川県",
+        "福井県",
+        "山梨県",
+        "長野県",
+        "岐阜県",
+        "静岡県",
+        "愛知県",
+        "三重県",
+        "滋賀県",
+        "京都府",
+        "大阪府",
+        "兵庫県",
+        "奈良県",
+        "和歌山県",
+        "鳥取県",
+        "島根県",
+        "岡山県",
+        "広島県",
+        "山口県",
+        "徳島県",
+        "香川県",
+        "愛媛県",
+        "高知県",
+        "福岡県",
+        "佐賀県",
+        "長崎県",
+        "熊本県",
+        "大分県",
+        "宮崎県",
+        "鹿児島県",
         "沖縄県",
     ]
 }
@@ -615,8 +646,11 @@ struct ProductMeta {
 /// 絞り軸の宣言 (group_key, chip_key, label)。
 /// 並び順 = 表示順。新軸を足す時はここに足すだけで filter_bar に反映される。
 const CATEGORY_OPTIONS: &[(&str, &str)] = &[("live", "生体"), ("supply", "用品")];
-const DIFFICULTY_OPTIONS: &[(&str, &str)] =
-    &[("easy", "初心者向け"), ("medium", "中級者"), ("hard", "上級者")];
+const DIFFICULTY_OPTIONS: &[(&str, &str)] = &[
+    ("easy", "初心者向け"),
+    ("medium", "中級者"),
+    ("hard", "上級者"),
+];
 
 /// 並び替え候補 (Phase 5)。`(key, label)` の順 = UI 表示順。
 ///
@@ -788,7 +822,12 @@ pub async fn list_product_cards(
     // 6. CardBlock に変換 + validate
     let cards: Vec<CardBlock> = paged_ids
         .iter()
-        .map(|id| store.get(id).expect("id was just listed from store").clone())
+        .map(|id| {
+            store
+                .get(id)
+                .expect("id was just listed from store")
+                .clone()
+        })
         .collect();
     for card in &cards {
         card.validate_keys()
@@ -799,7 +838,15 @@ pub async fn list_product_cards(
     let filter_bar = build_filter_bar(&query, sort_key, q_norm.as_deref(), per_page);
     let sort_bar = build_sort_bar(&query, sort_key, q_norm.as_deref(), per_page);
     let search_box = build_search_box(&query, sort_key, per_page);
-    let pagination = build_pagination(&query, sort_key, q_norm.as_deref(), page, per_page, total_count, total_pages);
+    let pagination = build_pagination(
+        &query,
+        sort_key,
+        q_norm.as_deref(),
+        page,
+        per_page,
+        total_count,
+        total_pages,
+    );
 
     Ok(Json(ProductListResponse {
         filter_bar: Some(filter_bar),
@@ -956,12 +1003,7 @@ fn build_filter_bar(
 ///     これにより `?sort=name` で踏まれた URL は filter 切替時に `?sort=` が消え、
 ///     ユーザのブックマークが既定状態に集約される。
 ///   - selected = (option.key == 現状の sort_key)。クエリ未指定時は `name` が selected。
-fn build_sort_bar(
-    q: &ListQuery,
-    sort_key: &str,
-    q_norm: Option<&str>,
-    per_page: u32,
-) -> SortBar {
+fn build_sort_bar(q: &ListQuery, sort_key: &str, q_norm: Option<&str>, per_page: u32) -> SortBar {
     let canonical_per_page: Option<u32> = if per_page == DEFAULT_PER_PAGE {
         None
     } else {
@@ -1033,7 +1075,8 @@ fn build_search_box(q: &ListQuery, sort_key: &str, per_page: u32) -> SearchBox {
         // 現在のクエリ (resolve 済み) を初期値に
         query: resolve_q(q.q.as_deref()),
         placeholder: raw("商品名で検索"),
-        submit_href: Href::parse(&submit_href_str).expect("search submit href is internally constructed"),
+        submit_href: Href::parse(&submit_href_str)
+            .expect("search submit href is internally constructed"),
         param_name: "q".to_string(),
         analytics_id: Some("search.submit".to_string()),
     }
@@ -1067,7 +1110,11 @@ fn build_pagination(
     // 「ページ番号 N に行く URL」を組む
     let make_href = |page_n: u32| -> Href {
         // canonical: page=1 は URL から抜く
-        let page_param = if page_n == DEFAULT_PAGE { None } else { Some(page_n) };
+        let page_param = if page_n == DEFAULT_PAGE {
+            None
+        } else {
+            Some(page_n)
+        };
         let next = ListQuery {
             category: q.category.clone(),
             difficulty: q.difficulty.clone(),
@@ -1079,8 +1126,16 @@ fn build_pagination(
         Href::parse(&build_list_href(&next)).expect("pagination href is internally constructed")
     };
 
-    let prev_href = if page > 1 { Some(make_href(page - 1)) } else { None };
-    let next_href = if page < total_pages { Some(make_href(page + 1)) } else { None };
+    let prev_href = if page > 1 {
+        Some(make_href(page - 1))
+    } else {
+        None
+    };
+    let next_href = if page < total_pages {
+        Some(make_href(page + 1))
+    } else {
+        None
+    };
 
     let pages: Vec<PageLink> = collapse_page_range(page, total_pages)
         .into_iter()
@@ -1209,11 +1264,8 @@ fn percent_encode(s: &str) -> String {
     let mut out = String::with_capacity(s.len());
     for b in s.as_bytes() {
         let c = *b;
-        let unreserved = c.is_ascii_alphanumeric()
-            || c == b'-'
-            || c == b'_'
-            || c == b'.'
-            || c == b'~';
+        let unreserved =
+            c.is_ascii_alphanumeric() || c == b'-' || c == b'_' || c == b'.' || c == b'~';
         if unreserved {
             out.push(c as char);
         } else {
@@ -1587,10 +1639,10 @@ fn build_specimen_detail_card(
     // 実画像はまだ無いので src=None でクライアント側 placeholder にフォールバック。
     // alt は SR (スクリーンリーダ) 向けに用途を区別できる文言にしておく。
     let gallery_alts = [
-        media_alt,             // 1 枚目: メインカット
-        "別アングル",          // 2 枚目: 横 / 後ろ
-        "サイズ比較",          // 3 枚目: 物差し / 手と並べたカット
-        "同梱物",              // 4 枚目: パッケージ / 付属品
+        media_alt,    // 1 枚目: メインカット
+        "別アングル", // 2 枚目: 横 / 後ろ
+        "サイズ比較", // 3 枚目: 物差し / 手と並べたカット
+        "同梱物",     // 4 枚目: パッケージ / 付属品
     ];
 
     CardBlock::ProductDetail {
@@ -1711,8 +1763,7 @@ fn build_specimen_detail_card(
                     label: raw("カートに追加"),
                     // href は no-JS フォールバック (/cart?add=... へ遷移)。
                     // action があれば JS 側でこちらが先に発火し、preventDefault される。
-                    href: Href::parse(&format!("/cart?add={id}"))
-                        .expect("static href is valid"),
+                    href: Href::parse(&format!("/cart?add={id}")).expect("static href is valid"),
                     action: Some(CtaAction::AddToCart {
                         product_id: id.to_string(),
                         qty: 1,
@@ -1733,8 +1784,7 @@ fn build_specimen_detail_card(
                     intent: CtaIntent::Tertiary,
                     label: raw("♡ ウォッチ"),
                     // href は no-JS フォールバック (旧 /watch?add= 動線)。
-                    href: Href::parse(&format!("/watch?add={id}"))
-                        .expect("static href is valid"),
+                    href: Href::parse(&format!("/watch?add={id}")).expect("static href is valid"),
                     action: Some(CtaAction::ToggleWatch {
                         product_id: id.to_string(),
                     }),
@@ -1819,8 +1869,7 @@ fn build_supply_detail_card(
                     key: "cta-add".to_string(),
                     intent: CtaIntent::Primary,
                     label: raw("カートに追加"),
-                    href: Href::parse(&format!("/cart?add={id}"))
-                        .expect("static href is valid"),
+                    href: Href::parse(&format!("/cart?add={id}")).expect("static href is valid"),
                     action: Some(CtaAction::AddToCart {
                         product_id: id.to_string(),
                         qty: 1,
@@ -1839,8 +1888,7 @@ fn build_supply_detail_card(
                     key: "cta-watch".to_string(),
                     intent: CtaIntent::Tertiary,
                     label: raw("♡ ウォッチ"),
-                    href: Href::parse(&format!("/watch?add={id}"))
-                        .expect("static href is valid"),
+                    href: Href::parse(&format!("/watch?add={id}")).expect("static href is valid"),
                     action: Some(CtaAction::ToggleWatch {
                         product_id: id.to_string(),
                     }),
@@ -2029,8 +2077,7 @@ mod tests {
     fn all_mock_cards_round_trip_via_json() {
         for card in all_cards() {
             let json = serde_json::to_string(&card).expect("serialize");
-            let parsed: CardBlock =
-                serde_json::from_str(&json).expect("round-trip deserialize");
+            let parsed: CardBlock = serde_json::from_str(&json).expect("round-trip deserialize");
             assert_eq!(parsed.id(), card.id(), "id changed on round-trip");
         }
     }
@@ -2067,7 +2114,10 @@ mod tests {
             }
         }"#;
         let result: Result<CardBlock, _> = serde_json::from_str(bad_json);
-        assert!(result.is_err(), "unknown region 'headline' should be rejected");
+        assert!(
+            result.is_err(),
+            "unknown region 'headline' should be rejected"
+        );
     }
 
     // ── ハンドラ直叩きのテスト (HTTP は通さず、関数の返り値を直接検証) ────
@@ -2080,7 +2130,11 @@ mod tests {
             .await
             .expect("list ok");
         let resp = json.0;
-        assert_eq!(resp.cards.len(), 6, "list should return 6 cards (no filter)");
+        assert_eq!(
+            resp.cards.len(),
+            6,
+            "list should return 6 cards (no filter)"
+        );
 
         // 表示順は id の辞書順
         let ids: Vec<&str> = resp.cards.iter().map(|c| c.id()).collect();
@@ -2096,7 +2150,11 @@ mod tests {
 
         // filter_bar は常に Some
         let bar = resp.filter_bar.expect("filter_bar should be Some");
-        assert_eq!(bar.groups.len(), 2, "expected 2 filter groups (category + difficulty)");
+        assert_eq!(
+            bar.groups.len(),
+            2,
+            "expected 2 filter groups (category + difficulty)"
+        );
     }
 
     // ────────────────────────────────────────────────────────────────
@@ -2145,12 +2203,20 @@ mod tests {
             .iter()
             .find(|g| g.key == "category")
             .expect("category group");
-        let live = cat.chips.iter().find(|c| c.key == "live").expect("live chip");
+        let live = cat
+            .chips
+            .iter()
+            .find(|c| c.key == "live")
+            .expect("live chip");
         assert!(live.selected, "live chip must be selected");
         // selected な chip の href は「自分を解除した状態」= `/products`
         assert_eq!(live.href.as_str(), "/products");
 
-        let supply = cat.chips.iter().find(|c| c.key == "supply").expect("supply chip");
+        let supply = cat
+            .chips
+            .iter()
+            .find(|c| c.key == "supply")
+            .expect("supply chip");
         assert!(!supply.selected);
         // not selected な chip の href は「自分に切り替えた状態」= `/products?category=supply`
         assert_eq!(supply.href.as_str(), "/products?category=supply");
@@ -2174,14 +2240,29 @@ mod tests {
 
         let bar = resp.filter_bar.expect("filter_bar");
         // selected な chip (live) の href は「自分だけ抜く」= `?difficulty=hard` のみ残す
-        let live = bar.groups[0].chips.iter().find(|c| c.key == "live").unwrap();
+        let live = bar.groups[0]
+            .chips
+            .iter()
+            .find(|c| c.key == "live")
+            .unwrap();
         assert_eq!(live.href.as_str(), "/products?difficulty=hard");
         // selected な chip (hard) の href は「自分だけ抜く」= `?category=live` のみ残す
-        let hard = bar.groups[1].chips.iter().find(|c| c.key == "hard").unwrap();
+        let hard = bar.groups[1]
+            .chips
+            .iter()
+            .find(|c| c.key == "hard")
+            .unwrap();
         assert_eq!(hard.href.as_str(), "/products?category=live");
         // not selected (medium) は「上書き適用」= 両方付きの URL に切り替わる
-        let medium = bar.groups[1].chips.iter().find(|c| c.key == "medium").unwrap();
-        assert_eq!(medium.href.as_str(), "/products?category=live&difficulty=medium");
+        let medium = bar.groups[1]
+            .chips
+            .iter()
+            .find(|c| c.key == "medium")
+            .unwrap();
+        assert_eq!(
+            medium.href.as_str(),
+            "/products?category=live&difficulty=medium"
+        );
     }
 
     /// 「組み合わせると 0 件」: `?category=live&difficulty=easy` → 該当なし。
@@ -2198,7 +2279,9 @@ mod tests {
         .expect("ok")
         .0;
         assert_eq!(resp.cards.len(), 0);
-        let bar = resp.filter_bar.expect("filter_bar must still be present on 0-match");
+        let bar = resp
+            .filter_bar
+            .expect("filter_bar must still be present on 0-match");
         // chip 群はそのまま返る
         assert_eq!(bar.groups.iter().map(|g| g.chips.len()).sum::<usize>(), 5);
     }
@@ -2241,10 +2324,7 @@ mod tests {
         }
         // 逆方向: メタにあるのに store に無い id がないか
         for id in meta.keys() {
-            assert!(
-                store.contains_key(id),
-                "filter meta has unknown id: {id}"
-            );
+            assert!(store.contains_key(id), "filter meta has unknown id: {id}");
         }
     }
 
@@ -2314,7 +2394,10 @@ mod tests {
             let _ = m.created_days_ago;
         }
         let total_days: u32 = meta.values().map(|m| m.created_days_ago).sum();
-        assert!(total_days > 0, "expected at least one product with created_days_ago > 0");
+        assert!(
+            total_days > 0,
+            "expected at least one product with created_days_ago > 0"
+        );
     }
 
     // ── faceted count ─────────────────────────────────────────────
@@ -2332,7 +2415,11 @@ mod tests {
         let cat = bar.groups.iter().find(|g| g.key == "category").unwrap();
         let live_count = cat.chips.iter().find(|c| c.key == "live").unwrap().count;
         let supply_count = cat.chips.iter().find(|c| c.key == "supply").unwrap().count;
-        assert_eq!(live_count, Some(4), "category=live should yield 4 (no other filter)");
+        assert_eq!(
+            live_count,
+            Some(4),
+            "category=live should yield 4 (no other filter)"
+        );
         assert_eq!(supply_count, Some(2), "category=supply should yield 2");
 
         let diff = bar.groups.iter().find(|g| g.key == "difficulty").unwrap();
@@ -2387,7 +2474,11 @@ mod tests {
         let live = cat.chips.iter().find(|c| c.key == "live").unwrap();
         assert!(live.selected);
         // selected な chip を押すと「自分を抜いた」状態 = 全 6 件
-        assert_eq!(live.count, Some(6), "selected chip count = after-toggle-off count");
+        assert_eq!(
+            live.count,
+            Some(6),
+            "selected chip count = after-toggle-off count"
+        );
     }
 
     /// 0 件マッチでもチップは消えず count が出る (Some(0) を許容)。
@@ -2460,11 +2551,24 @@ mod tests {
         // 価格: mat=1280, jelly=1480, cat-l=12000, neo=28000, hh=48000, aki=62000
         assert_eq!(
             ids,
-            vec!["p-mat", "p-jelly", "p-cat-l", "p-neo-m", "p-hh-m-142", "p-aki"]
+            vec![
+                "p-mat",
+                "p-jelly",
+                "p-cat-l",
+                "p-neo-m",
+                "p-hh-m-142",
+                "p-aki"
+            ]
         );
         let sb = resp.sort_bar.expect("sort_bar");
         assert_eq!(sb.current, "price_asc");
-        assert!(sb.options.iter().find(|o| o.key == "price_asc").unwrap().selected);
+        assert!(
+            sb.options
+                .iter()
+                .find(|o| o.key == "price_asc")
+                .unwrap()
+                .selected
+        );
     }
 
     /// `?sort=price_desc` → 価格の高い順。
@@ -2482,7 +2586,14 @@ mod tests {
         let ids: Vec<&str> = resp.cards.iter().map(|c| c.id()).collect();
         assert_eq!(
             ids,
-            vec!["p-aki", "p-hh-m-142", "p-neo-m", "p-cat-l", "p-jelly", "p-mat"]
+            vec![
+                "p-aki",
+                "p-hh-m-142",
+                "p-neo-m",
+                "p-cat-l",
+                "p-jelly",
+                "p-mat"
+            ]
         );
     }
 
@@ -2502,7 +2613,14 @@ mod tests {
         let ids: Vec<&str> = resp.cards.iter().map(|c| c.id()).collect();
         assert_eq!(
             ids,
-            vec!["p-aki", "p-hh-m-142", "p-neo-m", "p-cat-l", "p-mat", "p-jelly"]
+            vec![
+                "p-aki",
+                "p-hh-m-142",
+                "p-neo-m",
+                "p-cat-l",
+                "p-mat",
+                "p-jelly"
+            ]
         );
     }
 
@@ -2521,7 +2639,14 @@ mod tests {
         let ids: Vec<&str> = resp.cards.iter().map(|c| c.id()).collect();
         assert_eq!(
             ids,
-            vec!["p-aki", "p-cat-l", "p-hh-m-142", "p-jelly", "p-mat", "p-neo-m"]
+            vec![
+                "p-aki",
+                "p-cat-l",
+                "p-hh-m-142",
+                "p-jelly",
+                "p-mat",
+                "p-neo-m"
+            ]
         );
     }
 
@@ -2543,7 +2668,14 @@ mod tests {
         let ids: Vec<&str> = resp.cards.iter().map(|c| c.id()).collect();
         assert_eq!(
             ids,
-            vec!["p-aki", "p-cat-l", "p-hh-m-142", "p-jelly", "p-mat", "p-neo-m"]
+            vec![
+                "p-aki",
+                "p-cat-l",
+                "p-hh-m-142",
+                "p-jelly",
+                "p-mat",
+                "p-neo-m"
+            ]
         );
     }
 
@@ -2626,7 +2758,11 @@ mod tests {
         assert_eq!(resolve_sort_key(Some("price_asc")), "price_asc");
         assert_eq!(resolve_sort_key(Some("price_desc")), "price_desc");
         assert_eq!(resolve_sort_key(Some("new")), "new");
-        assert_eq!(resolve_sort_key(Some("foo")), "name", "unknown key → default");
+        assert_eq!(
+            resolve_sort_key(Some("foo")),
+            "name",
+            "unknown key → default"
+        );
         assert_eq!(resolve_sort_key(Some("")), "name", "empty key → default");
     }
 
@@ -2635,10 +2771,7 @@ mod tests {
     #[test]
     fn build_list_href_orders_params_canonically() {
         // 全部 None
-        assert_eq!(
-            build_list_href(&ListQuery::default()),
-            "/products"
-        );
+        assert_eq!(build_list_href(&ListQuery::default()), "/products");
         // sort のみ (Phase 5 互換)
         assert_eq!(
             build_list_href(&ListQuery {
@@ -2760,7 +2893,10 @@ mod tests {
         assert!(json.contains(r#""variant":"default""#));
         // gallery / hero / spec / pricing / cta いずれも空配列以上で含まれる
         for region in ["gallery", "hero", "spec", "pricing", "cta"] {
-            assert!(json.contains(&format!(r#""{region}":["#)), "missing region: {region}");
+            assert!(
+                json.contains(&format!(r#""{region}":["#)),
+                "missing region: {region}"
+            );
         }
         // CTA href / intent
         assert!(json.contains(r#""intent":"primary""#));
@@ -2817,7 +2953,10 @@ mod tests {
             // 1 枚目以外も Media kind=image であること
             for (i, b) in r.gallery.iter().enumerate() {
                 match b {
-                    Block::Media { kind: MediaKind::Image, .. } => {}
+                    Block::Media {
+                        kind: MediaKind::Image,
+                        ..
+                    } => {}
                     other => panic!(
                         "specimen {} gallery[{i}] expected Media(Image), got {other:?}",
                         card.id()
@@ -2914,7 +3053,10 @@ mod tests {
                 } => {
                     assert_eq!(text, "安心保証");
                 }
-                other => panic!("{} promise head expected Text(Eyebrow), got {other:?}", card.id()),
+                other => panic!(
+                    "{} promise head expected Text(Eyebrow), got {other:?}",
+                    card.id()
+                ),
             }
         }
     }
@@ -2938,7 +3080,10 @@ mod tests {
         // promise が JSON で `"promise":[...]` として正しく出ること
         let card = hercules_male_142_detail();
         let json = serde_json::to_string(&card).expect("serialize");
-        assert!(json.contains(r#""promise":["#), "missing promise array: {json}");
+        assert!(
+            json.contains(r#""promise":["#),
+            "missing promise array: {json}"
+        );
         assert!(
             json.contains(r#""href":"/help/warranty""#),
             "missing warranty href: {json}"
@@ -2946,7 +3091,10 @@ mod tests {
         // 用品は空配列で出る (`"promise":[]`)
         let supply = jelly_supply_detail();
         let json = serde_json::to_string(&supply).expect("serialize supply");
-        assert!(json.contains(r#""promise":[]"#), "supply promise not []: {json}");
+        assert!(
+            json.contains(r#""promise":[]"#),
+            "supply promise not []: {json}"
+        );
     }
 
     #[test]
@@ -2985,10 +3133,8 @@ mod tests {
             "p-jelly",
             "p-mat",
         ] {
-            let result =
-                get_product_detail_card(axum::extract::Path(id.to_string())).await;
-            let json =
-                result.unwrap_or_else(|e| panic!("get_detail failed for {id}: {e:?}"));
+            let result = get_product_detail_card(axum::extract::Path(id.to_string())).await;
+            let json = result.unwrap_or_else(|e| panic!("get_detail failed for {id}: {e:?}"));
             assert_eq!(json.0.id(), id, "id mismatch for {id}");
             // template が product_detail であることも確認
             match json.0 {
@@ -3066,8 +3212,13 @@ mod tests {
             let view_cart = cta_by_key(&card, "cta-view-cart");
             match view_cart {
                 Block::Cta { action: None, .. } => {}
-                Block::Cta { action: Some(a), .. } => {
-                    panic!("{} cta-view-cart should have no action, got {a:?}", card.id())
+                Block::Cta {
+                    action: Some(a), ..
+                } => {
+                    panic!(
+                        "{} cta-view-cart should have no action, got {a:?}",
+                        card.id()
+                    )
                 }
                 _ => unreachable!(),
             }
@@ -3082,7 +3233,9 @@ mod tests {
             let promise_cta = cta_by_key(&card, "promise-cta");
             match promise_cta {
                 Block::Cta { action: None, .. } => {}
-                Block::Cta { action: Some(a), .. } => {
+                Block::Cta {
+                    action: Some(a), ..
+                } => {
                     panic!("{} promise-cta should have no action, got {a:?}", card.id())
                 }
                 _ => unreachable!(),
@@ -3127,8 +3280,7 @@ mod tests {
         // serialize → deserialize で action が同じであること
         let original = hercules_male_142_detail();
         let json = serde_json::to_string(&original).expect("serialize");
-        let parsed: CardBlock =
-            serde_json::from_str(&json).expect("deserialize round-trip");
+        let parsed: CardBlock = serde_json::from_str(&json).expect("deserialize round-trip");
 
         let orig_add = cta_by_key(&original, "cta-add");
         let parsed_add = cta_by_key(&parsed, "cta-add");
@@ -3173,7 +3325,10 @@ mod tests {
         }
         // 既存の build_*_card 引数 title と一致する想定 (一覧 endpoint の headline と同期)
         // Card 内部から逆引きする代わりに既知文字列を assert (= テストコードに正解を書く)
-        assert_eq!(meta.get("p-hh-m-142").unwrap().title, "ヘラクレスオオカブト ♂ 142mm");
+        assert_eq!(
+            meta.get("p-hh-m-142").unwrap().title,
+            "ヘラクレスオオカブト ♂ 142mm"
+        );
         assert_eq!(meta.get("p-mat").unwrap().title, "完熟発酵マット 10L");
     }
 
@@ -3185,7 +3340,11 @@ mod tests {
         assert_eq!(resolve_q(Some("")), None);
         assert_eq!(resolve_q(Some("   ")), None, "whitespace-only → None");
         assert_eq!(resolve_q(Some("ヘラ")), Some("ヘラ".to_string()));
-        assert_eq!(resolve_q(Some("  ヘラ  ")), Some("ヘラ".to_string()), "trim");
+        assert_eq!(
+            resolve_q(Some("  ヘラ  ")),
+            Some("ヘラ".to_string()),
+            "trim"
+        );
     }
 
     #[test]
@@ -3215,8 +3374,14 @@ mod tests {
         assert!(matches_search("Hello World", Some("HELLO")));
         assert!(matches_search("ヘラクレスオオカブト", Some("ヘラ")));
         assert!(matches_search("ヘラクレスオオカブト", Some("オオカブト")));
-        assert!(!matches_search("ヘラクレスオオカブト", Some("ジャイアント")));
-        assert!(matches_search("anything", Some("")), "empty needle matches everything");
+        assert!(!matches_search(
+            "ヘラクレスオオカブト",
+            Some("ジャイアント")
+        ));
+        assert!(
+            matches_search("anything", Some("")),
+            "empty needle matches everything"
+        );
     }
 
     // ── collapse_page_range ───────────────────────────────────────
@@ -3230,7 +3395,11 @@ mod tests {
         // total=3, current=2 → [1,2,3]
         assert_eq!(
             collapse_page_range(2, 3),
-            vec![PageSlot::Number(1), PageSlot::Number(2), PageSlot::Number(3)]
+            vec![
+                PageSlot::Number(1),
+                PageSlot::Number(2),
+                PageSlot::Number(3)
+            ]
         );
     }
 
@@ -3288,7 +3457,11 @@ mod tests {
         let r = collapse_page_range(99, 3);
         assert_eq!(
             r,
-            vec![PageSlot::Number(1), PageSlot::Number(2), PageSlot::Number(3)]
+            vec![
+                PageSlot::Number(1),
+                PageSlot::Number(2),
+                PageSlot::Number(3)
+            ]
         );
     }
 
@@ -3319,11 +3492,20 @@ mod tests {
         .expect("ok")
         .0;
         assert_eq!(resp.cards.len(), 0);
-        assert!(resp.filter_bar.is_some(), "filter_bar must remain on 0-match search");
-        assert!(resp.search_box.is_some(), "search_box must remain on 0-match search");
+        assert!(
+            resp.filter_bar.is_some(),
+            "filter_bar must remain on 0-match search"
+        );
+        assert!(
+            resp.search_box.is_some(),
+            "search_box must remain on 0-match search"
+        );
         let p = resp.pagination.expect("pagination must remain");
         assert_eq!(p.total_count, 0);
-        assert_eq!(p.total_pages, 1, "total_pages floors at 1 for 0 results (= no /0)");
+        assert_eq!(
+            p.total_pages, 1,
+            "total_pages floors at 1 for 0 results (= no /0)"
+        );
     }
 
     /// q の case-insensitive 比較: 大文字も小文字も同じ結果。
@@ -3400,7 +3582,11 @@ mod tests {
         let live = cat.chips.iter().find(|c| c.key == "live").unwrap();
         let supply = cat.chips.iter().find(|c| c.key == "supply").unwrap();
         // 検索 ヘラ は live=1 件 にしか効かないが、count は filter ベース (4/2)
-        assert_eq!(live.count, Some(4), "count is filter-based, not search-based");
+        assert_eq!(
+            live.count,
+            Some(4),
+            "count is filter-based, not search-based"
+        );
         assert_eq!(supply.count, Some(2));
     }
 
@@ -3436,7 +3622,10 @@ mod tests {
         // controlled input 用に trim 済み q を返す
         assert_eq!(sb.query.as_deref(), Some("ネプ"));
         // submit_href には filter / sort が残り、q + page は抜けている
-        assert_eq!(sb.submit_href.as_str(), "/products?category=live&sort=price_asc");
+        assert_eq!(
+            sb.submit_href.as_str(),
+            "/products?category=live&sort=price_asc"
+        );
     }
 
     // ── pagination ────────────────────────────────────────────────
@@ -3477,10 +3666,7 @@ mod tests {
         assert!(p.prev_href.is_none());
         assert!(p.next_href.is_some(), "page 1 of 3 must have next");
         // 2 ページ目 URL に perPage=2 が引き継がれている
-        assert_eq!(
-            p.next_href.unwrap().as_str(),
-            "/products?page=2&perPage=2"
-        );
+        assert_eq!(p.next_href.unwrap().as_str(), "/products?page=2&perPage=2");
     }
 
     /// per_page=2&page=2 → 中間ページで prev / next ともに Some。
@@ -3544,9 +3730,13 @@ mod tests {
         // (= out-of-range は強調表示なし、ただし戻り導線として番号リンクは描画する)。
         assert_eq!(p.pages.len(), 3, "1/2/3 のリンクが描画される");
         assert!(
-            p.pages
-                .iter()
-                .all(|pl| matches!(pl, PageLink::Page { selected: false, .. })),
+            p.pages.iter().all(|pl| matches!(
+                pl,
+                PageLink::Page {
+                    selected: false,
+                    ..
+                }
+            )),
             "out-of-range page では selected=true な link は出ない"
         );
     }
@@ -3638,7 +3828,10 @@ mod tests {
         .expect("ok")
         .0;
         let p = resp.pagination.expect("pagination");
-        assert_eq!(p.per_page, MAX_PER_PAGE, "per_page must be capped at MAX_PER_PAGE");
+        assert_eq!(
+            p.per_page, MAX_PER_PAGE,
+            "per_page must be capped at MAX_PER_PAGE"
+        );
         // 6 件 < MAX_PER_PAGE なので全件 1 ページ
         assert_eq!(resp.cards.len(), 6);
     }
@@ -3733,7 +3926,11 @@ mod tests {
                 // header は "0 件" を表示する Text 1 件
                 assert_eq!(regions.header.len(), 1);
                 // cta は「買い物を続ける」だけ
-                assert_eq!(regions.cta.len(), 1, "empty cart → only continue shopping CTA");
+                assert_eq!(
+                    regions.cta.len(),
+                    1,
+                    "empty cart → only continue shopping CTA"
+                );
             }
             other => panic!("expected Cart variant, got {:?}", other.id()),
         }
@@ -3773,18 +3970,12 @@ mod tests {
 
                 // qty == 2 なので decrement = SetQty(qty=1)
                 let dec = decrement_action.as_ref().expect("decrement should be Some");
-                assert!(matches!(
-                    dec,
-                    LineItemAction::SetQty { qty: 1, .. }
-                ));
+                assert!(matches!(dec, LineItemAction::SetQty { qty: 1, .. }));
                 assert!(matches!(
                     increment_action,
                     LineItemAction::SetQty { qty: 3, .. }
                 ));
-                assert!(matches!(
-                    remove_action,
-                    LineItemAction::Remove { .. }
-                ));
+                assert!(matches!(remove_action, LineItemAction::Remove { .. }));
             }
             other => panic!("expected LineItem, got {:?}", other.key()),
         }
@@ -3822,8 +4013,13 @@ mod tests {
             panic!("expected Cart");
         };
         match &regions.items[0] {
-            Block::LineItem { decrement_action, .. } => {
-                assert!(decrement_action.is_none(), "qty=1 → decrement disabled (None)");
+            Block::LineItem {
+                decrement_action, ..
+            } => {
+                assert!(
+                    decrement_action.is_none(),
+                    "qty=1 → decrement disabled (None)"
+                );
             }
             _ => panic!("expected LineItem"),
         }
@@ -3875,7 +4071,8 @@ mod tests {
         let card = build_cart_card_with_checkout(snap, complete_checkout());
 
         // ValidateKeys が通る = key (LineItem / FormField / picker 含む) が一意
-        card.validate_keys().expect("multi-item cart keys must be unique");
+        card.validate_keys()
+            .expect("multi-item cart keys must be unique");
 
         let CardBlock::Cart { regions, .. } = &card else {
             panic!("expected Cart");
@@ -3883,7 +4080,12 @@ mod tests {
         assert_eq!(regions.items.len(), 3);
         // subtotal = 48000 + 36000 + 7400 = 91400, total = + 1800 = 93200
         match &regions.summary[0] {
-            Block::OrderSummary { total_amount, total_qty, subtotal_amount, .. } => {
+            Block::OrderSummary {
+                total_amount,
+                total_qty,
+                subtotal_amount,
+                ..
+            } => {
                 assert_eq!(*subtotal_amount, 91400);
                 assert_eq!(*total_amount, 93200, "subtotal 91400 + shipping 1800");
                 assert_eq!(*total_qty, 9, "1 + 3 + 5 = 9");
@@ -3913,7 +4115,10 @@ mod tests {
         assert!(json.contains(r#""type":"remove""#), "{json}");
         // Phase 8: form_field / shipping_method_picker
         assert!(json.contains(r#""type":"form_field""#), "{json}");
-        assert!(json.contains(r#""type":"shipping_method_picker""#), "{json}");
+        assert!(
+            json.contains(r#""type":"shipping_method_picker""#),
+            "{json}"
+        );
         // Action も snake_case tag
         assert!(json.contains(r#""type":"patch_field""#), "{json}");
         assert!(json.contains(r#""type":"patch_method""#), "{json}");
@@ -3995,7 +4200,9 @@ mod tests {
         ];
         for (i, b) in regions.shipping.iter().enumerate() {
             match b {
-                Block::FormField { name, patch_action, .. } => {
+                Block::FormField {
+                    name, patch_action, ..
+                } => {
                     assert_eq!(name, expected_names[i]);
                     let CheckoutFieldAction::PatchField { field_name } = patch_action;
                     assert_eq!(field_name, name, "patch_action.field_name == name");

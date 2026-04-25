@@ -116,7 +116,11 @@ pub(crate) fn shipping_amount_for(id: &str) -> i64 {
     SHIPPING_METHODS
         .iter()
         .find(|m| m.id == id)
-        .or_else(|| SHIPPING_METHODS.iter().find(|m| m.id == DEFAULT_SHIPPING_METHOD_ID))
+        .or_else(|| {
+            SHIPPING_METHODS
+                .iter()
+                .find(|m| m.id == DEFAULT_SHIPPING_METHOD_ID)
+        })
         .map(|m| m.amount_yen)
         .unwrap_or(0)
 }

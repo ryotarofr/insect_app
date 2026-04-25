@@ -18,6 +18,8 @@ pub mod validate;
 // Phase 1 では一部しか直接利用しないが、SDUI モジュールの公開 API として
 // 揃えて re-export しておく (binary crate のため `unused_imports` を抑制)。
 #[allow(unused_imports)]
+pub use analytics::{AnalyticsEvent, AnalyticsEventBatch, AnalyticsEventType};
+#[allow(unused_imports)]
 pub use blocks::{
     BadgeRole, Block, CardBlock, CartVariant, CheckoutFieldAction, CheckoutMethodAction, CtaAction,
     CtaIntent, Currency, FormFieldKind, Href, HrefError, I18nKey, LineItemAction, Localizable,
@@ -27,13 +29,11 @@ pub use blocks::{
 #[allow(unused_imports)]
 pub use experiment::{Experiment, ExperimentError};
 #[allow(unused_imports)]
-pub use regions::{CartRegions, ProductDetailRegions, ProductFeatureRegions};
-#[allow(unused_imports)]
-pub use validate::{KeyConflict, ValidateKeys};
-#[allow(unused_imports)]
-pub use analytics::{AnalyticsEvent, AnalyticsEventBatch, AnalyticsEventType};
-#[allow(unused_imports)]
 pub use list::{
     FilterBar, FilterChipItem, FilterGroup, PageLink, Pagination, ProductListResponse, SearchBox,
     SortBar, SortOption,
 };
+#[allow(unused_imports)]
+pub use regions::{CartRegions, ProductDetailRegions, ProductFeatureRegions};
+#[allow(unused_imports)]
+pub use validate::{KeyConflict, ValidateKeys};

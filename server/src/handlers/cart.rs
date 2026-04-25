@@ -17,9 +17,9 @@
 //!   - SQLite or Postgres 永続化
 //!   - 在庫ロック (decrement on add, restore on undo)
 
-use std::sync::{Mutex, OnceLock};
 use std::collections::HashMap;
 use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::{Mutex, OnceLock};
 
 use axum::{Json, extract::Path, http::StatusCode};
 use serde::{Deserialize, Serialize};
@@ -49,10 +49,8 @@ pub(crate) fn cart_store() -> &'static Mutex<HashMap<String, CartEntry>> {
 /// (= 呼び出し側が long lock を持たない)。
 pub(crate) fn snapshot_cart() -> Vec<(String, CartEntry)> {
     let store = cart_store().lock().expect("cart store mutex poisoned");
-    let mut entries: Vec<(String, CartEntry)> = store
-        .iter()
-        .map(|(k, v)| (k.clone(), v.clone()))
-        .collect();
+    let mut entries: Vec<(String, CartEntry)> =
+        store.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
     // token 昇順: フロントの行順を deterministic に保つ (= テストも書きやすい)
     entries.sort_by(|a, b| a.0.cmp(&b.0));
     entries
@@ -222,7 +220,9 @@ mod tests {
         let token = res.0.undo_token.clone();
         assert!(token.starts_with("undo_"));
 
-        let status = delete_cart_item(Path(token.clone())).await.expect("delete ok");
+        let status = delete_cart_item(Path(token.clone()))
+            .await
+            .expect("delete ok");
         assert_eq!(status, StatusCode::NO_CONTENT);
 
         // 二重削除は 404
@@ -347,17 +347,17 @@ mod tests {
         .unwrap();
         let token = r.0.undo_token;
 
-        let pr = patch_cart_item(
-            Path(token.clone()),
-            Json(PatchCartItemRequest { qty: 5 }),
-        )
-        .await
-        .expect("patch ok");
+        let pr = patch_cart_item(Path(token.clone()), Json(PatchCartItemRequest { qty: 5 }))
+            .await
+            .expect("patch ok");
         assert_eq!(pr.0.cart_count, 5, "qty 2 → 5 で cartCount が同期する");
 
         // snapshot 経由で実際に書き換わっているか確認
         let snap = snapshot_cart();
-        let entry = snap.iter().find(|(t, _)| t == &token).expect("entry exists");
+        let entry = snap
+            .iter()
+            .find(|(t, _)| t == &token)
+            .expect("entry exists");
         assert_eq!(entry.1.qty, 5);
     }
 
@@ -372,9 +372,7 @@ mod tests {
         .await
         .unwrap();
 
-        match patch_cart_item(Path(r.0.undo_token), Json(PatchCartItemRequest { qty: 0 }))
-            .await
-        {
+        match patch_cart_item(Path(r.0.undo_token), Json(PatchCartItemRequest { qty: 0 })).await {
             Err(AppError::BadRequest(_)) => {}
             other => panic!("expected BadRequest on qty=0, got {other:?}"),
         }

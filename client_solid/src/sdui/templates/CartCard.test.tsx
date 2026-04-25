@@ -36,6 +36,8 @@ const emptyCart = (): CartCardBlock => ({
       },
     ],
     items: [],
+    shipping: [],
+    shippingMethod: [],
     summary: [],
     cta: [
       {
@@ -92,6 +94,8 @@ const filledCart = (): CartCardBlock => ({
         removeAction: { type: "remove", token: "tok-b" },
       },
     ],
+    shipping: [],
+    shippingMethod: [],
     summary: [
       {
         type: "order_summary",

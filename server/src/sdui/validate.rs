@@ -52,7 +52,7 @@ fn check(seen: &mut HashSet<String>, k: &str) -> Result<(), KeyConflict> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sdui::blocks::{Block, BadgeRole, CardBlock, Localizable, ProductFeatureVariant};
+    use crate::sdui::blocks::{BadgeRole, Block, CardBlock, Localizable, ProductFeatureVariant};
     use crate::sdui::regions::ProductFeatureRegions;
 
     fn raw(text: &str) -> Localizable {
