@@ -1,66 +1,89 @@
-//! `/api/v1/cart` 系の SDUI Action エンドポイント (Phase 2.5)。
+//! `/api/v1/cart` 系の SDUI Action エンドポイント (Phase 2.5 / Phase 9.E で DB 化)。
 //!
 //! - `POST   /api/v1/cart`                → 追加。`undoToken` を返す
 //! - `DELETE /api/v1/cart/items/{token}`  → 取消 (Toast の Undo ボタンが叩く)
+//! - `PATCH  /api/v1/cart/items/{token}`  → qty 直接書き換え (LineItem の +/- ボタン)
 //!
-//! **設計方針 (MVP)**:
-//!   - 永続化なし。プロセス内 `Mutex<HashMap<token, item>>` だけ。
-//!   - セッション分離なし (single-user 前提)。Cookie ベース session は別 PR。
-//!   - レスポンスは camelCase JSON で `{ cartCount, undoToken }`。クライアントは
-//!     `cartCount` を表示・通知に使い、`undoToken` を Toast の Undo ボタンに
-//!     渡す。Undo クリックで `DELETE /cart/items/{token}` を呼ぶだけ。
-//!   - `qty` は body の数量 (デフォルト 1)。SDUI 上は `CtaAction::AddToCart.qty`
-//!     から渡される。負数や 0 は 400。
+//! **Phase 9.E (= 本 PR で完了)**:
+//!   - 旧 in-memory `cart_store` グローバル (= `Mutex<HashMap<token, entry>>`) を撤去。
+//!   - `repos::cart_items` 経由で DB / in-memory fallback どちらでも動く構成へ移行。
+//!   - cart は `SessionId` (= cookie middleware が発行する UUID) で分離される。
+//!   - `productId` (= public_id) は INSERT 時に `repos::products::find_uuid_for_public_id`
+//!     で UUID 解決し、`cart_items.product_id` (UUID) に格納する。
+//!   - `undoToken` は `cart_items.id` UUID の文字列表現 (= 旧 "undo_<n>" から変更)。
+//!     破壊的変更だが client 側はトークンを opaque に扱う設計なので問題なし。
 //!
-//! **将来 (Phase 3+)**:
-//!   - Cookie ベース session ID で分離
-//!   - SQLite or Postgres 永続化
-//!   - 在庫ロック (decrement on add, restore on undo)
+//! **将来 (Phase 9.E+)**:
+//!   - 在庫ロック (decrement on add / restore on undo)
+//!   - login 時の session → user_id 引き継ぎ (= `repos::cart_items::promote_session_to_user`)
 
-use std::collections::HashMap;
-use std::sync::atomic::{AtomicU64, Ordering};
-use std::sync::{Mutex, OnceLock};
-
-use axum::{Json, extract::Path, http::StatusCode};
+use axum::{
+    Extension, Json,
+    extract::{Path, State},
+    http::StatusCode,
+};
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::error::AppError;
+use crate::repos::{cart_items, products};
+use crate::session::SessionId;
+use crate::state::AppState;
 
-/// プロセス内カートストア。`token` をキーにして「このトークンが指すアイテムは何個」
-/// を覚えておく。Undo は token を投げ返してきて該当エントリを引き算する。
+/// snapshot_cart の戻り値型。`product_id` は public_id (= "p-hh-m-142") として保持し、
+/// 既存 cards.rs / checkout.rs の build ロジックを最小変更で動かす。
 ///
-/// **Phase 7 で pub(crate)**: cards handler が cart card を組むときに store を読むため。
-/// 書き込みは依然としてこのモジュール経由 (add / delete / patch) のみ。
+/// **Phase 9.E**: 旧 `Mutex<HashMap>` 由来の構造体だったが、本 PR で repos::cart_items から
+/// 復元する pure data structure に変わった (= snapshot 専用)。
 #[derive(Debug, Clone)]
 pub(crate) struct CartEntry {
     pub product_id: String,
     pub qty: u32,
 }
 
-pub(crate) fn cart_store() -> &'static Mutex<HashMap<String, CartEntry>> {
-    static STORE: OnceLock<Mutex<HashMap<String, CartEntry>>> = OnceLock::new();
-    STORE.get_or_init(|| Mutex::new(HashMap::new()))
-}
+// ──────────────────────────────────────────────────────────────────────
+// snapshot helpers
+// ──────────────────────────────────────────────────────────────────────
 
-/// **Phase 7**: cart 全件のスナップショットを返す (token 昇順で安定させる)。
+/// `(SessionId, AppState)` 組から cart の現在内容を返す。
 ///
-/// `cards::get_cart_card` が cart card を組み立てるときに使う。
-/// 戻り値が `Vec<(String, CartEntry)>` なのは、Mutex を握り続けず即解放するため
-/// (= 呼び出し側が long lock を持たない)。
-pub(crate) fn snapshot_cart() -> Vec<(String, CartEntry)> {
-    let store = cart_store().lock().expect("cart store mutex poisoned");
-    let mut entries: Vec<(String, CartEntry)> =
-        store.iter().map(|(k, v)| (k.clone(), v.clone())).collect();
-    // token 昇順: フロントの行順を deterministic に保つ (= テストも書きやすい)
-    entries.sort_by(|a, b| a.0.cmp(&b.0));
-    entries
+/// 戻り値は `Vec<(token_hex, CartEntry)>` で id 昇順 (= deterministic / 表示順安定)。
+/// product_uuid → public_id の逆引きは `repos::products::find_by_id` で 1 件ずつ解決
+/// (= MVP は cart 内の行数が小さいので N+1 でも実用上問題なし。性能要件が出たら
+/// JOIN クエリ or `find_many_by_ids` バッチ取得に切替)。
+pub async fn snapshot_cart_for_session(
+    state: &AppState,
+    session_id: Uuid,
+) -> Result<Vec<(String, CartEntry)>, AppError> {
+    let rows = cart_items::find_by_session_id(state.db(), session_id)
+        .await
+        .map_err(|e| AppError::BadRequest(format!("cart fetch: {e}")))?;
+
+    let mut result: Vec<(String, CartEntry)> = Vec::with_capacity(rows.len());
+    for row in rows {
+        let public_id = match products::find_by_id(state.db(), row.product_id).await {
+            Ok(Some(p)) => p.row.public_id,
+            // 商品マスタから消えた行 (= ON DELETE CASCADE で消えるはずだが防御的に) は
+            // public_id 不明として skip する。snapshot に出ないので UI も表示しない。
+            _ => continue,
+        };
+        let qty = u32::try_from(row.qty).unwrap_or(0);
+        result.push((row.id.to_string(), CartEntry { product_id: public_id, qty }));
+    }
+    // id (UUID) 順は str ソートで一貫する。tests / UI が deterministic に。
+    result.sort_by(|a, b| a.0.cmp(&b.0));
+    Ok(result)
 }
 
-/// undo token の単調増加カウンタ。プロセス内 unique で十分。
-fn next_token() -> String {
-    static COUNTER: AtomicU64 = AtomicU64::new(1);
-    let n = COUNTER.fetch_add(1, Ordering::Relaxed);
-    format!("undo_{n}")
+/// session 内の qty 合計 (= cart_count)。`AddToCartResponse.cart_count` 等で使う。
+async fn cart_total_qty_for_session(
+    state: &AppState,
+    session_id: Uuid,
+) -> Result<u32, AppError> {
+    let rows = cart_items::find_by_session_id(state.db(), session_id)
+        .await
+        .map_err(|e| AppError::BadRequest(format!("cart fetch: {e}")))?;
+    Ok(rows.iter().map(|r| u32::try_from(r.qty).unwrap_or(0)).sum())
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -85,7 +108,7 @@ fn default_qty() -> u32 {
 pub struct AddToCartResponse {
     /// 追加後のカート総点数 (qty の合計)。
     pub cart_count: u32,
-    /// このアクション 1 件を取り消すためのトークン。
+    /// このアクション 1 件を取り消すためのトークン (= cart_items.id の UUID 文字列)。
     pub undo_token: String,
 }
 
@@ -95,6 +118,8 @@ pub struct AddToCartResponse {
 
 /// `POST /api/v1/cart` — カートに商品を追加し、Undo 用トークンを返す。
 pub async fn add_to_cart(
+    State(state): State<AppState>,
+    Extension(session_id): Extension<SessionId>,
     Json(req): Json<AddToCartRequest>,
 ) -> Result<Json<AddToCartResponse>, AppError> {
     if req.product_id.is_empty() {
@@ -104,33 +129,54 @@ pub async fn add_to_cart(
         return Err(AppError::BadRequest("qty must be >= 1".to_string()));
     }
 
-    let token = next_token();
-    let mut store = cart_store().lock().expect("cart store mutex poisoned");
-    store.insert(
-        token.clone(),
-        CartEntry {
-            product_id: req.product_id,
-            qty: req.qty,
+    // public_id → UUID 解決 (= pool 有り時 DB lookup / 無し時は memory_product_uuid map)
+    let product_uuid = products::find_uuid_for_public_id(state.db(), &req.product_id)
+        .await
+        .map_err(|e| AppError::BadRequest(format!("product lookup: {e}")))?
+        .ok_or_else(|| {
+            AppError::BadRequest(format!("unknown productId: {}", req.product_id))
+        })?;
+
+    // INSERT cart_items
+    let qty_i32 = i32::try_from(req.qty).map_err(|_| {
+        AppError::BadRequest(format!("qty too large: {}", req.qty))
+    })?;
+    let id = cart_items::insert(
+        state.db(),
+        cart_items::CartItemInsert {
+            session_id: Some(session_id.0),
+            user_id: None,
+            product_id: product_uuid,
+            qty: qty_i32,
         },
-    );
-    let cart_count: u32 = store.values().map(|e| e.qty).sum();
+    )
+    .await
+    .map_err(|e| match e {
+        cart_items::CartItemRepoError::Invalid(msg) => AppError::BadRequest(msg),
+        other => AppError::BadRequest(format!("cart insert: {other}")),
+    })?;
+
+    let cart_count = cart_total_qty_for_session(&state, session_id.0).await?;
 
     Ok(Json(AddToCartResponse {
         cart_count,
-        undo_token: token,
+        undo_token: id.to_string(),
     }))
 }
 
-/// `DELETE /api/v1/cart/items/{token}` — Undo (= 該当 token のエントリを削除)。
+/// `DELETE /api/v1/cart/items/{token}` — Undo (= 該当 token の cart_items 行を物理削除)。
 ///
 /// 既に消えていれば 404。冪等にしないのは「Undo は 1 回しかできない」UX
 /// にするため (2 度 Undo で復活してしまうと驚き)。
-pub async fn delete_cart_item(Path(token): Path<String>) -> Result<StatusCode, AppError> {
-    let mut store = cart_store().lock().expect("cart store mutex poisoned");
-    if store.remove(&token).is_some() {
-        Ok(StatusCode::NO_CONTENT)
-    } else {
-        Err(AppError::NotFound)
+pub async fn delete_cart_item(
+    State(state): State<AppState>,
+    Path(token): Path<String>,
+) -> Result<StatusCode, AppError> {
+    let id = parse_token(&token)?;
+    match cart_items::delete(state.db(), id).await {
+        Ok(()) => Ok(StatusCode::NO_CONTENT),
+        Err(cart_items::CartItemRepoError::NotFound(_)) => Err(AppError::NotFound),
+        Err(other) => Err(AppError::BadRequest(format!("cart delete: {other}"))),
     }
 }
 
@@ -157,38 +203,47 @@ pub struct PatchCartItemResponse {
 /// **設計**:
 ///   - 該当 token が無ければ 404 (= add 経由でしか line は生まれない)
 ///   - `qty == 0` は 400 (= 削除は DELETE。意味の混線を避ける)
-///   - 上限 `MAX_QTY_PER_LINE` を超えたら 400 (= UI 側でも +/- の上限を吸収するが
-///     直叩き耐性として server で再チェック)
+///   - 上限 99 を超えたら 400 (= cart_items DB CHECK と同値)
 ///
 /// **冪等性**: 同じ qty を 2 回投げても結果は同じ (= PATCH の RFC 7231 準拠)。
 pub async fn patch_cart_item(
+    State(state): State<AppState>,
+    Extension(session_id): Extension<SessionId>,
     Path(token): Path<String>,
     Json(req): Json<PatchCartItemRequest>,
 ) -> Result<Json<PatchCartItemResponse>, AppError> {
-    const MAX_QTY_PER_LINE: u32 = 99;
     if req.qty == 0 {
         return Err(AppError::BadRequest(
             "qty must be >= 1 (use DELETE to remove)".to_string(),
         ));
     }
-    if req.qty > MAX_QTY_PER_LINE {
-        return Err(AppError::BadRequest(format!(
-            "qty must be <= {MAX_QTY_PER_LINE}"
-        )));
+    let qty_i32 = i32::try_from(req.qty).unwrap_or(i32::MAX);
+    let id = parse_token(&token)?;
+
+    match cart_items::set_qty(state.db(), id, qty_i32).await {
+        Ok(()) => {}
+        Err(cart_items::CartItemRepoError::NotFound(_)) => return Err(AppError::NotFound),
+        Err(cart_items::CartItemRepoError::Invalid(msg)) => {
+            return Err(AppError::BadRequest(msg))
+        }
+        Err(other) => return Err(AppError::BadRequest(format!("cart update: {other}"))),
     }
 
-    let mut store = cart_store().lock().expect("cart store mutex poisoned");
-    let entry = store.get_mut(&token).ok_or(AppError::NotFound)?;
-    entry.qty = req.qty;
-    let cart_count: u32 = store.values().map(|e| e.qty).sum();
+    let cart_count = cart_total_qty_for_session(&state, session_id.0).await?;
     Ok(Json(PatchCartItemResponse { cart_count }))
 }
 
-// テスト専用: store をクリアする (テストの間で状態がリークしないよう)
+// ──────────────────────────────────────────────────────────────────────
+// internal helpers
+// ──────────────────────────────────────────────────────────────────────
+
+fn parse_token(token: &str) -> Result<Uuid, AppError> {
+    Uuid::parse_str(token).map_err(|_| AppError::NotFound)
+}
+
 #[cfg(test)]
 pub(crate) fn reset_cart_for_test() {
-    let mut store = cart_store().lock().expect("cart store mutex poisoned");
-    store.clear();
+    cart_items::reset_memory_for_test();
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -199,34 +254,49 @@ pub(crate) fn reset_cart_for_test() {
 mod tests {
     use super::*;
 
-    /// **重要**: テストは `cargo test` 内で並列実行されるため、グローバル store を
-    /// 触る各テストは冒頭で `reset_cart_for_test()` を呼ぶ + serial 実行のため
-    /// `static GUARD: Mutex<()>` で逐次化する。
+    /// **重要**: グローバル in-memory store を触る各テストは GUARD で逐次化する。
+    /// reset_cart_for_test() を冒頭で呼ばないと前テストの cart が混ざる。
     use std::sync::Mutex as StdMutex;
     static GUARD: StdMutex<()> = StdMutex::new(());
+
+    fn ext(session_id: Uuid) -> Extension<SessionId> {
+        Extension(SessionId(session_id))
+    }
+
+    fn st() -> State<AppState> {
+        State(AppState::default())
+    }
 
     #[tokio::test]
     async fn add_then_delete_roundtrip() {
         let _g = GUARD.lock().unwrap();
         reset_cart_for_test();
+        let session = Uuid::new_v4();
 
-        let res = add_to_cart(Json(AddToCartRequest {
-            product_id: "p-hh-m-142".to_string(),
-            qty: 1,
-        }))
+        let res = add_to_cart(
+            st(),
+            ext(session),
+            Json(AddToCartRequest {
+                product_id: "p-hh-m-142".to_string(),
+                qty: 1,
+            }),
+        )
         .await
         .expect("add ok");
         assert_eq!(res.0.cart_count, 1);
         let token = res.0.undo_token.clone();
-        assert!(token.starts_with("undo_"));
+        assert!(
+            Uuid::parse_str(&token).is_ok(),
+            "token は UUID hex 形式 (Phase 9.E 移行)、got: {token}"
+        );
 
-        let status = delete_cart_item(Path(token.clone()))
+        let status = delete_cart_item(st(), Path(token.clone()))
             .await
             .expect("delete ok");
         assert_eq!(status, StatusCode::NO_CONTENT);
 
         // 二重削除は 404
-        match delete_cart_item(Path(token)).await {
+        match delete_cart_item(st(), Path(token)).await {
             Err(AppError::NotFound) => {}
             other => panic!("expected NotFound on double delete, got {other:?}"),
         }
@@ -236,30 +306,43 @@ mod tests {
     async fn cart_count_accumulates_across_adds() {
         let _g = GUARD.lock().unwrap();
         reset_cart_for_test();
+        let session = Uuid::new_v4();
 
-        let r1 = add_to_cart(Json(AddToCartRequest {
-            product_id: "a".to_string(),
-            qty: 1,
-        }))
+        let r1 = add_to_cart(
+            st(),
+            ext(session),
+            Json(AddToCartRequest {
+                product_id: "p-hh-m-142".to_string(),
+                qty: 1,
+            }),
+        )
         .await
         .unwrap();
         assert_eq!(r1.0.cart_count, 1);
 
-        let r2 = add_to_cart(Json(AddToCartRequest {
-            product_id: "b".to_string(),
-            qty: 3,
-        }))
+        let r2 = add_to_cart(
+            st(),
+            ext(session),
+            Json(AddToCartRequest {
+                product_id: "p-cat-l".to_string(),
+                qty: 3,
+            }),
+        )
         .await
         .unwrap();
         assert_eq!(r2.0.cart_count, 4, "1 + 3 = 4");
 
         // r1 だけ undo
-        delete_cart_item(Path(r1.0.undo_token)).await.unwrap();
-        // 残り: b の qty=3 だけ。新規追加で確認。
-        let r3 = add_to_cart(Json(AddToCartRequest {
-            product_id: "c".to_string(),
-            qty: 2,
-        }))
+        delete_cart_item(st(), Path(r1.0.undo_token)).await.unwrap();
+        // 残り: cat-l の qty=3 だけ。新規追加で確認。
+        let r3 = add_to_cart(
+            st(),
+            ext(session),
+            Json(AddToCartRequest {
+                product_id: "p-jelly".to_string(),
+                qty: 2,
+            }),
+        )
         .await
         .unwrap();
         assert_eq!(r3.0.cart_count, 5, "3 + 2 = 5 after undoing r1");
@@ -269,10 +352,14 @@ mod tests {
     async fn empty_product_id_is_400() {
         let _g = GUARD.lock().unwrap();
         reset_cart_for_test();
-        match add_to_cart(Json(AddToCartRequest {
-            product_id: "".to_string(),
-            qty: 1,
-        }))
+        match add_to_cart(
+            st(),
+            ext(Uuid::new_v4()),
+            Json(AddToCartRequest {
+                product_id: "".to_string(),
+                qty: 1,
+            }),
+        )
         .await
         {
             Err(AppError::BadRequest(_)) => {}
@@ -284,10 +371,14 @@ mod tests {
     async fn zero_qty_is_400() {
         let _g = GUARD.lock().unwrap();
         reset_cart_for_test();
-        match add_to_cart(Json(AddToCartRequest {
-            product_id: "x".to_string(),
-            qty: 0,
-        }))
+        match add_to_cart(
+            st(),
+            ext(Uuid::new_v4()),
+            Json(AddToCartRequest {
+                product_id: "p-hh-m-142".to_string(),
+                qty: 0,
+            }),
+        )
         .await
         {
             Err(AppError::BadRequest(_)) => {}
@@ -296,18 +387,45 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn unknown_product_id_is_400() {
+        let _g = GUARD.lock().unwrap();
+        reset_cart_for_test();
+        match add_to_cart(
+            st(),
+            ext(Uuid::new_v4()),
+            Json(AddToCartRequest {
+                product_id: "p-galaxy".to_string(), // memory_product_uuid に無い
+                qty: 1,
+            }),
+        )
+        .await
+        {
+            Err(AppError::BadRequest(msg)) => {
+                assert!(msg.contains("p-galaxy"), "expected msg to contain id, got {msg}");
+            }
+            other => panic!("expected BadRequest on unknown product, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
     async fn delete_unknown_token_is_404() {
         let _g = GUARD.lock().unwrap();
         reset_cart_for_test();
-        match delete_cart_item(Path("undo_nope".to_string())).await {
+        // 不正な (UUID parse 失敗) トークン → 404
+        match delete_cart_item(st(), Path("undo_nope".to_string())).await {
             Err(AppError::NotFound) => {}
             other => panic!("expected NotFound on unknown token, got {other:?}"),
+        }
+        // 形は valid UUID だが存在しない → 404
+        let random = Uuid::new_v4();
+        match delete_cart_item(st(), Path(random.to_string())).await {
+            Err(AppError::NotFound) => {}
+            other => panic!("expected NotFound on missing token, got {other:?}"),
         }
     }
 
     #[test]
     fn add_request_deserializes_camel_case() {
-        // フロントから送られる JSON (camelCase) を正しく受けられること
         let json = r#"{"productId":"p-x","qty":2}"#;
         let req: AddToCartRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.product_id, "p-x");
@@ -325,35 +443,49 @@ mod tests {
     fn add_response_serializes_camel_case() {
         let res = AddToCartResponse {
             cart_count: 3,
-            undo_token: "undo_42".to_string(),
+            undo_token: "550e8400-e29b-41d4-a716-446655440000".to_string(),
         };
         let json = serde_json::to_string(&res).unwrap();
         assert!(json.contains(r#""cartCount":3"#), "{json}");
-        assert!(json.contains(r#""undoToken":"undo_42""#), "{json}");
+        assert!(
+            json.contains(r#""undoToken":"550e8400-e29b-41d4-a716-446655440000""#),
+            "{json}"
+        );
     }
 
-    // ── Phase 7: PATCH /cart/items/:token ────────────────────────
+    // ── PATCH /cart/items/:token ─────────────────────────────────────
 
     #[tokio::test]
     async fn patch_qty_updates_entry() {
         let _g = GUARD.lock().unwrap();
         reset_cart_for_test();
+        let session = Uuid::new_v4();
 
-        let r = add_to_cart(Json(AddToCartRequest {
-            product_id: "p-x".to_string(),
-            qty: 2,
-        }))
+        let r = add_to_cart(
+            st(),
+            ext(session),
+            Json(AddToCartRequest {
+                product_id: "p-hh-m-142".to_string(),
+                qty: 2,
+            }),
+        )
         .await
         .unwrap();
         let token = r.0.undo_token;
 
-        let pr = patch_cart_item(Path(token.clone()), Json(PatchCartItemRequest { qty: 5 }))
-            .await
-            .expect("patch ok");
+        let pr = patch_cart_item(
+            st(),
+            ext(session),
+            Path(token.clone()),
+            Json(PatchCartItemRequest { qty: 5 }),
+        )
+        .await
+        .expect("patch ok");
         assert_eq!(pr.0.cart_count, 5, "qty 2 → 5 で cartCount が同期する");
 
-        // snapshot 経由で実際に書き換わっているか確認
-        let snap = snapshot_cart();
+        let snap = snapshot_cart_for_session(&AppState::default(), session)
+            .await
+            .unwrap();
         let entry = snap
             .iter()
             .find(|(t, _)| t == &token)
@@ -365,14 +497,26 @@ mod tests {
     async fn patch_qty_zero_is_400() {
         let _g = GUARD.lock().unwrap();
         reset_cart_for_test();
-        let r = add_to_cart(Json(AddToCartRequest {
-            product_id: "p-x".to_string(),
-            qty: 1,
-        }))
+        let session = Uuid::new_v4();
+        let r = add_to_cart(
+            st(),
+            ext(session),
+            Json(AddToCartRequest {
+                product_id: "p-hh-m-142".to_string(),
+                qty: 1,
+            }),
+        )
         .await
         .unwrap();
 
-        match patch_cart_item(Path(r.0.undo_token), Json(PatchCartItemRequest { qty: 0 })).await {
+        match patch_cart_item(
+            st(),
+            ext(session),
+            Path(r.0.undo_token),
+            Json(PatchCartItemRequest { qty: 0 }),
+        )
+        .await
+        {
             Err(AppError::BadRequest(_)) => {}
             other => panic!("expected BadRequest on qty=0, got {other:?}"),
         }
@@ -382,13 +526,20 @@ mod tests {
     async fn patch_qty_too_large_is_400() {
         let _g = GUARD.lock().unwrap();
         reset_cart_for_test();
-        let r = add_to_cart(Json(AddToCartRequest {
-            product_id: "p-x".to_string(),
-            qty: 1,
-        }))
+        let session = Uuid::new_v4();
+        let r = add_to_cart(
+            st(),
+            ext(session),
+            Json(AddToCartRequest {
+                product_id: "p-hh-m-142".to_string(),
+                qty: 1,
+            }),
+        )
         .await
         .unwrap();
         match patch_cart_item(
+            st(),
+            ext(session),
             Path(r.0.undo_token),
             Json(PatchCartItemRequest { qty: 100 }),
         )
@@ -404,7 +555,9 @@ mod tests {
         let _g = GUARD.lock().unwrap();
         reset_cart_for_test();
         match patch_cart_item(
-            Path("undo_nope".to_string()),
+            st(),
+            ext(Uuid::new_v4()),
+            Path(Uuid::new_v4().to_string()),
             Json(PatchCartItemRequest { qty: 2 }),
         )
         .await
@@ -418,34 +571,75 @@ mod tests {
     async fn snapshot_returns_token_sorted() {
         let _g = GUARD.lock().unwrap();
         reset_cart_for_test();
-        // 3 件 add (token は単調増加なので追加順)
-        let _ = add_to_cart(Json(AddToCartRequest {
-            product_id: "a".to_string(),
-            qty: 1,
-        }))
+        let session = Uuid::new_v4();
+        // 3 件 add (token は UUID なので順序は random だが str ソートで安定)
+        let _ = add_to_cart(
+            st(),
+            ext(session),
+            Json(AddToCartRequest {
+                product_id: "p-hh-m-142".to_string(),
+                qty: 1,
+            }),
+        )
         .await
         .unwrap();
-        let _ = add_to_cart(Json(AddToCartRequest {
-            product_id: "b".to_string(),
-            qty: 2,
-        }))
+        let _ = add_to_cart(
+            st(),
+            ext(session),
+            Json(AddToCartRequest {
+                product_id: "p-cat-l".to_string(),
+                qty: 2,
+            }),
+        )
         .await
         .unwrap();
-        let _ = add_to_cart(Json(AddToCartRequest {
-            product_id: "c".to_string(),
-            qty: 3,
-        }))
+        let _ = add_to_cart(
+            st(),
+            ext(session),
+            Json(AddToCartRequest {
+                product_id: "p-jelly".to_string(),
+                qty: 3,
+            }),
+        )
         .await
         .unwrap();
 
-        let snap = snapshot_cart();
+        let snap = snapshot_cart_for_session(&AppState::default(), session)
+            .await
+            .unwrap();
         assert_eq!(snap.len(), 3);
-        // 文字列ソートなので undo_10... の落とし穴があるが MVP のカウンタは
-        // 単独テスト内では桁揃いするので OK。実用上は数値ソートに直したい。
         let tokens: Vec<&str> = snap.iter().map(|(t, _)| t.as_str()).collect();
         let mut sorted = tokens.clone();
         sorted.sort();
         assert_eq!(tokens, sorted);
+    }
+
+    #[tokio::test]
+    async fn cart_is_isolated_per_session() {
+        let _g = GUARD.lock().unwrap();
+        reset_cart_for_test();
+        let session_a = Uuid::new_v4();
+        let session_b = Uuid::new_v4();
+
+        let _ = add_to_cart(
+            st(),
+            ext(session_a),
+            Json(AddToCartRequest {
+                product_id: "p-hh-m-142".to_string(),
+                qty: 2,
+            }),
+        )
+        .await
+        .unwrap();
+
+        let snap_a = snapshot_cart_for_session(&AppState::default(), session_a)
+            .await
+            .unwrap();
+        let snap_b = snapshot_cart_for_session(&AppState::default(), session_b)
+            .await
+            .unwrap();
+        assert_eq!(snap_a.len(), 1, "session A は 1 件");
+        assert!(snap_b.is_empty(), "session B には影響しない");
     }
 
     #[test]

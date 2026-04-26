@@ -235,9 +235,16 @@ pub fn reset_memory_for_test() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex as StdMutex;
+
+    /// グローバル in-memory store の競合を避けるため、reset 経由のテストは
+    /// 1 つずつ走らせる。pure helper 系 (= store を触らない) は GUARD 不要だが
+    /// 揃えるために全テストで取得する。
+    static GUARD: StdMutex<()> = StdMutex::new(());
 
     #[test]
     fn cookie_uuid_to_token_hash_is_phc_shaped() {
+        let _g = GUARD.lock().unwrap();
         let id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
         let hash = cookie_uuid_to_token_hash(id);
         // 0004_users.sql の CHECK (token_hash LIKE '$%$%$%') を最低限満たす
@@ -248,6 +255,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_create_and_find_by_id() {
+        let _g = GUARD.lock().unwrap();
         reset_memory_for_test();
         let id = Uuid::new_v4();
         let row = create_anonymous(None, id).await.unwrap();
@@ -262,6 +270,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_find_by_id_misses_for_unknown_uuid() {
+        let _g = GUARD.lock().unwrap();
         reset_memory_for_test();
         let unknown = Uuid::new_v4();
         let found = find_by_id(None, unknown).await.unwrap();
@@ -270,6 +279,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_extend_expiry_pushes_forward() {
+        let _g = GUARD.lock().unwrap();
         reset_memory_for_test();
         let id = Uuid::new_v4();
         let row = create_anonymous(None, id).await.unwrap();
@@ -285,6 +295,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_extend_expiry_unknown_returns_not_found() {
+        let _g = GUARD.lock().unwrap();
         reset_memory_for_test();
         match extend_expiry(None, Uuid::new_v4(), 30).await {
             Err(UserSessionRepoError::NotFound(_)) => {}
@@ -294,6 +305,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_delete_removes_then_misses() {
+        let _g = GUARD.lock().unwrap();
         reset_memory_for_test();
         let id = Uuid::new_v4();
         create_anonymous(None, id).await.unwrap();
@@ -304,6 +316,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_delete_unknown_returns_not_found() {
+        let _g = GUARD.lock().unwrap();
         reset_memory_for_test();
         match delete(None, Uuid::new_v4()).await {
             Err(UserSessionRepoError::NotFound(_)) => {}
@@ -313,6 +326,7 @@ mod tests {
 
     #[test]
     fn default_ttl_days_is_thirty() {
+        let _g = GUARD.lock().unwrap();
         assert_eq!(DEFAULT_SESSION_TTL_DAYS, 30);
     }
 }

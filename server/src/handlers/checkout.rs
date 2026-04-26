@@ -257,7 +257,7 @@ pub async fn post_checkout_submit(
     axum::Extension(session_id): axum::Extension<crate::session::SessionId>,
 ) -> Result<Json<CheckoutSubmitResponse>, AppError> {
     use crate::handlers::cards::{is_shipping_complete, product_filter_meta};
-    use crate::handlers::cart::snapshot_cart;
+    use crate::handlers::cart::snapshot_cart_for_session;
     use crate::repos::orders::{
         OrderInsertRequest, OrderLineInsert, ShippingAddressInsert, insert_order,
     };
@@ -265,7 +265,7 @@ pub async fn post_checkout_submit(
     use crate::stripe::{CheckoutLineItem, CheckoutProvider, CheckoutSessionRequest};
 
     // ── 1. Validate cart ──────────────────────────────────────────
-    let cart = snapshot_cart();
+    let cart = snapshot_cart_for_session(&state, session_id.0).await?;
     if cart.is_empty() {
         return Err(AppError::BadRequest("cart is empty".to_string()));
     }
@@ -376,7 +376,23 @@ pub async fn post_checkout_submit(
     .await
     .map_err(|e| AppError::BadRequest(format!("order insert: {e}")))?;
 
-    // ── 7. Response ──────────────────────────────────────────────
+    // ── 7. cart 消費: 注文確定後にこの session の cart_items を物理削除 ──
+    //
+    // **失敗時のポリシー**: 注文 INSERT は通っているので、ここの DELETE が失敗しても
+    //   200 を返してユーザの "決済成功" 体験は壊さない。warn ログだけ残し、ops 側で
+    //   `cart_items WHERE session_id = ?` の残骸を見つけたら手動 / バッチで掃除する想定。
+    //   eventual consistency: 注文 vs cart の一貫性は最終的にゼロに収束させる。
+    if let Err(e) =
+        crate::repos::cart_items::delete_by_session_id(state.db(), session_id.0).await
+    {
+        tracing::warn!(
+            "post_checkout_submit: failed to clear cart for session {}: {} (order is still placed)",
+            session_id.0,
+            e
+        );
+    }
+
+    // ── 8. Response ──────────────────────────────────────────────
     Ok(Json(CheckoutSubmitResponse {
         order_id: order_id.to_string(),
         session_url: session.session_url,

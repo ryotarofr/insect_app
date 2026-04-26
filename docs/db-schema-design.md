@@ -2,7 +2,27 @@
 
 > 画面側 / サーバ側でハードコードされている定数 (= mock データ含む) を **PostgreSQL** に移行する設計。Phase 9.1 の `orders` 系 migration (`0001_initial.sql`) の後続として段階展開する。
 >
-> **本ドキュメントは実装前のレビュー用**。テーブル定義 / migration 順序 / API 影響範囲 / 未解決事項を先に固めてから着手する。
+> **本ドキュメントは実装前のレビュー用 + 実装後の整合確認用**。テーブル定義 / migration 順序 / API 影響範囲 / 未解決事項を先に固めてから着手する。
+
+## 実装ステータス (= source of truth は `server/migrations/*.sql` + `server/src/repos/*.rs`)
+
+設計に対する現状の実装進捗:
+
+| Phase | 範囲 | migration | repo / handler | 状態 |
+|---|---|---|---|---|
+| 9.1 | orders / order_items / shipping_addresses | `0001_initial.sql` | `repos::orders` / `handlers::checkout::post_checkout_submit` / `handlers::stripe_webhook` | ✅ 完了 |
+| 9.A | species / shops / prefectures / shipping_methods (+ 翻訳) | `0002_master_data.sql` | `repos::{prefectures, shipping_methods}` / handler 切替済 | ✅ 完了 |
+| 9.B | products / product_translations | `0003_products.sql` | `repos::products` / `handlers::cards::product_filter_meta` 切替済 | ✅ 完了 |
+| 9.C | users / user_sessions (+ audit FK 後付け) | `0004_users.sql` | `repos::{users, user_sessions}` (skeleton) / Cookie middleware で session 永続化 | ✅ 基盤完了 (login flow 未) |
+| 9.F | order_items.product_uuid を FK 化 + backfill | `0005_order_items_product_fk.sql` | `OrderLineInsert.product_uuid` / post_checkout_submit で UUID 解決 | ✅ 完了 |
+| 9.E (cart/watch) | cart_items / product_watches | `0006_cart_and_watches.sql` | `repos::{cart_items, product_watches}` / `handlers::cart` は repo 経由に移行済 / `handlers::watch` は session 分離 in-memory | 🟡 部分完了 (watch DB 化は schema 拡張待ち) |
+| 9.D | specimens / specimen_status_history / specimen_logs / mating_records | `0007_specimens.sql` | `repos::specimens` (skeleton) | 🟡 schema + 基本 repo 完了 / handler 未 |
+| 9.E (market) | listings / bids / listing_watches / `v_listings_with_counts` | (未投入) | (未) | ⏳ 9.D 完了後に着手 |
+
+横串:
+- `state::AppState { db: Option<PgPool> }` を全 handler に届ける配線済 (= 各 repo は `Option<&PgPool>` を受け取る `pool 有り → DB / 無し → in-memory fallback` パターンで動く)
+- Cookie session middleware (= `kochu_session` cookie / `SessionId(Uuid)` extension / pool 有り時は user_sessions に INSERT)
+- 実機検証手順は [`db-verify-checklist.md`](db-verify-checklist.md) に整理
 
 ## レビュー対応 Changelog (v2)
 
@@ -364,6 +384,16 @@ INSERT INTO product_translations (product_id, locale, title) VALUES
   ((SELECT id FROM products WHERE public_id='p-jelly'),    'ja', '高栄養ゼリー 17g × 50個'),
   ((SELECT id FROM products WHERE public_id='p-mat'),      'ja', '発酵マット 10L');
 ```
+
+> **⚠️ 実装との差分** (= source of truth は `server/migrations/0003_products.sql` + `cards.rs::product_filter_meta`):
+>
+> - `badge` 列は **i18n 化** されて `badge_kind TEXT CHECK (...)` 形式 (= `'recommended'` / `'larva'` / `'warning'` / `'rare'` / `'consumable'` / `'popular'` / `'new'` / `'low_stock'`) に変更済。表示の日本語文字列は `client_solid/src/sdui/i18n/dict.ts` 側で `badge.recommended` 等のキー解決。
+> - `is_pair`, `is_active`, `created_by`, `updated_by`, `version` の audit / 楽観ロック列を実装で追加 (= 上の例には未掲載)。
+> - 翻訳 / 価格の差分 (cards.rs と整合させる過程で確定):
+>   - `p-neo-m`: `ネプチューンオオカブト ♂ 102mm` → **`ネプチューン ♂ 初令ペア`** + `is_pair=true`
+>   - `p-aki`: `アクタエオンゾウカブト 幼虫 WF1` → **`アクタエオン WILD F1 ♂`** + `sex='male'`
+>   - `p-mat`: `発酵マット 10L` (3200円) → **`完熟発酵マット 10L`** (**1280円**)
+> - supply 商品 (`p-jelly` / `p-mat`) の `difficulty` は NULL ではなく **`'easy'`** で seed (= 既存 UI の「初心者向け」chip に乗せるため)。将来 supply に専用 chip 群を出すなら NULL に戻す。
 
 ### 3.3 `0004_users.sql` — ユーザ + セッション
 

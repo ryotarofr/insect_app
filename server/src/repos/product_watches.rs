@@ -237,6 +237,11 @@ pub fn reset_memory_for_test() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex as StdMutex;
+
+    /// グローバル in-memory set はプロセス全体で共有のため、reset を絡めるテストは
+    /// 並列実行で他テストの書き込みと混ざる。1 個ずつ走るよう GUARD で逐次化する。
+    static GUARD: StdMutex<()> = StdMutex::new(());
 
     fn u() -> Uuid {
         Uuid::parse_str("a0a0a0a0-0000-4000-8000-00000000a0a0").unwrap()
@@ -247,6 +252,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_toggle_adds_then_removes() {
+        let _g = GUARD.lock().unwrap();
         reset_memory_for_test();
         let r = toggle(None, u(), p()).await.unwrap();
         assert_eq!(r, ToggleOutcome::Added);
@@ -259,6 +265,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_find_product_ids_by_user_orders_unspecified_but_complete() {
+        let _g = GUARD.lock().unwrap();
         reset_memory_for_test();
         let p1 = Uuid::new_v4();
         let p2 = Uuid::new_v4();
@@ -272,6 +279,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_count_by_product_counts_only_target() {
+        let _g = GUARD.lock().unwrap();
         reset_memory_for_test();
         let other_u = Uuid::new_v4();
         toggle(None, u(), p()).await.unwrap();
@@ -284,6 +292,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_is_watched_separates_users() {
+        let _g = GUARD.lock().unwrap();
         reset_memory_for_test();
         toggle(None, u(), p()).await.unwrap();
         let other = Uuid::new_v4();

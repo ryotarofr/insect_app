@@ -153,6 +153,23 @@ pub async fn delete(
     }
 }
 
+/// 1 session 配下の全 cart_items を物理削除する (= 注文確定後にカートを空にする等)。
+/// 戻り値は削除した行数。session が空 (= 行ナシ) なら 0 を返す (= NotFound にしない)。
+pub async fn delete_by_session_id(
+    pool: Option<&PgPool>,
+    session_id: Uuid,
+) -> Result<u64, CartItemRepoError> {
+    match pool {
+        Some(p) => delete_by_session_id_db(p, session_id).await,
+        None => {
+            let mut store = memory_store_lock_mut();
+            let len_before = store.len();
+            store.retain(|r| r.session_id != Some(session_id));
+            Ok((len_before - store.len()) as u64)
+        }
+    }
+}
+
 /// session → user 紐付け (= ログイン時のカート引き継ぎ)。設計書 §8.2 採用案。
 /// 戻り値は更新行数。
 pub async fn promote_session_to_user(
@@ -292,6 +309,18 @@ async fn delete_db(pool: &PgPool, id: Uuid) -> Result<(), CartItemRepoError> {
     Ok(())
 }
 
+async fn delete_by_session_id_db(
+    pool: &PgPool,
+    session_id: Uuid,
+) -> Result<u64, CartItemRepoError> {
+    let res = sqlx::query("DELETE FROM cart_items WHERE session_id = $1")
+        .bind(session_id)
+        .execute(pool)
+        .await
+        .map_err(CartItemRepoError::Db)?;
+    Ok(res.rows_affected())
+}
+
 async fn promote_session_to_user_db(
     pool: &PgPool,
     session_id: Uuid,
@@ -346,6 +375,12 @@ pub fn reset_memory_for_test() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex as StdMutex;
+
+    /// グローバル in-memory store の競合を避けるため、reset 経由のテストは
+    /// 1 つずつ走らせる。validation 系 (= store を触らない) は GUARD 不要だが、
+    /// 揃えるために全テストで取得しておく。
+    static GUARD: StdMutex<()> = StdMutex::new(());
 
     fn user() -> Uuid {
         Uuid::parse_str("a0a0a0a0-0000-4000-8000-00000000a0a0").unwrap()
@@ -357,6 +392,7 @@ mod tests {
 
     #[tokio::test]
     async fn validate_rejects_owner_missing() {
+        let _g = GUARD.lock().unwrap();
         let res = insert(
             None,
             CartItemInsert {
@@ -375,6 +411,7 @@ mod tests {
 
     #[tokio::test]
     async fn validate_rejects_qty_out_of_range() {
+        let _g = GUARD.lock().unwrap();
         for bad in [0, 100, -3] {
             let res = insert(
                 None,
@@ -395,6 +432,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_insert_find_by_user_and_set_qty_and_delete() {
+        let _g = GUARD.lock().unwrap();
         reset_memory_for_test();
         let id = insert(
             None,
@@ -424,6 +462,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_set_qty_rejects_out_of_range_after_insert() {
+        let _g = GUARD.lock().unwrap();
         reset_memory_for_test();
         let id = insert(
             None,
@@ -449,6 +488,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_promote_session_to_user_moves_rows() {
+        let _g = GUARD.lock().unwrap();
         reset_memory_for_test();
         let session = Uuid::new_v4();
         let _ = insert(
@@ -484,7 +524,67 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn in_memory_delete_by_session_id_clears_only_target_session() {
+        let _g = GUARD.lock().unwrap();
+        reset_memory_for_test();
+        let session_a = Uuid::new_v4();
+        let session_b = Uuid::new_v4();
+
+        // session A に 2 件、session B に 1 件
+        let _ = insert(
+            None,
+            CartItemInsert {
+                session_id: Some(session_a),
+                user_id: None,
+                product_id: product(),
+                qty: 1,
+            },
+        )
+        .await
+        .unwrap();
+        let _ = insert(
+            None,
+            CartItemInsert {
+                session_id: Some(session_a),
+                user_id: None,
+                product_id: product(),
+                qty: 2,
+            },
+        )
+        .await
+        .unwrap();
+        let _ = insert(
+            None,
+            CartItemInsert {
+                session_id: Some(session_b),
+                user_id: None,
+                product_id: product(),
+                qty: 5,
+            },
+        )
+        .await
+        .unwrap();
+
+        let removed = delete_by_session_id(None, session_a).await.unwrap();
+        assert_eq!(removed, 2);
+
+        let a = find_by_session_id(None, session_a).await.unwrap();
+        assert!(a.is_empty(), "session A は空に");
+        let b = find_by_session_id(None, session_b).await.unwrap();
+        assert_eq!(b.len(), 1, "session B は影響なし");
+    }
+
+    #[tokio::test]
+    async fn in_memory_delete_by_session_id_returns_zero_when_empty() {
+        let _g = GUARD.lock().unwrap();
+        reset_memory_for_test();
+        let removed = delete_by_session_id(None, Uuid::new_v4()).await.unwrap();
+        assert_eq!(removed, 0, "空 session の削除は 0 を返し NotFound にしない");
+    }
+
+    #[tokio::test]
     async fn in_memory_delete_unknown_id_returns_not_found() {
+        let _g = GUARD.lock().unwrap();
         reset_memory_for_test();
         let unknown = Uuid::new_v4();
         match delete(None, unknown).await {

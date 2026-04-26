@@ -362,6 +362,19 @@ pub fn reset_memory_for_test() {
     }
 }
 
+/// テスト並列実行下で `orders` の in-memory store と "cs_mock_test" 等の固定 stripe_session_id を
+/// 触る複数モジュール (= `repos::orders` / `handlers::stripe_webhook`) が
+/// **同じ** GUARD を取って逐次化するために共有する mutex。
+///
+/// 各テスト冒頭で `let _g = memory_guard();` を呼ぶ。
+#[cfg(test)]
+pub fn memory_guard() -> std::sync::MutexGuard<'static, ()> {
+    static GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    // PoisonError は他テストの panic 時に起こるが、本 GUARD の中身は () なので
+    // 取得側は中身を気にせず先に進めて良い。inner を取り直して握り直す。
+    GUARD.lock().unwrap_or_else(|p| p.into_inner())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -393,6 +406,7 @@ mod tests {
 
     #[tokio::test]
     async fn validate_rejects_empty_line_items() {
+        let _g = memory_guard();
         let mut r = req();
         r.line_items.clear();
         match insert_order(None, r).await {
@@ -403,6 +417,7 @@ mod tests {
 
     #[tokio::test]
     async fn validate_rejects_qty_zero() {
+        let _g = memory_guard();
         let mut r = req();
         r.line_items[0].qty = 0;
         match insert_order(None, r).await {
@@ -413,6 +428,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_insert_and_find() {
+        let _g = memory_guard();
         reset_memory_for_test();
         let r = req();
         let rec = insert_order(None, r).await.unwrap();

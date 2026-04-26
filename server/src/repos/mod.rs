@@ -9,5 +9,6 @@ pub mod prefectures;
 pub mod product_watches;
 pub mod products;
 pub mod shipping_methods;
+pub mod specimens;
 pub mod user_sessions;
 pub mod users;

@@ -270,9 +270,21 @@ cd server
 cargo run
 ```
 
-`DB_AUTO_MIGRATE=true` (default) なら起動時に `server/migrations/*.sql` が自動で流れる (= `orders` / `order_items` / `shipping_addresses` テーブルが作られる)。
+`DB_AUTO_MIGRATE=true` (default) なら起動時に `server/migrations/*.sql` が自動で流れる。Phase 9.A〜9.F + Phase 9.D 対応で 0001〜0007 が揃っており、適用後は以下のテーブルが利用可能:
 
-DB 接続失敗 / `DATABASE_URL` 未設定でも server は起動する (= MVP では DB 無しでも一部 handler は動く)。production では `db::init_pool` 直接呼び出しに切り替えて DB 不在 = fatal にする想定。
+| migration | 主なテーブル |
+|---|---|
+| 0001_initial | `orders` / `order_items` / `shipping_addresses` |
+| 0002_master_data | `species` / `shops` / `prefectures` / `shipping_methods` (+ 各翻訳) |
+| 0003_products | `products` / `product_translations` (= 6 商品 seed) |
+| 0004_users | `users` / `user_sessions` (+ products / shipping_methods への audit FK 後付け) |
+| 0005_order_items_product_fk | `order_items.product_uuid` 列 + FK + 既存行 backfill |
+| 0006_cart_and_watches | `cart_items` / `product_watches` |
+| 0007_specimens | `specimens` / `specimen_status_history` / `specimen_logs` / `mating_records` |
+
+DB 接続失敗 / `DATABASE_URL` 未設定でも server は起動する (= 各 repo が in-memory fallback を持つので、cart / watch / cookie session が機能限定で動く)。production では `db::init_pool` 直接呼び出しに切り替えて DB 不在 = fatal にする想定。
+
+実機での動作確認チェックリストは [`docs/db-verify-checklist.md`](docs/db-verify-checklist.md) を参照。
 
 ### 4. migration を手で流したい場合
 

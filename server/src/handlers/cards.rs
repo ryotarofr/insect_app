@@ -89,8 +89,11 @@ pub async fn get_product_detail_card(Path(id): Path<String>) -> Result<Json<Card
 ///   - 在庫切れ商品にバッジを付ける
 ///   - 配送料計算 (今は固定で `None` = 行を出さない)
 ///   - 消費税内訳の表示
-pub async fn get_cart_card() -> Result<Json<CardBlock>, AppError> {
-    let snapshot = crate::handlers::cart::snapshot_cart();
+pub async fn get_cart_card(
+    axum::extract::State(state): axum::extract::State<crate::state::AppState>,
+    axum::Extension(session_id): axum::Extension<crate::session::SessionId>,
+) -> Result<Json<CardBlock>, AppError> {
+    let snapshot = crate::handlers::cart::snapshot_cart_for_session(&state, session_id.0).await?;
     let card = build_cart_card(snapshot);
     card.validate_keys()
         .map_err(|e| AppError::BadRequest(e.to_string()))?;
@@ -4094,7 +4097,11 @@ mod tests {
         // cart::tests と共有する GUARD は private なのでこちらは独立に取る。
         // 同時実行で落ちる可能性があるが MVP では `cargo test -- --test-threads=1` で逃げる前提。
         crate::handlers::cart::reset_cart_for_test();
-        let res = get_cart_card().await.expect("handler ok");
+        // Phase 9.E: handler は State<AppState> + Extension<SessionId> を取る。
+        let state =
+            axum::extract::State(crate::state::AppState::default());
+        let session = axum::Extension(crate::session::SessionId(uuid::Uuid::new_v4()));
+        let res = get_cart_card(state, session).await.expect("handler ok");
         let card = res.0;
         assert_eq!(card.id(), "cart");
         match &card {

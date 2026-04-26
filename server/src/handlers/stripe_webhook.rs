@@ -146,7 +146,7 @@ mod tests {
     use super::*;
     use axum::extract::State;
     use crate::repos::orders::{
-        OrderInsertRequest, OrderLineInsert, ShippingAddressInsert, insert_order,
+        OrderInsertRequest, OrderLineInsert, ShippingAddressInsert, insert_order, memory_guard,
         reset_memory_for_test,
     };
     use crate::state::AppState;
@@ -190,6 +190,7 @@ mod tests {
 
     #[tokio::test]
     async fn checkout_session_completed_marks_order_paid() {
+        let _g = memory_guard();
         let order_id = seed_pending_order().await;
         let body = MockStripeEvent {
             event_type: "checkout.session.completed".to_string(),
@@ -214,6 +215,7 @@ mod tests {
 
     #[tokio::test]
     async fn payment_failed_marks_order_failed() {
+        let _g = memory_guard();
         let order_id = seed_pending_order().await;
         let body = MockStripeEvent {
             event_type: "payment_intent.payment_failed".to_string(),
@@ -236,6 +238,7 @@ mod tests {
 
     #[tokio::test]
     async fn unknown_event_type_is_no_op() {
+        let _g = memory_guard();
         let _id = seed_pending_order().await;
         let body = MockStripeEvent {
             event_type: "customer.created".to_string(),
@@ -260,6 +263,7 @@ mod tests {
 
     #[tokio::test]
     async fn missing_order_returns_ok_no_op() {
+        let _g = memory_guard();
         reset_memory_for_test();
         let body = MockStripeEvent {
             event_type: "checkout.session.completed".to_string(),

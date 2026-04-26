@@ -366,6 +366,54 @@ async fn find_by_id_db(
 // 0003_products.sql の seed と完全に一致する 6 件を返す。
 // pool=None の時は test 環境 / DB 切れ時 / migration 前の dev で動く。
 
+/// 公開 ID → 固定 UUID v4 の map (= in-memory 経路で毎回ランダム ID にしないため)。
+///
+/// **背景**: cart_items / order_items の `product_uuid` を解決するために、
+/// pool 不在時でも安定した UUID を返したい。`Uuid::new_v4()` だと cart に投入後の
+/// 比較や snapshot 復元で値が一致せず、再現性がなくなる。
+///
+/// **値の選び方**: バージョン 4 (= 13 桁目が `4`) + variant `8` を満たす任意値で固定。
+/// production の DB では `gen_random_uuid()` で別の値が振られるが、in-memory 経路では
+/// 本テーブルが正となる。両者を区別する手段は必要に応じ別途用意する。
+pub(crate) fn memory_product_uuid(public_id: &str) -> Option<Uuid> {
+    static M: OnceLock<HashMap<&'static str, Uuid>> = OnceLock::new();
+    let map = M.get_or_init(|| {
+        // 1〜6 の sequential ID で固定。version=4 (13 桁目の "4") + variant=8 を満たす hex のみ。
+        // 値そのものは任意で、in-memory モードで再現性が取れることだけを保証する。
+        const SEED: &[(&str, &str)] = &[
+            ("p-hh-m-142", "00000001-0000-4000-8000-000000000001"),
+            ("p-cat-l",    "00000002-0000-4000-8000-000000000002"),
+            ("p-neo-m",    "00000003-0000-4000-8000-000000000003"),
+            ("p-aki",      "00000004-0000-4000-8000-000000000004"),
+            ("p-jelly",    "00000005-0000-4000-8000-000000000005"),
+            ("p-mat",      "00000006-0000-4000-8000-000000000006"),
+        ];
+        SEED.iter()
+            .map(|(k, v)| (*k, Uuid::parse_str(v).expect("valid uuid literal")))
+            .collect()
+    });
+    map.get(public_id).copied()
+}
+
+/// pool 有り時は DB lookup、無し時は `memory_product_uuid` の map を返す。
+/// cart 投入時の public_id → UUID 解決で使う想定。
+pub async fn find_uuid_for_public_id(
+    pool: Option<&PgPool>,
+    public_id: &str,
+) -> Result<Option<Uuid>, ProductRepoError> {
+    if let Some(p) = pool {
+        let r: Option<(Uuid,)> = sqlx::query_as(
+            r#"SELECT id FROM products WHERE public_id = $1"#,
+        )
+        .bind(public_id)
+        .fetch_optional(p)
+        .await
+        .map_err(ProductRepoError::Db)?;
+        return Ok(r.map(|(id,)| id));
+    }
+    Ok(memory_product_uuid(public_id))
+}
+
 fn memory_products() -> Vec<Product> {
     fn p(
         public_id: &str,
@@ -383,7 +431,9 @@ fn memory_products() -> Vec<Product> {
     ) -> Product {
         Product {
             row: ProductRow {
-                id: Uuid::new_v4(),                     // in-memory なので毎回新規 (= test で id 安定が要なら別 helper)
+                // 安定 UUID (= memory_product_uuid map から取得)。未登録 public_id は
+                // ランダム fallback (本来発生しないが防御的に)。
+                id: memory_product_uuid(public_id).unwrap_or_else(Uuid::new_v4),
                 public_id: public_id.to_string(),
                 shop_id: Uuid::nil(),                   // in-memory ではダミー
                 kind: kind.to_string(),
