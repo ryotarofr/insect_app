@@ -30,12 +30,18 @@ pub struct AnalyticsEvent {
     pub analytics_id: String,
     /// `impression` (画面に映った) / `click` (ユーザ操作)。
     pub event_type: AnalyticsEventType,
-    /// クライアント側 `Date.now()` 相当 (ms epoch)。サーバは値を validate しない。
+    /// クライアント側 Date.now 相当 (ms epoch)。サーバは値を validate しない。
+    /// 設計書 §4.2.2 規約により i64 を ts-rs で number に倒す。
+    /// 集計の真実値は server 受信時刻側で持つ想定 (§11.2)。
+    #[ts(type = "number")]
     pub timestamp_ms: i64,
-    /// 自由記述コンテキスト。`productId` / `variant` / `experimentKey` 等。
-    /// 空マップは JSON で省略される。
-    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
-    pub context: BTreeMap<String, String>,
+    /// 自由記述コンテキスト (productId / variant / experimentKey 等)。
+    /// 空 / 未指定は JSON で省略される (skip_serializing_if)。
+    /// TS 側は ts(optional) で context?: Record<string, string> として表現する。
+    /// client は context があれば Some、無ければ None で送る。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    #[ts(optional)]
+    pub context: Option<BTreeMap<String, String>>,
 }
 
 /// イベント種別。
@@ -70,7 +76,7 @@ mod tests {
             analytics_id: "home.hero".to_string(),
             event_type: AnalyticsEventType::Click,
             timestamp_ms: 1_700_000_000_000,
-            context: ctx,
+            context: Some(ctx),
         };
         let json = serde_json::to_string(&e).unwrap();
         assert!(json.contains(r#""analyticsId":"home.hero""#), "{json}");
@@ -85,7 +91,7 @@ mod tests {
             analytics_id: "x".to_string(),
             event_type: AnalyticsEventType::Impression,
             timestamp_ms: 0,
-            context: BTreeMap::new(),
+            context: None,
         };
         let json = serde_json::to_string(&e).unwrap();
         assert!(

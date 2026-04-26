@@ -1,6 +1,6 @@
-// BlockRenderer.tsx — Block (9 variants) のディスパッチ
+// BlockRenderer.tsx — Block (13 variants) のディスパッチ
 //
-// 詳細: docs/sdui-three-layer-model-v5.md §4 (Block)
+// 詳細: docs/sdui-three-layer-model-v6.md §6.3 (BlockRenderer)
 //
 // **責務**: 1 つの Block を `type` 判別して対応するレンダラに振り分ける。
 //   Region の中で `<For>` で各 block を回し、ここに 1 ノードずつ渡す想定。
@@ -10,8 +10,9 @@
 //
 // **未知の type への対応**:
 //   サーバ側が新 block 種を追加してフロントが古いケースに備えて、
-//   `<UnknownBlockFallback>` を fallback に置く。これ自体は createEffect で
-//   1 度だけ console.warn してから null を返すので、画面真っ白にはならない。
+//   `<UnknownBlockFallback>` を fallback に置く (= §10.1 「型生成パイプラインの遷移期保険」)。
+//   これ自体は createEffect で 1 度だけ console.warn してから null を返すので、
+//   画面真っ白にはならない。
 
 import { Match, Show, Switch, createEffect } from "solid-js";
 import type { Block } from "./branded";
@@ -26,6 +27,8 @@ import { EclosionForecastBlockView } from "./blocks/EclosionForecast";
 import { DividerBlockView } from "./blocks/Divider";
 import { LineItemBlockView } from "./blocks/LineItem";
 import { OrderSummaryBlockView } from "./blocks/OrderSummary";
+import { FormFieldView } from "./blocks/FormField";
+import { ShippingMethodPickerView } from "./blocks/ShippingMethodPicker";
 import { TrackImpression } from "./TrackImpression";
 
 const warnedTypes = new Set<string>();
@@ -88,6 +91,14 @@ const BlockSwitch = (props: { block: Block }) => (
     </Match>
     <Match when={props.block.type === "order_summary"}>
       <OrderSummaryBlockView block={props.block as Extract<Block, { type: "order_summary" }>} />
+    </Match>
+    <Match when={props.block.type === "form_field"}>
+      <FormFieldView block={props.block as Extract<Block, { type: "form_field" }>} />
+    </Match>
+    <Match when={props.block.type === "shipping_method_picker"}>
+      <ShippingMethodPickerView
+        block={props.block as Extract<Block, { type: "shipping_method_picker" }>}
+      />
     </Match>
   </Switch>
 );

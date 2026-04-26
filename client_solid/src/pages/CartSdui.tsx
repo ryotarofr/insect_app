@@ -14,16 +14,21 @@
 //     を立て、本ページで SDUI 表示の検証 + 既存 store/cart と並行運用する。
 //   - shipping / checkout は Phase 7+ で SDUI 化を検討 (= 段階移行)。
 //
-// **再 fetch 戦略**:
-//   LineItem の +/- や 削除を押す → サーバ側 store が変わる → 再 fetch して
-//   サーバの真値を再描画。createResource の `refetch()` を CartReloadProvider に流す。
-//   （楽観 update はせず、サーバ-driven 状態を信用する MVP 方針）。
+// **再 fetch 戦略 (M6 で seq-tagged 化)**:
+//   LineItem の +/- や 削除 / FormField の入力 / ShippingMethodPicker の選択 →
+//   サーバ側 store が変わる → 再 fetch して サーバの真値を再描画。
+//
+//   素朴な createResource では「PATCH (n) → refetch → PATCH (n+1) → refetch」が
+//   交差した時に古い refetch が後から到着して UI を巻き戻す race がある (= §11.8.1 規律 2)。
+//   useCartSnapshot は各 fetch に単調増加 seq を付与し、最大 seq の結果のみが
+//   UI を更新する。CartReloadProvider に流すのは seq-aware な reload 関数。
 
-import { ErrorBoundary, Show, createResource } from "solid-js";
+import { ErrorBoundary, Show } from "solid-js";
 
 import { CardRenderer } from "../sdui/CardRenderer";
 import { CartReloadProvider } from "../sdui/CartContext";
-import { SduiFetchError, fetchCartCard } from "../sdui/api";
+import { SduiFetchError } from "../sdui/api";
+import { useCartSnapshot } from "../sdui/useCartSnapshot";
 
 const ErrorView = (props: { err: unknown }) => {
   const message = () => {
@@ -53,25 +58,35 @@ const ErrorView = (props: { err: unknown }) => {
 };
 
 export const CartSduiPage = () => {
-  // resource の reload は `refetch` で叩く。Cart 内 LineItem からは
-  // CartReloadProvider 経由で取り出す。
-  const [card, { refetch }] = createResource(fetchCartCard);
+  // useCartSnapshot は seq-tagged な fetch / reload / mutate を提供する。
+  // Cart 内 LineItem / FormField / ShippingMethodPicker は CartReloadProvider 経由で
+  // reload を取り出す (= seq tracking が透過的に効く)。
+  const snap = useCartSnapshot();
+
+  // 初期 fetch 中は loading=true で card=undefined。card が来た瞬間に loading が
+  // 0 に戻り、card() が値を持つ。
+  const isInitialLoading = () => snap.loading() && snap.card() === undefined;
+
+  const hasErrorWithoutCard = () => Boolean(snap.error()) && !snap.card();
 
   return (
     <ErrorBoundary fallback={(err) => <ErrorView err={err} />}>
       <Show
-        when={card.loading}
+        when={isInitialLoading()}
         fallback={
-          <Show when={card.error} fallback={
-            <Show when={card()}>
-              {(c) => (
-                <CartReloadProvider value={() => refetch()}>
-                  <CardRenderer card={c()} />
-                </CartReloadProvider>
-              )}
-            </Show>
-          }>
-            <ErrorView err={card.error} />
+          <Show
+            when={hasErrorWithoutCard()}
+            fallback={
+              <Show when={snap.card()}>
+                {(c) => (
+                  <CartReloadProvider value={snap.reload}>
+                    <CardRenderer card={c()} />
+                  </CartReloadProvider>
+                )}
+              </Show>
+            }
+          >
+            <ErrorView err={snap.error()} />
           </Show>
         }
       >

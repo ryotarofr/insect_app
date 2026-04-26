@@ -289,3 +289,52 @@ export const patchCartItemQty = async (
     body: JSON.stringify({ qty }),
   });
 };
+
+/** `PATCH /api/v1/checkout/shipping_field/:name` のレスポンス (Phase 8)。 */
+export interface PatchShippingFieldResponse {
+  /** 設定後の value (= echo back)。trim 等のサーバ側正規化結果。 */
+  value: string;
+}
+
+/** `PATCH /api/v1/checkout/shipping_field/:name` — 配送先 1 フィールドを更新 (Phase 8)。
+ *
+ *  - FormField (CheckoutFieldAction::PatchField) が叩く。
+ *  - `name` は `Block::FormField.name` (= camelCase, addressName / addressTel / etc.)。
+ *  - サーバ側で ALLOWED_FIELDS 外の name は 400、200 文字超 value も 400。
+ *  - 空文字 value は「明示的にクリア」として受け付ける (= None ではない)。
+ *  - 成功後は呼び出し側 (= FormField view) が cart card を再 fetch する責務。 */
+export const patchCheckoutShippingField = async (
+  name: string,
+  value: string,
+): Promise<PatchShippingFieldResponse> => {
+  const safe = encodeURIComponent(name);
+  return fetchJson<PatchShippingFieldResponse>(
+    `/checkout/shipping_field/${safe}`,
+    {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ value }),
+    },
+  );
+};
+
+/** `PATCH /api/v1/checkout/shipping_method` のレスポンス (Phase 8)。 */
+export interface PatchShippingMethodResponse {
+  /** 設定後の shipping method id (= echo back)。 */
+  id: string;
+}
+
+/** `PATCH /api/v1/checkout/shipping_method` — 配送方法を切り替え (Phase 8)。
+ *
+ *  - ShippingMethodPicker (CheckoutMethodAction::PatchMethod) が叩く。
+ *  - `id` は server 側 SHIPPING_METHODS の id ("cold" / "normal" 等) のいずれか。未知は 400。
+ *  - 成功後は呼び出し側が cart card を再 fetch する (= shipping_amount / total が変わるため)。 */
+export const patchCheckoutShippingMethod = async (
+  id: string,
+): Promise<PatchShippingMethodResponse> => {
+  return fetchJson<PatchShippingMethodResponse>(`/checkout/shipping_method`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ id }),
+  });
+};

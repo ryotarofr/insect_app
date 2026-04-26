@@ -102,6 +102,7 @@ pub(crate) fn reset_events_for_test() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::BTreeMap;
     use std::sync::Mutex as StdMutex;
 
     use crate::sdui::analytics::{AnalyticsEvent, AnalyticsEventType};
@@ -114,7 +115,7 @@ mod tests {
             analytics_id: id.into(),
             event_type: ty,
             timestamp_ms: ts,
-            context: Default::default(),
+            context: None,
         }
     }
 
@@ -251,22 +252,20 @@ mod tests {
         reset_events_for_test();
 
         let mut e = ev("p.detail.cta", AnalyticsEventType::Click, 1);
-        e.context.insert("productId".to_string(), "p-x".to_string());
-        e.context
-            .insert("variant".to_string(), "featured".to_string());
+        let ctx = e.context.get_or_insert_with(BTreeMap::new);
+        ctx.insert("productId".to_string(), "p-x".to_string());
+        ctx.insert("variant".to_string(), "featured".to_string());
         post_events(Json(AnalyticsEventBatch { events: vec![e] }))
             .await
             .unwrap();
 
         let list = list_events(Query(ListQuery { limit: 1 })).await.0;
         assert_eq!(list.len(), 1);
-        assert_eq!(
-            list[0].context.get("productId").map(String::as_str),
-            Some("p-x")
-        );
-        assert_eq!(
-            list[0].context.get("variant").map(String::as_str),
-            Some("featured")
-        );
+        let ctx0 = list[0]
+            .context
+            .as_ref()
+            .expect("context should be Some after insert");
+        assert_eq!(ctx0.get("productId").map(String::as_str), Some("p-x"));
+        assert_eq!(ctx0.get("variant").map(String::as_str), Some("featured"));
     }
 }

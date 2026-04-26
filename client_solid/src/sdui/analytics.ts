@@ -81,6 +81,9 @@ export const recordEvent = (input: RecordInput): void => {
   const id = input.analyticsId;
   if (!id) return;
 
+  // `context` は optional (= server 側 `skip_serializing_if = "Option::is_none"`)。
+  // 空マップは undefined と等価に扱い、ev.context をそもそも設定しない (= JSON でも
+  // 省略される)。詳細は server/src/sdui/analytics.rs の `context` フィールド参照。
   const ev: AnalyticsEvent = {
     analyticsId: id,
     eventType: input.eventType,
