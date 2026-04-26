@@ -4,6 +4,8 @@ use axum::{
 };
 
 use crate::handlers;
+use crate::session::session_middleware;
+use crate::state::AppState;
 
 /// `/api/v1` 配下のルート定義。
 ///
@@ -11,7 +13,12 @@ use crate::handlers;
 /// 例：
 ///   .nest("/specimens", specimens::router())
 ///   .nest("/orders", orders::router())
-pub fn api_v1() -> Router {
+///
+/// **Phase 9.x AppState 配線**:
+///   呼び出し側 (= main.rs::build_app) から `AppState` を受け取り、最後に
+///   `with_state(state)` で全 route に注入する。`State<AppState>` を受け取る
+///   handler だけが pool にアクセスする (= 既存 handler は変更不要)。
+pub fn api_v1(state: AppState) -> Router {
     Router::new()
         .route("/hello", get(handlers::hello::hello))
         // SDUI: 商品ハイライトカード (product_feature)。詳細は handlers::cards 参照。
@@ -79,4 +86,13 @@ pub fn api_v1() -> Router {
             "/stripe/webhook",
             post(handlers::stripe_webhook::post_stripe_webhook),
         )
+        // Phase 9.E 補助: 全 /api/v1/* に session middleware を適用。
+        // /health は外側 (main.rs::build_app) で別途 nest しているので影響なし。
+        // `from_fn_with_state` で middleware に AppState を渡し、新規 session 発行時に
+        // user_sessions テーブルへ INSERT する (= pool 不在時はスキップ)。
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            session_middleware,
+        ))
+        .with_state(state)
 }

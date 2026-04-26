@@ -61,6 +61,7 @@ pub struct MockStripeObject {
 }
 
 pub async fn post_stripe_webhook(
+    axum::extract::State(state): axum::extract::State<crate::state::AppState>,
     Json(event): Json<MockStripeEvent>,
 ) -> Result<StatusCode, AppError> {
     // ── HMAC 検証 (scaffolding) ───────────────────────────────────
@@ -94,8 +95,8 @@ pub async fn post_stripe_webhook(
         // 直接 id 指定 → status 更新するだけ
         Some(oid)
     } else if let Some(sid) = event.data.object.id.as_deref() {
-        // cs_xxx 経由で order を引く (in-memory + DB 両対応)
-        match orders::find_by_stripe_session_id(None, sid).await {
+        // cs_xxx 経由で order を引く (Phase 9.x: AppState 経由で pool 利用 / 不在時 in-memory)
+        match orders::find_by_stripe_session_id(state.db(), sid).await {
             Ok(Some(rec)) => Some(rec.id),
             Ok(None) => {
                 tracing::warn!("stripe webhook: no order found for session_id={}", sid);
@@ -122,7 +123,7 @@ pub async fn post_stripe_webhook(
 
     // ── status 更新 ──────────────────────────────────────────────
     let pi = event.data.object.payment_intent.as_deref();
-    if let Err(e) = orders::update_status(None, order_id, new_status, pi).await {
+    if let Err(e) = orders::update_status(state.db(), order_id, new_status, pi).await {
         tracing::error!(
             "stripe webhook: update_status failed for order {}: {}",
             order_id,
@@ -143,10 +144,17 @@ pub async fn post_stripe_webhook(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use axum::extract::State;
     use crate::repos::orders::{
         OrderInsertRequest, OrderLineInsert, ShippingAddressInsert, insert_order,
         reset_memory_for_test,
     };
+    use crate::state::AppState;
+
+    /// テストでは pool 無しの AppState を使う (= in-memory fallback で動く)
+    fn empty_state() -> State<AppState> {
+        State(AppState::default())
+    }
 
     async fn seed_pending_order() -> uuid::Uuid {
         reset_memory_for_test();
@@ -159,6 +167,7 @@ mod tests {
                 shipping_jpy: Some(1800),
                 line_items: vec![OrderLineInsert {
                     product_id: "p-x".to_string(),
+                    product_uuid: None, // test fixture では UUID 解決スキップ
                     title: "Test".to_string(),
                     unit_price_jpy: 48000,
                     qty: 2,
@@ -192,7 +201,7 @@ mod tests {
                 },
             },
         };
-        let res = post_stripe_webhook(Json(body)).await.unwrap();
+        let res = post_stripe_webhook(empty_state(), Json(body)).await.unwrap();
         assert_eq!(res, StatusCode::OK);
 
         let updated = orders::find_by_stripe_session_id(None, "cs_mock_test")
@@ -216,7 +225,7 @@ mod tests {
                 },
             },
         };
-        post_stripe_webhook(Json(body)).await.unwrap();
+        post_stripe_webhook(empty_state(), Json(body)).await.unwrap();
 
         let updated = orders::find_by_stripe_session_id(None, "cs_mock_test")
             .await
@@ -238,7 +247,7 @@ mod tests {
                 },
             },
         };
-        let res = post_stripe_webhook(Json(body)).await.unwrap();
+        let res = post_stripe_webhook(empty_state(), Json(body)).await.unwrap();
         assert_eq!(res, StatusCode::OK);
 
         // status は pending のまま
@@ -262,7 +271,7 @@ mod tests {
                 },
             },
         };
-        let res = post_stripe_webhook(Json(body)).await.unwrap();
+        let res = post_stripe_webhook(empty_state(), Json(body)).await.unwrap();
         // 注文不在でも 200 で no-op (= Stripe に retry させない)
         assert_eq!(res, StatusCode::OK);
     }

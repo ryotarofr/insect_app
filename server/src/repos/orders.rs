@@ -33,7 +33,12 @@ pub struct OrderInsertRequest {
 
 #[derive(Debug, Clone)]
 pub struct OrderLineInsert {
+    /// public_id スナップショット (= "p-hh-m-142")。historical reference 用に保持。
     pub product_id: String,
+    /// products(id) への UUID 参照 (Phase 9.F / 0005_order_items_product_fk.sql)。
+    /// `None` の場合 (= public_id 解決失敗 / DB 不在時) は order_items.product_uuid に
+    /// NULL が入る。注文履歴の不変性は product_id (TEXT) で確保されているため許容。
+    pub product_uuid: Option<Uuid>,
     pub title: String,
     pub unit_price_jpy: i64,
     pub qty: u32,
@@ -224,16 +229,20 @@ async fn insert_order_db(
     let order_id = record.id;
 
     // ── order_items INSERT (loop) ──
+    // Phase 9.F: product_uuid を追加 (= products(id) への FK)。
+    // public_id (= product_id text) 解決失敗時は NULL を入れる (= 監査ログで追跡可能)。
     for li in &req.line_items {
         sqlx::query(
             r#"
             INSERT INTO order_items
-                (order_id, product_id, title, unit_price_jpy, qty, subtotal_jpy)
-            VALUES ($1, $2, $3, $4, $5, $6)
+                (order_id, product_id, product_uuid, title,
+                 unit_price_jpy, qty, subtotal_jpy)
+            VALUES ($1, $2, $3, $4, $5, $6, $7)
             "#,
         )
         .bind(order_id)
         .bind(&li.product_id)
+        .bind(li.product_uuid)
         .bind(&li.title)
         .bind(li.unit_price_jpy)
         .bind(li.qty as i32)
@@ -365,6 +374,7 @@ mod tests {
             shipping_jpy: Some(1800),
             line_items: vec![OrderLineInsert {
                 product_id: "p-x".to_string(),
+                product_uuid: None,                 // test fixture では UUID 解決スキップ
                 title: "Test".to_string(),
                 unit_price_jpy: 48000,
                 qty: 2,
@@ -433,5 +443,32 @@ mod tests {
         assert!(is_valid_status("canceled"));
         assert!(!is_valid_status("unknown"));
         assert!(!is_valid_status(""));
+    }
+
+    /// Phase 9.F: OrderLineInsert に product_uuid: Option<Uuid> が乗っており、
+    /// None / Some の両方を構築できる (= API 契約の確認)。
+    /// in-memory 経路は line_items を保存しないので、本テストは型検証が主目的。
+    #[test]
+    fn order_line_insert_accepts_product_uuid() {
+        let with_none = OrderLineInsert {
+            product_id: "p-x".to_string(),
+            product_uuid: None,
+            title: "T".to_string(),
+            unit_price_jpy: 100,
+            qty: 1,
+            subtotal_jpy: 100,
+        };
+        assert!(with_none.product_uuid.is_none());
+
+        let some_uuid = Uuid::new_v4();
+        let with_some = OrderLineInsert {
+            product_id: "p-x".to_string(),
+            product_uuid: Some(some_uuid),
+            title: "T".to_string(),
+            unit_price_jpy: 100,
+            qty: 1,
+            subtotal_jpy: 100,
+        };
+        assert_eq!(with_some.product_uuid, Some(some_uuid));
     }
 }

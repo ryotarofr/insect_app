@@ -241,15 +241,27 @@ pub struct CheckoutSubmitResponse {
 
 /// `POST /api/v1/checkout/submit` — 注文を確定し Stripe Checkout Session URL を返す。
 ///
-/// MVP では cart_store + checkout_store の global state を直接参照し、anonymous session
-/// として 1 注文を発行する。将来 Cookie ベース session が入ったら `session_id` を
-/// それに置き換える。
-pub async fn post_checkout_submit() -> Result<Json<CheckoutSubmitResponse>, AppError> {
+/// **Phase 9.x AppState 配線**:
+///   `axum::extract::State<AppState>` 経由で `Option<PgPool>` を受け取り、
+///   - `repos::products::find_by_public_id(pool, ...)` で product_uuid 解決
+///   - `repos::orders::insert_order(pool, ...)` で DB に永続化
+///   どちらも pool 不在時は in-memory fallback。
+///
+/// **Session 配線** (= Cookie middleware 導入後):
+///   `axum::Extension<SessionId>` 経由で cookie 由来の UUID を受け取り、
+///   `orders.session_id` (= TEXT) と Stripe Session の reference に詰める。
+///   未ログイン (= anonymous) でも cookie で安定した UUID を持つので、同一ユーザの
+///   複数 cart → 注文の追跡が可能になる。
+pub async fn post_checkout_submit(
+    axum::extract::State(state): axum::extract::State<crate::state::AppState>,
+    axum::Extension(session_id): axum::Extension<crate::session::SessionId>,
+) -> Result<Json<CheckoutSubmitResponse>, AppError> {
     use crate::handlers::cards::{is_shipping_complete, product_filter_meta};
     use crate::handlers::cart::snapshot_cart;
     use crate::repos::orders::{
         OrderInsertRequest, OrderLineInsert, ShippingAddressInsert, insert_order,
     };
+    use crate::repos::products;
     use crate::stripe::{CheckoutLineItem, CheckoutProvider, CheckoutSessionRequest};
 
     // ── 1. Validate cart ──────────────────────────────────────────
@@ -274,10 +286,7 @@ pub async fn post_checkout_submit() -> Result<Json<CheckoutSubmitResponse>, AppE
 
     for (_token, entry) in &cart {
         let m = meta.get(entry.product_id.as_str()).ok_or_else(|| {
-            AppError::BadRequest(format!(
-                "unknown product in cart: {}",
-                entry.product_id
-            ))
+            AppError::BadRequest(format!("unknown product in cart: {}", entry.product_id))
         })?;
         let unit_price_jpy: i64 = m.price_yen as i64;
         let qty = entry.qty;
@@ -290,8 +299,22 @@ pub async fn post_checkout_submit() -> Result<Json<CheckoutSubmitResponse>, AppE
         let line_subtotal: i64 = unit_price_jpy * qty as i64;
         subtotal_jpy += line_subtotal;
 
+        // Phase 9.F: pool が AppState 経由で来ているので products テーブルから
+        //   public_id → UUID を解決する。pool 不在 (in-memory fallback) の場合は
+        //   毎回ランダム UUID が返る性質があるため None に倒し、DB INSERT 時に
+        //   product_uuid を NULL にしておく (= product_id TEXT で履歴は保たれる)。
+        let product_uuid = if state.db().is_some() {
+            match products::find_by_public_id(state.db(), &entry.product_id).await {
+                Ok(Some(p)) => Some(p.row.id),
+                _ => None,
+            }
+        } else {
+            None
+        };
+
         order_lines.push(OrderLineInsert {
             product_id: entry.product_id.clone(),
+            product_uuid,
             title: m.title.to_string(),
             unit_price_jpy,
             qty,
@@ -314,11 +337,13 @@ pub async fn post_checkout_submit() -> Result<Json<CheckoutSubmitResponse>, AppE
     // を `cs_mock_<order_id>` として作る → 先に Uuid を生成してから INSERT で
     // stripe_session_id を埋める。
     let order_id = uuid::Uuid::new_v4();
+    // Cookie 由来の安定 UUID を session 識別子として使う (= 旧 hardcoded "anonymous" 撤去)。
+    let session_id_str = session_id.0.to_string();
     let provider = CheckoutProvider::from_env();
     let session = provider
         .create_session(CheckoutSessionRequest {
             order_id,
-            session_id: "anonymous".to_string(),
+            session_id: session_id_str.clone(),
             line_items: stripe_lines,
             shipping_jpy,
             success_url: "/checkout/success".to_string(),
@@ -328,13 +353,12 @@ pub async fn post_checkout_submit() -> Result<Json<CheckoutSubmitResponse>, AppE
         .map_err(|e| AppError::BadRequest(format!("stripe session: {e}")))?;
 
     // ── 6. orders / order_items / shipping_addresses INSERT ────────
-    // pool は AppState 経由で渡すのが正規の axum パターンだが、現状 main.rs は
-    // pool を AppState に乗せていない (MVP)。orders_repo は pool=None で
-    // in-memory fallback に倒れる。Phase 9.2 で AppState 経由に切り替える。
+    // Phase 9.x AppState 配線: pool が `Some` なら DB トランザクションで永続化、
+    // `None` なら in-memory fallback。テストや DB 切れ時もそのまま動く。
     let _record = insert_order(
-        None, // TODO(Phase 9.2): AppState 経由で PgPool を渡す
+        state.db(),
         OrderInsertRequest {
-            session_id: "anonymous".to_string(),
+            session_id: session_id_str,
             stripe_session_id: Some(session.stripe_session_id.clone()),
             amount_jpy: total_amount_jpy,
             shipping_jpy: Some(shipping_jpy),
