@@ -10,6 +10,15 @@ if (typeof window !== "undefined") {
   window.scroll = vi.fn() as unknown as typeof window.scroll;
 }
 
+// jsdom には BroadcastChannel が無いが Node.js globalThis にはあるので持ち込む
+// (= cartChannel.ts の cross-tab 同期テスト用 / §11.8.2)。
+if (typeof globalThis.BroadcastChannel !== "undefined") {
+  const w = window as unknown as Record<string, unknown>;
+  if (typeof w.BroadcastChannel === "undefined") {
+    w.BroadcastChannel = globalThis.BroadcastChannel;
+  }
+}
+
 // 各テスト前後で localStorage と api signal の永続状態をクリアして副作用を遮断
 beforeEach(() => {
   if (typeof localStorage !== "undefined") localStorage.clear();

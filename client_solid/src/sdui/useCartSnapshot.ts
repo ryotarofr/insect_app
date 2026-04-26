@@ -25,10 +25,11 @@
 //   - mutate は action のエラーを **rethrow** する (= 呼び出し側 try/catch で toast 化)。
 //     reload のエラーは内部 error() に書くだけで rethrow しない。
 
-import { createSignal, type Accessor } from "solid-js";
+import { createSignal, onCleanup, type Accessor } from "solid-js";
 
 import type { CardBlock } from "./branded";
 import { fetchCartCard } from "./api";
+import { getCartChannel, type InvalidateChannel } from "./cartChannel";
 
 export interface UseCartSnapshotApi {
   /** 現在の cart card (= 最新 seq の result)。未取得は undefined。 */
@@ -50,6 +51,13 @@ export interface UseCartSnapshotOptions {
   initialFetch?: boolean;
   /** fetch 関数の差し替え (テスト用)。default は production の `fetchCartCard`。 */
   fetcher?: () => Promise<CardBlock>;
+  /** cross-tab invalidate channel の差し替え (テスト用)。
+   *  default は `getCartChannel()` (= production singleton)。
+   *  null を渡すと cross-tab 連携を無効化 (= unit test の独立性確保)。 */
+  channel?: InvalidateChannel | null;
+  /** mutation 成功時に他タブへ invalidate を publish するか。default true。
+   *  reload (= bare 再 fetch) は publish しない (= 受信側が自分でも再 fetch するだけ)。 */
+  publishOnMutate?: boolean;
 }
 
 export const useCartSnapshot = (
@@ -102,13 +110,28 @@ export const useCartSnapshot = (
     // mutation 成功後に refetch を seq-tagged で行う。
     const result = await action();
     await refetch();
+    // 他タブに「再 fetch せよ」を通知 (= §11.8.2 cross-tab 同期)。
+    // データは流さず、各タブが自前で /cards/cart を引き直す。
+    if (channel !== null && (opts.publishOnMutate ?? true)) {
+      channel.publish();
+    }
     return result;
   };
 
   const loading = () => inflight() > 0;
 
+  // ── cross-tab invalidate channel subscribe (§11.8.2) ─────────────
+  // 他タブの mutation を受け取ったら refetch する。データは流れてこないので
+  // 自タブは server に問い合わせて真値を引く (= §11.8 主規律と整合)。
+  const channel = opts.channel === undefined ? getCartChannel() : opts.channel;
+  if (channel !== null) {
+    const unsub = channel.subscribe(() => {
+      void refetch();
+    });
+    onCleanup(unsub);
+  }
+
   if (opts.initialFetch !== false) {
-    // 初期 fetch を kick。component setup 時に実行され、エラーは error() に書かれる。
     void refetch();
   }
 

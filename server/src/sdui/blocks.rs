@@ -830,4 +830,14 @@ impl CardBlock {
             CardBlock::Cart { regions, .. } => Box::new(regions.iter_blocks()),
         }
     }
+
+    /// テンプレート名 (= `template` discriminator の値)。
+    /// `ValidateA11y` のエラー文に template を含めて debug 容易にする用途。
+    pub fn template_name(&self) -> &'static str {
+        match self {
+            CardBlock::ProductFeature { .. } => "product_feature",
+            CardBlock::ProductDetail { .. } => "product_detail",
+            CardBlock::Cart { .. } => "cart",
+        }
+    }
 }

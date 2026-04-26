@@ -26,7 +26,7 @@ use crate::sdui::{
     CtaIntent, Currency, FilterBar, FilterChipItem, FilterGroup, FormFieldKind, Href,
     LineItemAction, Localizable, MediaKind, MetaItem, MetaLineItemRole, MetricItem, PageLink,
     Pagination, ProductListResponse, SearchBox, SelectOption, ShippingMethodOption, SortBar,
-    SortOption, TextRole, ValidateKeys,
+    SortOption, TextRole, ValidateA11y, ValidateKeys,
     blocks::{MetaItemAlign, ProductDetailVariant, ProductFeatureVariant},
     regions::{CartRegions, ProductDetailRegions, ProductFeatureRegions},
 };
@@ -42,8 +42,10 @@ pub async fn get_product_card(Path(id): Path<String>) -> Result<Json<CardBlock>,
         .cloned()
         .ok_or(AppError::NotFound)?;
 
-    // SDUI 不変条件: 構築直後に必ず key 一意性を検証する (§7.6)。
+    // SDUI 不変条件: 構築直後に必ず key 一意性 (§7.6) と a11y 不変条件 (§7.7) を検証。
     card.validate_keys()
+        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    card.validate_a11y()
         .map_err(|e| AppError::BadRequest(e.to_string()))?;
 
     Ok(Json(card))
@@ -61,6 +63,8 @@ pub async fn get_product_detail_card(Path(id): Path<String>) -> Result<Json<Card
         .ok_or(AppError::NotFound)?;
 
     card.validate_keys()
+        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    card.validate_a11y()
         .map_err(|e| AppError::BadRequest(e.to_string()))?;
 
     Ok(Json(card))
@@ -89,6 +93,8 @@ pub async fn get_cart_card() -> Result<Json<CardBlock>, AppError> {
     let snapshot = crate::handlers::cart::snapshot_cart();
     let card = build_cart_card(snapshot);
     card.validate_keys()
+        .map_err(|e| AppError::BadRequest(e.to_string()))?;
+    card.validate_a11y()
         .map_err(|e| AppError::BadRequest(e.to_string()))?;
     Ok(Json(card))
 }
@@ -832,6 +838,8 @@ pub async fn list_product_cards(
     for card in &cards {
         card.validate_keys()
             .map_err(|e| AppError::BadRequest(format!("invalid card {}: {}", card.id(), e)))?;
+        card.validate_a11y()
+            .map_err(|e| AppError::BadRequest(format!("a11y violation in {}: {}", card.id(), e)))?;
     }
 
     // 7. shell 群を組み立て
@@ -2042,7 +2050,7 @@ fn raw(text: &str) -> Localizable {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::sdui::ValidateKeys;
+    use crate::sdui::{ValidateA11y, ValidateKeys};
 
     /// 全 6 カードを順に取り出す helper (テストごとに使う)。
     fn all_cards() -> Vec<CardBlock> {
@@ -2070,6 +2078,16 @@ mod tests {
         for card in all_cards() {
             card.validate_keys()
                 .unwrap_or_else(|e| panic!("validate_keys failed for {}: {e}", card.id()));
+        }
+    }
+
+    #[test]
+    fn all_mock_cards_pass_a11y_validation() {
+        // §7.7: 全 fixture が a11y 不変条件 (= 1 テンプレート 1 headline 以下) を満たす。
+        // 違反時は具体的な template / count / keys を error に出して原因特定容易。
+        for card in all_cards() {
+            card.validate_a11y()
+                .unwrap_or_else(|e| panic!("validate_a11y failed for {}: {e}", card.id()));
         }
     }
 
@@ -2867,6 +2885,15 @@ mod tests {
         for card in all_detail_cards() {
             card.validate_keys()
                 .unwrap_or_else(|e| panic!("validate_keys failed for detail {}: {e}", card.id()));
+        }
+    }
+
+    #[test]
+    fn all_detail_cards_pass_a11y_validation() {
+        // §7.7: detail fixture も headline は hero region に 1 個のみ。
+        for card in all_detail_cards() {
+            card.validate_a11y()
+                .unwrap_or_else(|e| panic!("validate_a11y failed for detail {}: {e}", card.id()));
         }
     }
 

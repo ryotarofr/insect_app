@@ -19,6 +19,7 @@ use std::collections::VecDeque;
 use std::sync::{Mutex, OnceLock};
 
 use axum::{Json, extract::Query, http::StatusCode};
+use chrono::Utc;
 use serde::Deserialize;
 
 use crate::error::AppError;
@@ -52,8 +53,16 @@ pub async fn post_events(Json(req): Json<AnalyticsEventBatch>) -> Result<StatusC
         }
     }
 
+    // §11.2: server 受信時刻を真実値として stamp する。
+    // batch 内の全 event に同じ now を打って良い (= 同 batch の到着順は記録しない方針)。
+    // client 観測時刻 (= timestamp_ms) との差分を後段集計で見れば clock skew / 悪意ある
+    // 送信が検出できる。
+    let now_ms: i64 = Utc::now().timestamp_millis();
+
     let mut buf = buffer().lock().expect("events buffer mutex poisoned");
-    for ev in req.events {
+    for mut ev in req.events {
+        // skip_deserializing なので client 送信値は既に None だが念のため上書き。
+        ev.server_received_at_ms = Some(now_ms);
         if buf.len() >= RING_CAP {
             buf.pop_front();
         }
@@ -116,6 +125,9 @@ mod tests {
             event_type: ty,
             timestamp_ms: ts,
             context: None,
+            // skip_deserializing なので client が None を埋めても handler が上書きする。
+            // テストでも None で組み立てて post_events 経由で stamp 動作を観測する。
+            server_received_at_ms: None,
         }
     }
 
@@ -267,5 +279,92 @@ mod tests {
             .expect("context should be Some after insert");
         assert_eq!(ctx0.get("productId").map(String::as_str), Some("p-x"));
         assert_eq!(ctx0.get("variant").map(String::as_str), Some("featured"));
+    }
+
+    #[tokio::test]
+    async fn server_received_at_ms_is_stamped_by_handler() {
+        // §11.2 規律: handler 側で必ず server 受信時刻が stamp される。
+        let _g = GUARD.lock().unwrap();
+        reset_events_for_test();
+
+        let before = Utc::now().timestamp_millis();
+        post_events(Json(AnalyticsEventBatch {
+            events: vec![ev("a.b", AnalyticsEventType::Click, 1_700_000_000_000)],
+        }))
+        .await
+        .unwrap();
+        let after = Utc::now().timestamp_millis();
+
+        let list = list_events(Query(ListQuery { limit: 1 })).await.0;
+        assert_eq!(list.len(), 1);
+        let stamp = list[0]
+            .server_received_at_ms
+            .expect("server_received_at_ms should be stamped by handler");
+        assert!(
+            stamp >= before && stamp <= after,
+            "stamp {stamp} should be within [{before}, {after}]"
+        );
+    }
+
+    #[tokio::test]
+    async fn client_supplied_server_received_at_ms_is_overridden() {
+        // クライアントが偽装した serverReceivedAtMs は無視され、handler の stamp で
+        // 上書きされる (= skip_deserializing と handler の防御の二段保証)。
+        let _g = GUARD.lock().unwrap();
+        reset_events_for_test();
+
+        // serde_json で「クライアント送信」を simulate (= JSON body から復元)
+        let json = r#"{
+            "events":[{
+                "analyticsId":"a.b",
+                "eventType":"click",
+                "timestampMs":1,
+                "serverReceivedAtMs":99999
+            }]
+        }"#;
+        let batch: AnalyticsEventBatch = serde_json::from_str(json).unwrap();
+        // skip_deserializing で None になっている前提
+        assert_eq!(batch.events[0].server_received_at_ms, None);
+
+        let before = Utc::now().timestamp_millis();
+        post_events(Json(batch)).await.unwrap();
+
+        let list = list_events(Query(ListQuery { limit: 1 })).await.0;
+        let stamp = list[0]
+            .server_received_at_ms
+            .expect("handler should stamp");
+        assert_ne!(stamp, 99999, "client value must not survive");
+        assert!(stamp >= before, "stamp must be after request received");
+    }
+
+    #[tokio::test]
+    async fn batch_events_share_the_same_stamp() {
+        // 同 batch 内の全 event に同一の receive 時刻が打たれる (§11.2 規約)。
+        let _g = GUARD.lock().unwrap();
+        reset_events_for_test();
+
+        post_events(Json(AnalyticsEventBatch {
+            events: vec![
+                ev("a", AnalyticsEventType::Click, 1),
+                ev("b", AnalyticsEventType::Click, 2),
+                ev("c", AnalyticsEventType::Impression, 3),
+            ],
+        }))
+        .await
+        .unwrap();
+
+        let list = list_events(Query(ListQuery { limit: 10 })).await.0;
+        assert_eq!(list.len(), 3);
+        let stamps: Vec<i64> = list
+            .iter()
+            .map(|e| {
+                e.server_received_at_ms
+                    .expect("server_received_at_ms should be Some")
+            })
+            .collect();
+        assert!(
+            stamps.windows(2).all(|w| w[0] == w[1]),
+            "all events in the same batch should share the same stamp: {stamps:?}"
+        );
     }
 }

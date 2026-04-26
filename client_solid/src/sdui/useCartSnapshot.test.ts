@@ -36,7 +36,9 @@ const setupHook = <Args extends unknown[]>(opts: {
 }) => {
   let api!: ReturnType<typeof useCartSnapshot>;
   const dispose = createRoot((d) => {
-    api = useCartSnapshot(opts);
+    // channel: null で cross-tab 連携を切る (= 本テストは seq 規律のみ検証)。
+    // §11.8.2 の cross-tab 動作は cartChannel.test.ts でカバー。
+    api = useCartSnapshot({ ...opts, channel: null });
     return d;
   });
   return { api, dispose };

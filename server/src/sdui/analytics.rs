@@ -42,6 +42,23 @@ pub struct AnalyticsEvent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub context: Option<BTreeMap<String, String>>,
+    /// サーバ受信時刻 (ms epoch)。設計書 §11.2 規約により集計の真実値はこちら側で持つ。
+    ///
+    /// **POST /events 受信時に handler が必ず stamp する**。
+    /// クライアント送信 body には乗らないため `skip_deserializing` で受信時に Default (None)
+    /// に倒し、handler 側で `chrono::Utc::now().timestamp_millis()` を Some(_) に書き込む。
+    /// `GET /events` 出力時はそのまま serialize される (= 集計クエリで使う)。
+    ///
+    /// **clock skew 対策**: `timestamp_ms` (= client 観測値) は端末時計のズレ・悪意ある送信に
+    /// 晒されているため信用しない。集計上は `serverReceivedAtMs` を真実値とし、両者の差分を
+    /// 観測することで「クライアント時計ズレ / 悪意ある送信」の兆候を後段で検出できる。
+    #[serde(
+        default,
+        skip_deserializing,
+        skip_serializing_if = "Option::is_none"
+    )]
+    #[ts(optional, type = "number")]
+    pub server_received_at_ms: Option<i64>,
 }
 
 /// イベント種別。
@@ -77,6 +94,7 @@ mod tests {
             event_type: AnalyticsEventType::Click,
             timestamp_ms: 1_700_000_000_000,
             context: Some(ctx),
+            server_received_at_ms: None,
         };
         let json = serde_json::to_string(&e).unwrap();
         assert!(json.contains(r#""analyticsId":"home.hero""#), "{json}");
@@ -92,6 +110,7 @@ mod tests {
             event_type: AnalyticsEventType::Impression,
             timestamp_ms: 0,
             context: None,
+            server_received_at_ms: None,
         };
         let json = serde_json::to_string(&e).unwrap();
         assert!(
@@ -122,5 +141,56 @@ mod tests {
         let b = AnalyticsEventBatch { events: vec![] };
         let json = serde_json::to_string(&b).unwrap();
         assert_eq!(json, r#"{"events":[]}"#);
+    }
+
+    #[test]
+    fn server_received_at_ms_is_skipped_during_deserialize() {
+        // クライアント送信 body に serverReceivedAtMs が乗っていても無視 (= None) になる。
+        // handler 側で stamp されるべきフィールドを client が偽装できないことを保証。
+        let json = r#"{
+            "analyticsId":"a",
+            "eventType":"click",
+            "timestampMs":1,
+            "serverReceivedAtMs":99999
+        }"#;
+        let e: AnalyticsEvent = serde_json::from_str(json).unwrap();
+        assert_eq!(
+            e.server_received_at_ms, None,
+            "client-supplied serverReceivedAtMs must be ignored"
+        );
+    }
+
+    #[test]
+    fn server_received_at_ms_is_serialized_when_some() {
+        // handler が stamp した後の serialize 結果には乗る (= GET /events 出力で見える)。
+        let e = AnalyticsEvent {
+            analytics_id: "a".to_string(),
+            event_type: AnalyticsEventType::Click,
+            timestamp_ms: 1,
+            context: None,
+            server_received_at_ms: Some(1_700_000_000_000),
+        };
+        let json = serde_json::to_string(&e).unwrap();
+        assert!(
+            json.contains(r#""serverReceivedAtMs":1700000000000"#),
+            "serverReceivedAtMs should be serialized when Some: {json}"
+        );
+    }
+
+    #[test]
+    fn server_received_at_ms_omitted_when_none() {
+        // None なら JSON に乗らない (= skip_serializing_if = Option::is_none)。
+        let e = AnalyticsEvent {
+            analytics_id: "a".to_string(),
+            event_type: AnalyticsEventType::Impression,
+            timestamp_ms: 0,
+            context: None,
+            server_received_at_ms: None,
+        };
+        let json = serde_json::to_string(&e).unwrap();
+        assert!(
+            !json.contains("serverReceivedAtMs"),
+            "None serverReceivedAtMs should be omitted: {json}"
+        );
     }
 }

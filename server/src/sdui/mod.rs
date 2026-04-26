@@ -36,4 +36,4 @@ pub use list::{
 #[allow(unused_imports)]
 pub use regions::{CartRegions, ProductDetailRegions, ProductFeatureRegions};
 #[allow(unused_imports)]
-pub use validate::{KeyConflict, ValidateKeys};
+pub use validate::{A11yViolation, KeyConflict, ValidateA11y, ValidateKeys};

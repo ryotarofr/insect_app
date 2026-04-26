@@ -11,7 +11,9 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "gen:sdui": "node scripts/gen-sdui-types.mjs",
-    "gen:sdui:fast": "node scripts/gen-sdui-types.mjs --skip-cargo"
+    "gen:sdui:fast": "node scripts/gen-sdui-types.mjs --skip-cargo",
+    "check:i18n": "node scripts/check-i18n-keys.mjs",
+    "check:i18n:strict": "node scripts/check-i18n-keys.mjs --strict"
   },
   "dependencies": {
     "@solidjs/router": "^0.16.1",
@@ -20,6 +22,7 @@
   "devDependencies": {
     "@solidjs/testing-library": "^0.8.10",
     "@testing-library/jest-dom": "^6.9.1",
+    "fast-check": "^4.7.0",
     "jsdom": "^29.0.2",
     "typescript": "^5.6.3",
     "vite": "^5.4.11",
