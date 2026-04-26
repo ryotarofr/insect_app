@@ -17,6 +17,12 @@ export const ROUTE_PATHS: Record<RouteKey, string> = {
   // Phase 9.1: SDUI カートに統一 (旧 cart-sdui route は廃止)
   cart: "/cart",
   warranty: "/help/warranty",
+  // Phase 9.G: login / register UI
+  login: "/login",
+  // Phase 9.G: 注文履歴 (= /api/v1/orders/me 経由)
+  orders: "/orders",
+  // 注文詳細は /orders/:id だが、ROUTE_PATHS は代表 path を持てば良い
+  "order-detail": "/orders",
   // 404 は実際にはここから遷移しない (URL → RouteKey 経路でしか来ない)。
   // 何か理由があって setRoute("not-found") した時のために便宜上のパスを置く。
   "not-found": "/404",
@@ -46,6 +52,12 @@ export const pathnameToRouteKey = (pathname: string): RouteKey => {
   // Phase 9.1: 旧 /cart-sdui は /cart に正規化 (= 古いブックマークの救済)
   if (path === "/cart-sdui") return "cart";
   if (path === "/help/warranty") return "warranty";
+  // Phase 9.G: login / register UI
+  if (path === "/login") return "login";
+  // Phase 9.G: 注文履歴 + 詳細
+  // /orders/:id (= UUID 文字列) → order-detail / /orders → orders
+  if (/^\/orders\/[^/]+/.test(path)) return "order-detail";
+  if (path === "/orders") return "orders";
 
   // どのルートにも一致しなければ 404 扱い。
   // 旧実装は mypage に倒していたが、SDUI 移行で /products-sdui のような
@@ -76,6 +88,10 @@ export const specimenUrl = (id?: string): string =>
 
 export const bloodlineUrl = (id?: string): string =>
   id ? `/bloodline/${encodeURIComponent(id)}` : "/bloodline";
+
+/** Phase 9.G: 注文詳細 URL (= /orders/{id})。 */
+export const orderUrl = (id: string): string =>
+  `/orders/${encodeURIComponent(id)}`;
 
 /**
  * P2-14: RouteKey から階層パンくずを組み立てる。
@@ -135,6 +151,22 @@ export const crumbFor = (route: RouteKey, ids: CrumbIds = {}): Crumb[] => {
       return [
         { label: "ヘルプ", href: undefined },
         { label: "安心保証" },
+      ];
+    case "login":
+      // Phase 9.G: login / register の breadcrumb は単独 (= サイドバー上の親が無い)
+      return [{ label: "ログイン" }];
+    case "orders":
+      // Phase 9.G: 注文履歴は「マイページ」配下の派生として breadcrumb を組む
+      return [
+        { label: "マイページ", href: "/" },
+        { label: "注文履歴" },
+      ];
+    case "order-detail":
+      // 注文詳細は /orders → 詳細 の 3 段。末尾は id (= 短縮表示) で揺らがせない。
+      return [
+        { label: "マイページ", href: "/" },
+        { label: "注文履歴", href: "/orders" },
+        { label: "注文詳細" },
       ];
     case "not-found":
       return [{ label: "ページが見つかりません" }];

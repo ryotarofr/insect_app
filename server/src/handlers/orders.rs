@@ -5,7 +5,10 @@
 //! 注文の作成は `/api/v1/checkout/submit` 経由なので本 module には POST 系は無い。
 //! 個別注文詳細 (= /orders/{id}) や status 変更 (= 管理用) は将来追加。
 
-use axum::{Extension, Json, extract::State};
+use axum::{
+    Extension, Json,
+    extract::{Path, State},
+};
 use chrono::{DateTime, Utc};
 use serde::Serialize;
 use uuid::Uuid;
@@ -63,6 +66,76 @@ pub async fn list_my_orders(
         .await
         .map_err(|e| AppError::BadRequest(format!("orders fetch: {e}")))?;
     Ok(Json(rows.into_iter().map(OrderView::from).collect()))
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrderLineView {
+    pub product_id: String,
+    pub product_uuid: Option<String>,
+    pub title: String,
+    pub unit_price_jpy: i64,
+    pub qty: i32,
+    pub subtotal_jpy: i64,
+}
+
+impl From<orders::OrderLineRow> for OrderLineView {
+    fn from(r: orders::OrderLineRow) -> Self {
+        Self {
+            product_id: r.product_id,
+            product_uuid: r.product_uuid.map(|u| u.to_string()),
+            title: r.title,
+            unit_price_jpy: r.unit_price_jpy,
+            qty: r.qty,
+            subtotal_jpy: r.subtotal_jpy,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OrderDetailView {
+    #[serde(flatten)]
+    pub order: OrderView,
+    pub line_items: Vec<OrderLineView>,
+}
+
+/// `GET /api/v1/orders/{id}` — 自分の注文 1 件 + line_items を返す。
+///
+/// **Auth ポリシー**: 所有者 (= orders.user_id == current user) のみ閲覧可能。
+/// 匿名 session で発行された注文 (= user_id = NULL / session_id 文字列のみ) は、
+/// 同じ session_id を提示している場合に閲覧可能 (= "ログインしないでも自分のカートで
+/// 買った直後の確認画面" を許す)。それ以外は 404 で吸収。
+pub async fn get_order_detail(
+    State(state): State<AppState>,
+    Extension(session_id): Extension<SessionId>,
+    Path(id): Path<String>,
+) -> Result<Json<OrderDetailView>, AppError> {
+    let order_id = Uuid::parse_str(&id).map_err(|_| AppError::NotFound)?;
+    let order = orders::find_by_id(state.db(), order_id)
+        .await
+        .map_err(|e| AppError::BadRequest(format!("order lookup: {e}")))?
+        .ok_or(AppError::NotFound)?;
+
+    // 所有者チェック: user 経由 OR session_id 経由
+    let session_str = session_id.0.to_string();
+    let user_owns = match user_sessions::find_by_id(state.db(), session_id.0).await {
+        Ok(Some(s)) => s.user_id.is_some_and(|u| order.user_id == Some(u)),
+        _ => false,
+    };
+    let session_owns = order.session_id == session_str;
+    if !user_owns && !session_owns {
+        return Err(AppError::NotFound);
+    }
+
+    let items = orders::list_items_by_order_id(state.db(), order_id)
+        .await
+        .map_err(|e| AppError::BadRequest(format!("order_items fetch: {e}")))?;
+
+    Ok(Json(OrderDetailView {
+        order: OrderView::from(order),
+        line_items: items.into_iter().map(OrderLineView::from).collect(),
+    }))
 }
 
 #[cfg(test)]
@@ -184,5 +257,87 @@ mod tests {
         let (session, _) = login_session().await;
         let res = list_my_orders(st(), ext(session)).await.unwrap();
         assert!(res.0.is_empty());
+    }
+
+    // ── /orders/{id} 詳細 ─────────────────────────────────────────
+
+    #[tokio::test]
+    async fn order_detail_returns_order_with_line_items_for_owner() {
+        let _g = lock_all();
+        reset_all();
+        let (session, user_id) = login_session().await;
+
+        let rec = orders::insert_order(None, order_req(Some(user_id), 5000)).await.unwrap();
+        let res = get_order_detail(st(), ext(session), Path(rec.id.to_string()))
+            .await
+            .unwrap();
+        assert_eq!(res.0.order.id, rec.id.to_string());
+        assert_eq!(res.0.order.amount_jpy, 5000);
+        assert_eq!(res.0.line_items.len(), 1);
+        assert_eq!(res.0.line_items[0].product_id, "p-x");
+        assert_eq!(res.0.line_items[0].subtotal_jpy, 5000);
+    }
+
+    #[tokio::test]
+    async fn order_detail_404_for_other_users_order() {
+        let _g = lock_all();
+        reset_all();
+        let (_session_a, user_a) = login_session().await;
+        let rec = orders::insert_order(None, order_req(Some(user_a), 1000)).await.unwrap();
+
+        // 別 user の session で取りに行く → 404
+        let (session_b, _) = login_session().await;
+        match get_order_detail(st(), ext(session_b), Path(rec.id.to_string())).await {
+            Err(AppError::NotFound) => {}
+            other => panic!("expected NotFound for cross-user, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn order_detail_allows_anonymous_session_for_own_order() {
+        let _g = lock_all();
+        reset_all();
+        // anonymous session を用意し、その session_id 文字列を orders.session_id に詰めて INSERT
+        let session = Uuid::new_v4();
+        user_sessions::create_anonymous(None, session).await.unwrap();
+        let mut req = order_req(None, 3000);
+        req.session_id = session.to_string();
+        let rec = orders::insert_order(None, req).await.unwrap();
+
+        // 同じ anonymous session で詳細を取りに行く → OK (= "決済直後の確認画面")
+        let res = get_order_detail(st(), ext(session), Path(rec.id.to_string()))
+            .await
+            .unwrap();
+        assert_eq!(res.0.order.amount_jpy, 3000);
+
+        // 別 anonymous session では 404
+        let other_session = Uuid::new_v4();
+        user_sessions::create_anonymous(None, other_session).await.unwrap();
+        match get_order_detail(st(), ext(other_session), Path(rec.id.to_string())).await {
+            Err(AppError::NotFound) => {}
+            other => panic!("expected NotFound for other anonymous, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn order_detail_404_for_unknown_uuid() {
+        let _g = lock_all();
+        reset_all();
+        let (session, _) = login_session().await;
+        match get_order_detail(st(), ext(session), Path(Uuid::new_v4().to_string())).await {
+            Err(AppError::NotFound) => {}
+            other => panic!("expected NotFound, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn order_detail_404_for_invalid_uuid_path() {
+        let _g = lock_all();
+        reset_all();
+        let (session, _) = login_session().await;
+        match get_order_detail(st(), ext(session), Path("not-a-uuid".to_string())).await {
+            Err(AppError::NotFound) => {}
+            other => panic!("expected NotFound, got {other:?}"),
+        }
     }
 }

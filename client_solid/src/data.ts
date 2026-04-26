@@ -15,6 +15,12 @@ export type RouteKey =
   //   旧 "cart-sdui" route は削除済み。/cart-sdui へのアクセスは router で /cart に正規化。
   | "cart"
   | "warranty"
+  // Phase 9.G: login / register UI を表示する route
+  | "login"
+  // Phase 9.G: 自分の注文履歴一覧 (= GET /api/v1/orders/me)
+  | "orders"
+  // Phase 9.G: 1 注文の詳細ページ (= GET /api/v1/orders/{id} で line_items 込み)
+  | "order-detail"
   // どの URL にもマッチしない時に使う擬似ルート (画面側で 404 を表示する)
   | "not-found";
 

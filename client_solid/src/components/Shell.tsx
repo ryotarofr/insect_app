@@ -19,6 +19,7 @@ import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { ROUTE_PATHS, sidebarRouteKey } from "../router";
 import { openCommandPalette } from "../store/commandPalette";
 import { getThemeMode, toggleNightRed } from "../store/theme";
+import { currentUser, logout as authLogout } from "../store/auth";
 
 interface NavEntry {
   key: RouteKey;
@@ -144,6 +145,50 @@ export const Shell = (props: ShellProps) => {
             <div class="user-name">{getCurrentUser().name}</div>
             <div class="user-role">{getCurrentUser().role}</div>
           </div>
+        </div>
+
+        {/* Phase 9.G: 認証 quick action。anonymous → ログインリンク / 既ログイン → ログアウト。
+            mock user 表示 (上の sidebar-footer) はそのまま残し、本リンクは独立 row で出す。
+            CSS は app-layout.css の .sidebar-auth-link を参照 (= 軽い inline スタイルでも代用可)。 */}
+        <div
+          class="sidebar-auth"
+          style={{
+            padding: "8px 16px",
+            "border-top": "1px solid var(--ink-faint, #ddd)",
+            "font-size": "11px",
+            "text-align": "center",
+          }}
+        >
+          <Show
+            when={currentUser()}
+            fallback={
+              <A href={ROUTE_PATHS.login} class="sidebar-auth-link">
+                ログイン / 新規登録
+              </A>
+            }
+          >
+            {(_user) => (
+              <button
+                type="button"
+                class="sidebar-auth-link"
+                onClick={() => {
+                  // logout 自体は失敗しても store/auth が finally で signal を null にする。
+                  // ここでは promise を持たず fire-and-forget でよい。
+                  void authLogout();
+                }}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--ink-faint, #888)",
+                  cursor: "pointer",
+                  padding: "0",
+                  font: "inherit",
+                }}
+              >
+                ログアウト
+              </button>
+            )}
+          </Show>
         </div>
       </aside>
 

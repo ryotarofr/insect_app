@@ -39,9 +39,12 @@ import { BloodlinePage } from "./pages/Bloodline";
 import { ShopPage } from "./pages/Shop";
 import { MarketPage } from "./pages/Market";
 import { CartSduiPage } from "./pages/CartSdui";
+import { LoginPage } from "./pages/Login";
+import { MyOrdersPage } from "./pages/MyOrders";
 import { WarrantyPage } from "./pages/help/Warranty";
 import { NotFoundPage } from "./pages/NotFound";
 import { cartCount } from "./store/cart";
+import { refreshMe } from "./store/auth";
 import {
   ROUTE_PATHS,
   pathnameToRouteKey,
@@ -330,6 +333,17 @@ export const App = () => {
   // 60 日以内に羽化予定の個体数（サイドバーバッジ用）
   const eclosionCount = createMemo(() => listUrgentEclosion(60).length);
 
+  // Phase 9.G: アプリ起動時に 1 回だけ /auth/me を叩いて cookie session の user を復元する。
+  //   - anonymous (= 401) は store/auth が静かに null のままにする (= toast 出さない)
+  //   - 5xx / network 障害は console.warn だけ残す (= 起動を妨げない / fetch の retry は別ロジック)
+  onMount(() => {
+    refreshMe().catch((err: unknown) => {
+      // SduiFetchError(401) は refreshMe 内で吸収済。ここに来るのは 5xx / parse 失敗 / network。
+      // App 起動は止めず、login が必要な画面で 401 を見て対応する。
+      console.warn("auth refresh failed:", err);
+    });
+  });
+
   onMount(() => {
     const onKey = (e: KeyboardEvent) => {
       // P4-5: Cmd+K / Ctrl+K でコマンド パレットをトグル起動。
@@ -441,6 +455,16 @@ export const App = () => {
         </Show>
         <Show when={route() === "warranty"}>
           <WarrantyPage />
+        </Show>
+        <Show when={route() === "login"}>
+          {/* Phase 9.G: login / register UI。同 page 内で mode 切替。
+              成功すると setRoute("mypage") で mypage に遷移する。 */}
+          <LoginPage setRoute={setRoute} />
+        </Show>
+        <Show when={route() === "orders"}>
+          {/* Phase 9.G: 自分の注文履歴一覧 (= /api/v1/orders/me)。
+              anonymous は inline で「ログインが必要」表示 + /login への navigate。 */}
+          <MyOrdersPage setRoute={setRoute} />
         </Show>
         <Show when={route() === "not-found"}>
           <NotFoundPage />

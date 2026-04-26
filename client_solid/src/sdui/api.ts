@@ -362,3 +362,112 @@ export const postCheckoutSubmit = async (): Promise<CheckoutSubmitResponse> => {
     body: "{}",
   });
 };
+
+// ──────────────────────────────────────────────────────────────────────
+// Phase 9.G: 認証 (= /api/v1/auth/*)
+// ──────────────────────────────────────────────────────────────────────
+
+/** auth handler の register / login / me レスポンスで共通な user view。 */
+export interface AuthUser {
+  userId: string;
+  publicId: string;
+  name: string;
+  email?: string;
+  role: string;
+  /** /me 専用に avatarInitial が乗る (register / login レスポンスは含まない場合あり)。 */
+  avatarInitial?: string;
+}
+
+export interface RegisterRequest {
+  publicId: string;
+  name: string;
+  email: string;
+  password: string;
+  avatarInitial: string;
+  /** 省略時は server 側で "breeder" がデフォルト。 */
+  role?: string;
+}
+
+/** `POST /api/v1/auth/register` — 新規登録。同 cookie session を user に紐付ける。 */
+export const postAuthRegister = async (
+  req: RegisterRequest,
+): Promise<AuthUser> => {
+  return fetchJson<AuthUser>(`/auth/register`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+};
+
+export interface LoginRequest {
+  email: string;
+  password: string;
+}
+
+/** `POST /api/v1/auth/login` — email + password 検証 → session 昇格。
+ *  失敗 (= 401) は account enumeration を防ぐため email 不在 / password 不一致を区別しない。 */
+export const postAuthLogin = async (req: LoginRequest): Promise<AuthUser> => {
+  return fetchJson<AuthUser>(`/auth/login`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+};
+
+/** `POST /api/v1/auth/logout` — session を anonymous に戻す。204 で完了。 */
+export const postAuthLogout = async (): Promise<void> => {
+  return fetchNoContent(`/auth/logout`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+};
+
+/** `GET /api/v1/auth/me` — 現在 login 中の user 情報。anonymous は 401。 */
+export const fetchAuthMe = async (): Promise<AuthUser> => {
+  return fetchJson<AuthUser>(`/auth/me`);
+};
+
+// ──────────────────────────────────────────────────────────────────────
+// Phase 9.G: 注文履歴 (= /api/v1/orders/*)
+// ──────────────────────────────────────────────────────────────────────
+
+export interface OrderSummary {
+  id: string;
+  sessionId: string;
+  status: string;                    // "pending" / "paid" / "failed" / "canceled"
+  amountJpy: number;
+  shippingJpy: number | null;
+  stripeSessionId: string | null;
+  stripePaymentIntentId: string | null;
+  /** ISO8601 文字列 (= chrono::DateTime<Utc>) */
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface OrderLineSummary {
+  productId: string;
+  productUuid: string | null;
+  title: string;
+  unitPriceJpy: number;
+  qty: number;
+  subtotalJpy: number;
+}
+
+/** `GET /api/v1/orders/{id}` の戻り値。orders + line_items を 1 枚にまとめる。
+ *  サーバ側は `#[serde(flatten)]` で order を埋め込んで返すため、
+ *  client では `OrderSummary` のフィールド + `lineItems` で一段に展開される。 */
+export type OrderDetail = OrderSummary & {
+  lineItems: OrderLineSummary[];
+};
+
+/** `GET /api/v1/orders/me` — login user の注文履歴 (= 新しい順)。 */
+export const fetchMyOrders = async (): Promise<OrderSummary[]> => {
+  return fetchJson<OrderSummary[]>(`/orders/me`);
+};
+
+/** `GET /api/v1/orders/{id}` — 1 注文 + 内訳を取得。所有者でなければ 404。 */
+export const fetchOrderDetail = async (id: string): Promise<OrderDetail> => {
+  const safe = encodeURIComponent(id);
+  return fetchJson<OrderDetail>(`/orders/${safe}`);
+};

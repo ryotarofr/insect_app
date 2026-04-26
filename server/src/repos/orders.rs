@@ -73,6 +73,19 @@ pub struct OrderRecord {
     pub updated_at: DateTime<Utc>,
 }
 
+/// `order_items` テーブルから SELECT して返す行 (= 注文詳細 endpoint 用)。
+/// `OrderLineInsert` は INSERT 用で qty が u32 なのに対し、本 row は DB 列定義通り i32 で
+/// 受け取る (= sqlx::FromRow が i32 の derive を持つため)。
+#[derive(Debug, Clone, FromRow)]
+pub struct OrderLineRow {
+    pub product_id: String,
+    pub product_uuid: Option<Uuid>,
+    pub title: String,
+    pub unit_price_jpy: i64,
+    pub qty: i32,
+    pub subtotal_jpy: i64,
+}
+
 #[derive(Debug, thiserror::Error)]
 pub enum OrderRepoError {
     #[error("invalid order request: {0}")]
@@ -304,6 +317,66 @@ async fn find_by_stripe_session_id_db(
     Ok(row)
 }
 
+/// 1 注文を internal UUID で取得 (= /orders/{id} 詳細用)。
+pub async fn find_by_id(
+    pool: Option<&PgPool>,
+    id: Uuid,
+) -> Result<Option<OrderRecord>, OrderRepoError> {
+    match pool {
+        Some(p) => sqlx::query_as::<_, OrderRecord>(
+            r#"
+            SELECT id, session_id, user_id, stripe_session_id, stripe_payment_intent_id,
+                   status, amount_jpy, shipping_jpy, created_at, updated_at
+            FROM orders
+            WHERE id = $1
+            "#,
+        )
+        .bind(id)
+        .fetch_optional(p)
+        .await
+        .map_err(OrderRepoError::Db),
+        None => {
+            let store = memory_store()
+                .lock()
+                .map_err(|_| OrderRepoError::Invalid("in-memory mutex poisoned".to_string()))?;
+            Ok(store.iter().find(|r| r.id == id).cloned())
+        }
+    }
+}
+
+/// 1 注文の line_items を product_id 順で返す。
+pub async fn list_items_by_order_id(
+    pool: Option<&PgPool>,
+    order_id: Uuid,
+) -> Result<Vec<OrderLineRow>, OrderRepoError> {
+    match pool {
+        Some(p) => sqlx::query_as::<_, OrderLineRow>(
+            r#"
+            SELECT product_id, product_uuid, title, unit_price_jpy, qty, subtotal_jpy
+            FROM order_items
+            WHERE order_id = $1
+            ORDER BY product_id
+            "#,
+        )
+        .bind(order_id)
+        .fetch_all(p)
+        .await
+        .map_err(OrderRepoError::Db),
+        None => {
+            let store = memory_items_store()
+                .lock()
+                .map_err(|_| OrderRepoError::Invalid("items mutex poisoned".to_string()))?;
+            let mut rows: Vec<OrderLineRow> = store
+                .iter()
+                .filter(|(oid, _)| *oid == order_id)
+                .map(|(_, r)| r.clone())
+                .collect();
+            rows.sort_by(|a, b| a.product_id.cmp(&b.product_id));
+            Ok(rows)
+        }
+    }
+}
+
 /// 1 user の注文履歴を created_at 降順で返す (= GET /api/v1/orders/me 用)。
 pub async fn list_by_user_id(
     pool: Option<&PgPool>,
@@ -380,6 +453,13 @@ fn memory_store() -> &'static Mutex<Vec<OrderRecord>> {
     S.get_or_init(|| Mutex::new(Vec::new()))
 }
 
+/// in-memory モードの order_items 用 store。`(order_id, OrderLineRow)` で保存し、
+/// `list_items_by_order_id` で order_id でフィルタする。
+fn memory_items_store() -> &'static Mutex<Vec<(Uuid, OrderLineRow)>> {
+    static S: OnceLock<Mutex<Vec<(Uuid, OrderLineRow)>>> = OnceLock::new();
+    S.get_or_init(|| Mutex::new(Vec::new()))
+}
+
 fn insert_order_memory(req: OrderInsertRequest) -> Result<OrderRecord, OrderRepoError> {
     let now = Utc::now();
     let rec = OrderRecord {
@@ -394,16 +474,40 @@ fn insert_order_memory(req: OrderInsertRequest) -> Result<OrderRecord, OrderRepo
         created_at: now,
         updated_at: now,
     };
-    let mut store = memory_store()
-        .lock()
-        .map_err(|_| OrderRepoError::Invalid("in-memory mutex poisoned".to_string()))?;
-    store.push(rec.clone());
+    {
+        let mut store = memory_store()
+            .lock()
+            .map_err(|_| OrderRepoError::Invalid("in-memory mutex poisoned".to_string()))?;
+        store.push(rec.clone());
+    }
+    // line_items も in-memory items store に積む (= /orders/{id} 詳細での list_items 用)。
+    {
+        let mut items_store = memory_items_store()
+            .lock()
+            .map_err(|_| OrderRepoError::Invalid("items mutex poisoned".to_string()))?;
+        for li in req.line_items.into_iter() {
+            items_store.push((
+                rec.id,
+                OrderLineRow {
+                    product_id: li.product_id,
+                    product_uuid: li.product_uuid,
+                    title: li.title,
+                    unit_price_jpy: li.unit_price_jpy,
+                    qty: li.qty as i32,
+                    subtotal_jpy: li.subtotal_jpy,
+                },
+            ));
+        }
+    }
     Ok(rec)
 }
 
 #[cfg(test)]
 pub fn reset_memory_for_test() {
     if let Ok(mut s) = memory_store().lock() {
+        s.clear();
+    }
+    if let Ok(mut s) = memory_items_store().lock() {
         s.clear();
     }
 }

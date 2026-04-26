@@ -119,6 +119,8 @@ pub fn api_v1(state: AppState) -> Router {
         )
         // 注文履歴 (= /orders/me)。Phase 9.G: orders.user_id を引いて自分の注文だけ返す。
         .route("/orders/me", get(handlers::orders::list_my_orders))
+        // 注文詳細 (= /orders/{id})。所有者のみ閲覧可、line_items 込み。
+        .route("/orders/{id}", get(handlers::orders::get_order_detail))
         // 交配記録 (= /mating_records)。breeder = current user に固定。
         .route(
             "/mating_records",
