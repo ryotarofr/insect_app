@@ -101,15 +101,25 @@ pub async fn session_middleware(
     let mut response = next.run(req).await;
 
     // ── 5. Set-Cookie を追加 (= 既存 cookie 上書き or 新発行) ──────
+    // production (= HTTPS reverse-proxy 経由) では `KOCHU_COOKIE_SECURE=true` を env に
+    // 設定して Secure 属性を付ける。dev (http://localhost) では未設定のまま (= Secure
+    // を付けると localhost で cookie が立たない)。
+    let secure_attr = if cookie_secure_enabled() { "; Secure" } else { "" };
     let cookie_value = format!(
-        "{}={}; Path=/; HttpOnly; SameSite=Lax",
-        SESSION_COOKIE_NAME, session_id
+        "{}={}; Path=/; HttpOnly; SameSite=Lax{}",
+        SESSION_COOKIE_NAME, session_id, secure_attr
     );
     if let Ok(hv) = HeaderValue::from_str(&cookie_value) {
         response.headers_mut().append(header::SET_COOKIE, hv);
     }
 
     response
+}
+
+/// `KOCHU_COOKIE_SECURE` env が `"true"` の時のみ Secure 属性を有効化する。
+/// それ以外 (= 未設定 / "false" / 任意の文字列) は disable。
+fn cookie_secure_enabled() -> bool {
+    std::env::var("KOCHU_COOKIE_SECURE").ok().as_deref() == Some("true")
 }
 
 /// `Cookie` ヘッダ文字列から `kochu_session=<UUID>` を取り出す。
@@ -167,6 +177,40 @@ mod tests {
             id,
             Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap()
         );
+    }
+
+    #[test]
+    fn cookie_secure_default_is_off() {
+        // env を空にしてからのテスト。SAFETY: edition 2024 では set_var が unsafe。
+        unsafe {
+            std::env::remove_var("KOCHU_COOKIE_SECURE");
+        }
+        assert!(!cookie_secure_enabled(), "未設定なら disable");
+    }
+
+    #[test]
+    fn cookie_secure_enabled_when_env_is_true() {
+        unsafe {
+            std::env::set_var("KOCHU_COOKIE_SECURE", "true");
+        }
+        assert!(cookie_secure_enabled());
+        unsafe {
+            std::env::remove_var("KOCHU_COOKIE_SECURE");
+        }
+    }
+
+    #[test]
+    fn cookie_secure_disabled_when_env_is_other() {
+        unsafe {
+            std::env::set_var("KOCHU_COOKIE_SECURE", "1"); // "true" 以外
+        }
+        assert!(
+            !cookie_secure_enabled(),
+            "厳密な \"true\" マッチのみ enable"
+        );
+        unsafe {
+            std::env::remove_var("KOCHU_COOKIE_SECURE");
+        }
     }
 
     #[tokio::test]

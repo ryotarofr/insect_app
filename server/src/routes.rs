@@ -86,6 +86,13 @@ pub fn api_v1(state: AppState) -> Router {
             "/stripe/webhook",
             post(handlers::stripe_webhook::post_stripe_webhook),
         )
+        // Phase 9.G: 認証 (= login flow)。register / login / logout / me を提供。
+        // session_middleware が cookie の SessionId を extension に詰める前提で、
+        // 各 handler は `Extension<SessionId>` 経由で識別子を受け取る。
+        .route("/auth/register", post(handlers::auth::post_register))
+        .route("/auth/login", post(handlers::auth::post_login))
+        .route("/auth/logout", post(handlers::auth::post_logout))
+        .route("/auth/me", get(handlers::auth::get_me))
         // Phase 9.E 補助: 全 /api/v1/* に session middleware を適用。
         // /health は外側 (main.rs::build_app) で別途 nest しているので影響なし。
         // `from_fn_with_state` で middleware に AppState を渡し、新規 session 発行時に

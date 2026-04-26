@@ -92,6 +92,53 @@ pub async fn find_by_id(
     }
 }
 
+/// 既存 session に user_id を紐付ける (= register / login 直後の "anonymous → user" 昇格)。
+///
+/// session 行が DB に存在しない (= cookie はあるが user_sessions に未登録) ケースは
+/// upsert で作る方が UX が良いが、本 PR では NotFound として扱う。先に
+/// `create_anonymous` を呼ぶ前提。
+pub async fn attach_user(
+    pool: Option<&PgPool>,
+    session_id: Uuid,
+    user_id: Uuid,
+) -> Result<(), UserSessionRepoError> {
+    match pool {
+        Some(p) => attach_user_db(p, session_id, user_id).await,
+        None => {
+            let mut store = memory_store_lock_mut();
+            let row = store
+                .iter_mut()
+                .find(|r| r.id == session_id)
+                .ok_or(UserSessionRepoError::NotFound(session_id))?;
+            row.user_id = Some(user_id);
+            Ok(())
+        }
+    }
+}
+
+/// session の user_id を NULL に戻す (= logout 時の "user → anonymous" 降格)。
+///
+/// session 行自体は残し cart_items 等の所有権 (session_id) は維持する設計。
+/// 「cookie 自体を破棄」したい場合は別途 `delete()` を使う。
+/// 行が存在しない場合は NotFound だが、handler 側では 204 で吸収する想定。
+pub async fn detach_user(
+    pool: Option<&PgPool>,
+    session_id: Uuid,
+) -> Result<(), UserSessionRepoError> {
+    match pool {
+        Some(p) => detach_user_db(p, session_id).await,
+        None => {
+            let mut store = memory_store_lock_mut();
+            let row = store
+                .iter_mut()
+                .find(|r| r.id == session_id)
+                .ok_or(UserSessionRepoError::NotFound(session_id))?;
+            row.user_id = None;
+            Ok(())
+        }
+    }
+}
+
 /// expires_at を `Utc::now() + days` に書き換える (= ログイン後等のリフレッシュ用)。
 pub async fn extend_expiry(
     pool: Option<&PgPool>,
@@ -173,6 +220,50 @@ async fn find_by_id_db(
     .map_err(UserSessionRepoError::Db)
 }
 
+async fn attach_user_db(
+    pool: &PgPool,
+    session_id: Uuid,
+    user_id: Uuid,
+) -> Result<(), UserSessionRepoError> {
+    let res = sqlx::query(
+        r#"
+        UPDATE user_sessions
+        SET user_id = $2
+        WHERE id = $1
+        "#,
+    )
+    .bind(session_id)
+    .bind(user_id)
+    .execute(pool)
+    .await
+    .map_err(UserSessionRepoError::Db)?;
+    if res.rows_affected() == 0 {
+        return Err(UserSessionRepoError::NotFound(session_id));
+    }
+    Ok(())
+}
+
+async fn detach_user_db(
+    pool: &PgPool,
+    session_id: Uuid,
+) -> Result<(), UserSessionRepoError> {
+    let res = sqlx::query(
+        r#"
+        UPDATE user_sessions
+        SET user_id = NULL
+        WHERE id = $1
+        "#,
+    )
+    .bind(session_id)
+    .execute(pool)
+    .await
+    .map_err(UserSessionRepoError::Db)?;
+    if res.rows_affected() == 0 {
+        return Err(UserSessionRepoError::NotFound(session_id));
+    }
+    Ok(())
+}
+
 async fn extend_expiry_db(
     pool: &PgPool,
     id: Uuid,
@@ -232,19 +323,29 @@ pub fn reset_memory_for_test() {
     }
 }
 
+/// `user_sessions` の in-memory store を触る複数モジュール (= `repos::user_sessions` /
+/// `handlers::auth` 等) が **同じ** GUARD を取って逐次化するために共有する mutex。
+/// poison-tolerant。
+#[cfg(test)]
+pub fn memory_guard() -> std::sync::MutexGuard<'static, ()> {
+    static GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    GUARD.lock().unwrap_or_else(|p| p.into_inner())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex as StdMutex;
 
-    /// グローバル in-memory store の競合を避けるため、reset 経由のテストは
-    /// 1 つずつ走らせる。pure helper 系 (= store を触らない) は GUARD 不要だが
-    /// 揃えるために全テストで取得する。
-    static GUARD: StdMutex<()> = StdMutex::new(());
+    /// グローバル in-memory store の競合を避けるため、本モジュール公開の
+    /// `memory_guard()` (= poison-tolerant) で逐次化する。
+    /// `handlers::auth::tests` 等のクロスモジュールテストとも同 GUARD を共有する。
+    fn lock_guard() -> std::sync::MutexGuard<'static, ()> {
+        memory_guard()
+    }
 
     #[test]
     fn cookie_uuid_to_token_hash_is_phc_shaped() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         let id = Uuid::parse_str("550e8400-e29b-41d4-a716-446655440000").unwrap();
         let hash = cookie_uuid_to_token_hash(id);
         // 0004_users.sql の CHECK (token_hash LIKE '$%$%$%') を最低限満たす
@@ -255,7 +356,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_create_and_find_by_id() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         reset_memory_for_test();
         let id = Uuid::new_v4();
         let row = create_anonymous(None, id).await.unwrap();
@@ -270,7 +371,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_find_by_id_misses_for_unknown_uuid() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         reset_memory_for_test();
         let unknown = Uuid::new_v4();
         let found = find_by_id(None, unknown).await.unwrap();
@@ -279,7 +380,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_extend_expiry_pushes_forward() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         reset_memory_for_test();
         let id = Uuid::new_v4();
         let row = create_anonymous(None, id).await.unwrap();
@@ -295,7 +396,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_extend_expiry_unknown_returns_not_found() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         reset_memory_for_test();
         match extend_expiry(None, Uuid::new_v4(), 30).await {
             Err(UserSessionRepoError::NotFound(_)) => {}
@@ -305,7 +406,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_delete_removes_then_misses() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         reset_memory_for_test();
         let id = Uuid::new_v4();
         create_anonymous(None, id).await.unwrap();
@@ -316,7 +417,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_delete_unknown_returns_not_found() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         reset_memory_for_test();
         match delete(None, Uuid::new_v4()).await {
             Err(UserSessionRepoError::NotFound(_)) => {}
@@ -326,7 +427,7 @@ mod tests {
 
     #[test]
     fn default_ttl_days_is_thirty() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         assert_eq!(DEFAULT_SESSION_TTL_DAYS, 30);
     }
 }

@@ -40,6 +40,18 @@ sqlx = { version = "0.8", features = [
 uuid = { version = "1", features = ["v4", "serde"] }
 dotenvy = "0.15"
 
+# 認証 (Phase 9.G / login flow)
+# Argon2id で password_hash を生成・検証する。phc 文字列を user_sessions.token_hash と
+# users.password_hash の両方で採用するため、同じ crate を使い回す。
+argon2 = "0.5"
+
+# Stripe webhook の HMAC-SHA256 検証 (= Stripe-Signature header の v1=<hex> 部分)。
+# 本番では env STRIPE_WEBHOOK_SECRET が設定されると検証 ON、未設定なら scaffolding として skip。
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
+subtle = "2.6"
+
 # property-based test (M8 / 設計書 §13.6)
 # 任意の CardBlock を生成 → JSON serialize → deserialize の round-trip 等価性を assert。
 # discriminator 衝突 / Option<T> の null vs missing 揺れ / camelCase 変換漏れを機械的に検出。

@@ -1,3 +1,4 @@
+pub mod auth;
 pub mod cards;
 pub mod cart;
 pub mod checkout;

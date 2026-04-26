@@ -25,18 +25,76 @@
 //!   ただし「pending → paid → failed」のような誤遷移は防げないので、Phase 9.2 で
 //!   `WHERE id = $1 AND status NOT IN ('paid', 'canceled')` を追加する想定。
 
-use axum::{Json, http::StatusCode};
+use axum::{
+    body::Bytes,
+    http::{HeaderMap, StatusCode},
+};
+use hmac::{Hmac, Mac};
+use sha2::Sha256;
 use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::error::AppError;
 use crate::repos::orders;
 
+type HmacSha256 = Hmac<Sha256>;
+
+/// 環境変数 `STRIPE_WEBHOOK_SECRET` が設定されていれば、その値で HMAC 検証を有効化する。
+/// 未設定なら検証スキップ (= dev / test モード)。
+fn webhook_secret() -> Option<String> {
+    std::env::var("STRIPE_WEBHOOK_SECRET").ok().filter(|s| !s.is_empty())
+}
+
+/// Stripe-Signature ヘッダから v1=<hex> 部分を抽出する。
+/// 形式: `t=<timestamp>,v1=<hex>,v0=<old>` (= comma 区切り key=value)。
+/// 本 MVP では timestamp 検証 (= replay 対策) は省略し v1 だけ拾う。production では
+/// `|now() - t|` を tolerance window と比較するロジックを足す。
+fn extract_v1(sig_header: &str) -> Option<&str> {
+    sig_header.split(',').find_map(|piece| {
+        piece.trim().strip_prefix("v1=")
+    })
+}
+
+/// raw body と secret から HMAC-SHA256 hex を計算する。
+fn compute_hmac_hex(secret: &str, body: &[u8]) -> String {
+    let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
+        .expect("HMAC accepts arbitrary key length");
+    mac.update(body);
+    hex::encode(mac.finalize().into_bytes())
+}
+
+/// HMAC-SHA256 を hex で計算し、一定時間比較で照合する。secret が未設定なら Ok (= 検証スキップ)。
+///
+/// **timing attack 対策**: `subtle::ConstantTimeEq` で hex 文字列の byte 単位定数時間比較。
+fn verify_signature(headers: &HeaderMap, body: &[u8]) -> Result<(), AppError> {
+    let secret = match webhook_secret() {
+        Some(s) => s,
+        // env 未設定 → scaffolding mode (= dev / test) で検証スキップ
+        None => return Ok(()),
+    };
+    use subtle::ConstantTimeEq;
+
+    let sig_header = headers
+        .get("stripe-signature")
+        .and_then(|v| v.to_str().ok())
+        .ok_or_else(|| AppError::Unauthorized)?;
+    let provided_hex = extract_v1(sig_header).ok_or(AppError::Unauthorized)?;
+
+    let expected_hex = compute_hmac_hex(&secret, body);
+    if expected_hex.as_bytes().ct_eq(provided_hex.as_bytes()).into() {
+        Ok(())
+    } else {
+        Err(AppError::Unauthorized)
+    }
+}
+
 /// Mock 用の webhook body。`type` に応じて orders.status を遷移する。
 /// 本番では Stripe SDK が解釈する raw body をそのまま受けて検証する。
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub struct MockStripeEvent {
+    /// Stripe の event id (= "evt_xxx" / mock の "evt_test_xxx")。冪等性キーとして使う。
+    pub id: String,
     /// 例: "checkout.session.completed" / "payment_intent.payment_failed"。
     #[serde(rename = "type")]
     pub event_type: String,
@@ -62,13 +120,43 @@ pub struct MockStripeObject {
 
 pub async fn post_stripe_webhook(
     axum::extract::State(state): axum::extract::State<crate::state::AppState>,
-    Json(event): Json<MockStripeEvent>,
+    headers: HeaderMap,
+    body: Bytes,
 ) -> Result<StatusCode, AppError> {
-    // ── HMAC 検証 (scaffolding) ───────────────────────────────────
-    // 本番では handler signature を `headers: HeaderMap, body: Bytes` に変えて、
-    // `body` の生バイト + `Stripe-Signature` header + STRIPE_WEBHOOK_SECRET から
-    // HMAC-SHA256 を計算して照合する。Phase 9.2 で実装。
-    // 現状 (mock) ではスキップ。
+    // ── 0. HMAC-SHA256 検証 (= STRIPE_WEBHOOK_SECRET 設定時のみ) ──
+    // production: env var を必ず設定し、Stripe Dashboard で発行される webhook secret を使う。
+    // dev / mock: env var 未設定なら verify_signature は Ok を返す (= scaffolding mode)。
+    verify_signature(&headers, &body)?;
+
+    // ── 1. body を MockStripeEvent として deserialize ─────────────
+    let event: MockStripeEvent = serde_json::from_slice(&body).map_err(|e| {
+        AppError::BadRequest(format!("invalid stripe event body: {e}"))
+    })?;
+
+    // ── 1.5. event_id 冪等性: 既に受信済なら 200 で no-op ──────────
+    // Stripe の retry (= 5xx / timeout) で同じ event が複数届く可能性があるため、
+    // event_id を一度限りに固定する。ここで通った後の処理は side effect 込みで一度だけ実行。
+    let payload_value: serde_json::Value =
+        serde_json::from_slice(&body).unwrap_or_else(|_| serde_json::json!({}));
+    let outcome = crate::repos::stripe_webhook_events::record_if_new(
+        state.db(),
+        &event.id,
+        &event.event_type,
+        &payload_value,
+    )
+    .await
+    .map_err(|e| AppError::BadRequest(format!("idempotency record: {e}")))?;
+    if matches!(
+        outcome,
+        crate::repos::stripe_webhook_events::RecordOutcome::AlreadySeen
+    ) {
+        tracing::info!(
+            "stripe webhook: duplicate event {} (type={}), skipping",
+            event.id,
+            event.event_type
+        );
+        return Ok(StatusCode::OK);
+    }
 
     // ── event_type に応じて status 遷移 ──────────────────────────
     let new_status: &str = match event.event_type.as_str() {
@@ -156,6 +244,44 @@ mod tests {
         State(AppState::default())
     }
 
+    /// 検証スキップを保証するため STRIPE_WEBHOOK_SECRET を unset しておく。
+    /// 1 度のテスト run で env を弄るので並列で他テストに影響しないよう各 test 冒頭で呼ぶ。
+    fn unset_webhook_secret() {
+        // SAFETY: env mutation in tests is single-threaded under our memory_guard,
+        // and this var isn't read on other threads concurrently.
+        unsafe {
+            std::env::remove_var("STRIPE_WEBHOOK_SECRET");
+        }
+    }
+
+    /// MockStripeEvent と同じ形の JSON body を bytes で返す test helper。
+    /// event_id は呼び出し側で指定 (= 冪等性テストで同じ id を 2 回送りたいため)。
+    fn body_bytes(
+        event_id: &str,
+        event_type: &str,
+        id: Option<&str>,
+        client_reference_id: Option<&str>,
+        payment_intent: Option<&str>,
+    ) -> Bytes {
+        let v = serde_json::json!({
+            "id": event_id,
+            "type": event_type,
+            "data": {
+                "object": {
+                    "id": id,
+                    "clientReferenceId": client_reference_id,
+                    "paymentIntent": payment_intent,
+                }
+            }
+        });
+        Bytes::from(serde_json::to_vec(&v).unwrap())
+    }
+
+    /// 各テスト冒頭で stripe_webhook_events の in-memory store もクリアする。
+    fn reset_idempotency() {
+        crate::repos::stripe_webhook_events::reset_memory_for_test();
+    }
+
     async fn seed_pending_order() -> uuid::Uuid {
         reset_memory_for_test();
         let rec = insert_order(
@@ -191,18 +317,19 @@ mod tests {
     #[tokio::test]
     async fn checkout_session_completed_marks_order_paid() {
         let _g = memory_guard();
+        unset_webhook_secret();
+        reset_idempotency();
         let order_id = seed_pending_order().await;
-        let body = MockStripeEvent {
-            event_type: "checkout.session.completed".to_string(),
-            data: MockStripeEventData {
-                object: MockStripeObject {
-                    id: Some("cs_mock_test".to_string()),
-                    client_reference_id: Some(order_id.to_string()),
-                    payment_intent: Some("pi_test_42".to_string()),
-                },
-            },
-        };
-        let res = post_stripe_webhook(empty_state(), Json(body)).await.unwrap();
+        let body = body_bytes(
+            "evt_test_completed",
+            "checkout.session.completed",
+            Some("cs_mock_test"),
+            Some(&order_id.to_string()),
+            Some("pi_test_42"),
+        );
+        let res = post_stripe_webhook(empty_state(), HeaderMap::new(), body)
+            .await
+            .unwrap();
         assert_eq!(res, StatusCode::OK);
 
         let updated = orders::find_by_stripe_session_id(None, "cs_mock_test")
@@ -216,18 +343,19 @@ mod tests {
     #[tokio::test]
     async fn payment_failed_marks_order_failed() {
         let _g = memory_guard();
+        unset_webhook_secret();
+        reset_idempotency();
         let order_id = seed_pending_order().await;
-        let body = MockStripeEvent {
-            event_type: "payment_intent.payment_failed".to_string(),
-            data: MockStripeEventData {
-                object: MockStripeObject {
-                    id: Some("cs_mock_test".to_string()),
-                    client_reference_id: Some(order_id.to_string()),
-                    payment_intent: Some("pi_test_failed".to_string()),
-                },
-            },
-        };
-        post_stripe_webhook(empty_state(), Json(body)).await.unwrap();
+        let body = body_bytes(
+            "evt_test_failed",
+            "payment_intent.payment_failed",
+            Some("cs_mock_test"),
+            Some(&order_id.to_string()),
+            Some("pi_test_failed"),
+        );
+        post_stripe_webhook(empty_state(), HeaderMap::new(), body)
+            .await
+            .unwrap();
 
         let updated = orders::find_by_stripe_session_id(None, "cs_mock_test")
             .await
@@ -239,18 +367,13 @@ mod tests {
     #[tokio::test]
     async fn unknown_event_type_is_no_op() {
         let _g = memory_guard();
+        unset_webhook_secret();
+        reset_idempotency();
         let _id = seed_pending_order().await;
-        let body = MockStripeEvent {
-            event_type: "customer.created".to_string(),
-            data: MockStripeEventData {
-                object: MockStripeObject {
-                    id: None,
-                    client_reference_id: None,
-                    payment_intent: None,
-                },
-            },
-        };
-        let res = post_stripe_webhook(empty_state(), Json(body)).await.unwrap();
+        let body = body_bytes("evt_test_unknown", "customer.created", None, None, None);
+        let res = post_stripe_webhook(empty_state(), HeaderMap::new(), body)
+            .await
+            .unwrap();
         assert_eq!(res, StatusCode::OK);
 
         // status は pending のまま
@@ -264,19 +387,161 @@ mod tests {
     #[tokio::test]
     async fn missing_order_returns_ok_no_op() {
         let _g = memory_guard();
+        unset_webhook_secret();
+        reset_idempotency();
         reset_memory_for_test();
-        let body = MockStripeEvent {
-            event_type: "checkout.session.completed".to_string(),
-            data: MockStripeEventData {
-                object: MockStripeObject {
-                    id: Some("cs_unknown".to_string()),
-                    client_reference_id: None,
-                    payment_intent: None,
-                },
-            },
-        };
-        let res = post_stripe_webhook(empty_state(), Json(body)).await.unwrap();
+        let body = body_bytes(
+            "evt_test_missing",
+            "checkout.session.completed",
+            Some("cs_unknown"),
+            None,
+            None,
+        );
+        let res = post_stripe_webhook(empty_state(), HeaderMap::new(), body)
+            .await
+            .unwrap();
         // 注文不在でも 200 で no-op (= Stripe に retry させない)
         assert_eq!(res, StatusCode::OK);
+    }
+
+    /// 同じ event_id を 2 度送ると 2 回目は no-op (= 冪等性)。
+    /// status が誤って巻き戻ったり PaymentIntent が二重書きされない。
+    #[tokio::test]
+    async fn duplicate_event_is_idempotent_no_op_on_second() {
+        let _g = memory_guard();
+        unset_webhook_secret();
+        reset_idempotency();
+        let order_id = seed_pending_order().await;
+
+        let body1 = body_bytes(
+            "evt_test_dup",
+            "checkout.session.completed",
+            Some("cs_mock_test"),
+            Some(&order_id.to_string()),
+            Some("pi_first"),
+        );
+        let res1 = post_stripe_webhook(empty_state(), HeaderMap::new(), body1)
+            .await
+            .unwrap();
+        assert_eq!(res1, StatusCode::OK);
+
+        // 1 回目で paid に遷移
+        let after_1 = orders::find_by_stripe_session_id(None, "cs_mock_test")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(after_1.status, "paid");
+        assert_eq!(
+            after_1.stripe_payment_intent_id,
+            Some("pi_first".to_string())
+        );
+
+        // 同じ event_id で再送 (= payment_intent だけ違う body)
+        let body2 = body_bytes(
+            "evt_test_dup",
+            "payment_intent.payment_failed",
+            Some("cs_mock_test"),
+            Some(&order_id.to_string()),
+            Some("pi_should_be_ignored"),
+        );
+        let res2 = post_stripe_webhook(empty_state(), HeaderMap::new(), body2)
+            .await
+            .unwrap();
+        assert_eq!(res2, StatusCode::OK);
+
+        // 2 回目は no-op: status / payment_intent ともに 1 回目のまま
+        let after_2 = orders::find_by_stripe_session_id(None, "cs_mock_test")
+            .await
+            .unwrap()
+            .unwrap();
+        assert_eq!(after_2.status, "paid", "重複 event は status を変えない");
+        assert_eq!(
+            after_2.stripe_payment_intent_id,
+            Some("pi_first".to_string()),
+            "重複 event の payment_intent は無視される"
+        );
+    }
+
+    // ── HMAC 検証のテスト ─────────────────────────────────────────
+
+    #[test]
+    fn extract_v1_picks_v1_segment() {
+        let h = "t=1700000000,v1=abc123,v0=old";
+        assert_eq!(extract_v1(h), Some("abc123"));
+    }
+
+    #[test]
+    fn extract_v1_returns_none_when_missing() {
+        let h = "t=1700000000,v0=old";
+        assert!(extract_v1(h).is_none());
+    }
+
+    #[test]
+    fn compute_hmac_hex_matches_known_vector() {
+        // 既知 vector で再計算が一意であることだけ確認 (= regression detection)。
+        let a = compute_hmac_hex("secret", b"hello");
+        let b = compute_hmac_hex("secret", b"hello");
+        assert_eq!(a, b);
+        assert_eq!(a.len(), 64, "SHA-256 hex は 64 文字");
+        let c = compute_hmac_hex("secret", b"hello!");
+        assert_ne!(a, c, "1 文字違いで hash が変わる");
+    }
+
+    #[tokio::test]
+    async fn verify_signature_skips_when_secret_unset() {
+        let _g = memory_guard();
+        unset_webhook_secret();
+        // header 無し / 空 body でも env 未設定なら Ok
+        let h = HeaderMap::new();
+        verify_signature(&h, b"").expect("scaffolding mode skips verification");
+    }
+
+    #[tokio::test]
+    async fn verify_signature_accepts_correct_signature() {
+        let _g = memory_guard();
+        unsafe {
+            std::env::set_var("STRIPE_WEBHOOK_SECRET", "whsec_test");
+        }
+        let body = b"payload";
+        let hex = compute_hmac_hex("whsec_test", body);
+        let mut h = HeaderMap::new();
+        h.insert(
+            "stripe-signature",
+            format!("t=0,v1={hex}").parse().unwrap(),
+        );
+        verify_signature(&h, body).expect("正しい署名は通る");
+        unset_webhook_secret();
+    }
+
+    #[tokio::test]
+    async fn verify_signature_rejects_wrong_signature() {
+        let _g = memory_guard();
+        unsafe {
+            std::env::set_var("STRIPE_WEBHOOK_SECRET", "whsec_test");
+        }
+        let mut h = HeaderMap::new();
+        h.insert(
+            "stripe-signature",
+            "t=0,v1=deadbeef".parse().unwrap(),
+        );
+        match verify_signature(&h, b"payload") {
+            Err(AppError::Unauthorized) => {}
+            other => panic!("expected Unauthorized, got {other:?}"),
+        }
+        unset_webhook_secret();
+    }
+
+    #[tokio::test]
+    async fn verify_signature_rejects_missing_header() {
+        let _g = memory_guard();
+        unsafe {
+            std::env::set_var("STRIPE_WEBHOOK_SECRET", "whsec_test");
+        }
+        let h = HeaderMap::new();
+        match verify_signature(&h, b"payload") {
+            Err(AppError::Unauthorized) => {}
+            other => panic!("expected Unauthorized for missing header, got {other:?}"),
+        }
+        unset_webhook_secret();
     }
 }

@@ -3,12 +3,16 @@
 //! sqlx で DB アクセスする関数群をテーブル別に分離。
 //! handler 側は repo の関数だけを呼び、SQL を直接書かない。
 
+pub mod bids;
 pub mod cart_items;
+pub mod listing_watches;
+pub mod listings;
 pub mod orders;
 pub mod prefectures;
 pub mod product_watches;
 pub mod products;
 pub mod shipping_methods;
 pub mod specimens;
+pub mod stripe_webhook_events;
 pub mod user_sessions;
 pub mod users;
