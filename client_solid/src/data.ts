@@ -11,9 +11,9 @@ export type RouteKey =
   | "bloodline"
   | "shop"
   | "market"
+  // Phase 9.1 (Strangler Fig 段階 2 完了): "cart" は SDUI 駆動の CartSduiPage に統一。
+  //   旧 "cart-sdui" route は削除済み。/cart-sdui へのアクセスは router で /cart に正規化。
   | "cart"
-  // Phase 7: SDUI 駆動のカート画面 (Strangler Fig 段階 1, 旧 cart と並行運用)
-  | "cart-sdui"
   | "warranty"
   // どの URL にもマッチしない時に使う擬似ルート (画面側で 404 を表示する)
   | "not-found";

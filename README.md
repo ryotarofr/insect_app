@@ -230,3 +230,72 @@ bun run test
 ```
 cargo run
 ```
+
+## 開発環境セットアップ (Phase 9 / DB 連携)
+
+### 1. PostgreSQL を Docker で起動
+
+```bash
+# repo ルートで
+docker compose up -d postgres adminer
+```
+
+- `kochu_postgres_dev` (image: `postgres:16-alpine`) が `localhost:5432` で立ち上がる
+- `kochu_adminer_dev` (image: `adminer:5`) が `http://localhost:8081` で開く (= ad-hoc に SQL を叩ける)
+- データは `kochu_pgdata_dev` named volume に永続化。`docker compose down -v` で消去。
+
+接続情報 (dev 専用):
+
+| 項目 | 値 |
+|---|---|
+| host | `localhost` |
+| port | `5432` |
+| user | `kochu` |
+| password | `kochu_dev_password` |
+| db | `kochu_dev` |
+
+### 2. server/.env を準備
+
+```bash
+cp server/.env.example server/.env
+# 必要なら値を編集
+```
+
+`server/.env` は `.gitignore` 済み。`DATABASE_URL` / `DB_MAX_CONNECTIONS` / `DB_AUTO_MIGRATE` を含む。
+
+### 3. server を起動
+
+```bash
+cd server
+cargo run
+```
+
+`DB_AUTO_MIGRATE=true` (default) なら起動時に `server/migrations/*.sql` が自動で流れる (= `orders` / `order_items` / `shipping_addresses` テーブルが作られる)。
+
+DB 接続失敗 / `DATABASE_URL` 未設定でも server は起動する (= MVP では DB 無しでも一部 handler は動く)。production では `db::init_pool` 直接呼び出しに切り替えて DB 不在 = fatal にする想定。
+
+### 4. migration を手で流したい場合
+
+```bash
+# sqlx-cli を未インストールならまず:
+cargo install sqlx-cli --no-default-features --features postgres,rustls
+
+# repo ルートまたは server/ で:
+cd server
+sqlx migrate run --database-url postgresql://kochu:kochu_dev_password@localhost:5432/kochu_dev
+
+# 巻き戻したい時 (= 1 つ前の version まで):
+sqlx migrate revert --database-url postgresql://kochu:kochu_dev_password@localhost:5432/kochu_dev
+```
+
+### 5. PostgreSQL を停止 / リセット
+
+```bash
+docker compose down            # 停止のみ (data は残る)
+docker compose down -v         # data volume も削除 (= 全リセット)
+```
+
+### 6. 本番環境
+
+production / staging では本 docker-compose は使わず、AWS RDS (Aurora PostgreSQL) を CDK / Terraform で立てる想定。`DATABASE_URL` は AWS Secrets Manager から ECS Task Definition 経由で注入する。具体は Phase 9 infra docs (`docs/infra/`) で扱う。
+

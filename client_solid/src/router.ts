@@ -14,9 +14,8 @@ export const ROUTE_PATHS: Record<RouteKey, string> = {
   bloodline: "/bloodline",
   shop: "/shop",
   market: "/market",
+  // Phase 9.1: SDUI カートに統一 (旧 cart-sdui route は廃止)
   cart: "/cart",
-  // Phase 7: SDUI 駆動カート (旧 /cart と並行運用)
-  "cart-sdui": "/cart-sdui",
   warranty: "/help/warranty",
   // 404 は実際にはここから遷移しない (URL → RouteKey 経路でしか来ない)。
   // 何か理由があって setRoute("not-found") した時のために便宜上のパスを置く。
@@ -44,8 +43,8 @@ export const pathnameToRouteKey = (pathname: string): RouteKey => {
   if (path === "/shop") return "shop";
   if (path === "/market") return "market";
   if (path === "/cart") return "cart";
-  // Phase 7: SDUI 版カートは別 route として並行運用 (Strangler Fig)
-  if (path === "/cart-sdui") return "cart-sdui";
+  // Phase 9.1: 旧 /cart-sdui は /cart に正規化 (= 古いブックマークの救済)
+  if (path === "/cart-sdui") return "cart";
   if (path === "/help/warranty") return "warranty";
 
   // どのルートにも一致しなければ 404 扱い。
@@ -127,16 +126,10 @@ export const crumbFor = (route: RouteKey, ids: CrumbIds = {}): Crumb[] => {
     case "market":
       return [{ label: "取引", href: undefined }, { label: "C2Cマーケット" }];
     case "cart":
+      // Phase 9.1: SDUI カートに統一済み。
       return [
         { label: "ショップ", href: "/products" },
         { label: "カート" },
-      ];
-    case "cart-sdui":
-      // Phase 7: SDUI 版は同じパンくずに "(SDUI)" のサフィックスを付けて
-      // 並行運用中であることを明示する。テスター向けの目印。
-      return [
-        { label: "ショップ", href: "/products" },
-        { label: "カート (SDUI)" },
       ];
     case "warranty":
       return [

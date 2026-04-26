@@ -338,3 +338,27 @@ export const patchCheckoutShippingMethod = async (
     body: JSON.stringify({ id }),
   });
 };
+
+/** `POST /api/v1/checkout/submit` のレスポンス (Phase 9.1)。
+ *
+ *  クライアントは `window.location.href = sessionUrl` で Stripe Hosted Checkout
+ *  (もしくは mock landing) に遷移する。orderId は orders テーブルの UUID で、
+ *  Webhook 後の order tracking / debug に使う。 */
+export interface CheckoutSubmitResponse {
+  orderId: string;
+  sessionUrl: string;
+}
+
+/** `POST /api/v1/checkout/submit` — Stripe Checkout Session を作成する (Phase 9.1)。
+ *
+ *  - 空カート / 配送先不完全は 400 を投げる (= toast でユーザに通知)
+ *  - body は不要 (= server 側 cart_store + checkout_store の snapshot を参照)
+ *  - 成功時はレスポンスの sessionUrl で navigate
+ *  - 失敗時は SduiFetchError を throw */
+export const postCheckoutSubmit = async (): Promise<CheckoutSubmitResponse> => {
+  return fetchJson<CheckoutSubmitResponse>(`/checkout/submit`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+};

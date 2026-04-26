@@ -38,7 +38,6 @@ import { EclosionPage } from "./pages/Eclosion";
 import { BloodlinePage } from "./pages/Bloodline";
 import { ShopPage } from "./pages/Shop";
 import { MarketPage } from "./pages/Market";
-import { CartPage } from "./pages/Cart";
 import { CartSduiPage } from "./pages/CartSdui";
 import { WarrantyPage } from "./pages/help/Warranty";
 import { NotFoundPage } from "./pages/NotFound";
@@ -435,11 +434,9 @@ export const App = () => {
           <MarketPage />
         </Show>
         <Show when={route() === "cart"}>
-          <CartPage />
-        </Show>
-        <Show when={route() === "cart-sdui"}>
-          {/* Phase 7: SDUI 駆動カート (Strangler Fig 段階 1)。
-              旧 /cart は shipping/Stripe を含むため当面残す。 */}
+          {/* Phase 9.1: SDUI 駆動カートに統一 (Strangler Fig 段階 2 完了)。
+              旧 CartPage は src/pages/Cart.legacy.tsx に退避済み (= 参照しない)。
+              shipping/Stripe は CartSduiPage 経由で /api/v1/checkout/submit が叩く。 */}
           <CartSduiPage />
         </Show>
         <Show when={route() === "warranty"}>

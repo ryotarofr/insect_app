@@ -257,13 +257,16 @@ fn build_cart_card_with_checkout(
             },
         ]
     } else {
+        // Phase 9.1: action = StripeCheckout で client が POST /api/v1/checkout/submit を叩き、
+        // レスポンスの sessionUrl で window.location.href 遷移する。
+        // href は no-JS フォールバック用の同等遷移先 (= mock provider の landing path)。
         vec![
             Block::Cta {
                 key: "cta-checkout".to_string(),
                 intent: CtaIntent::Primary,
                 label: raw("Stripe で決済"),
                 href: Href::parse("/checkout/stripe").expect("static href"),
-                action: None,
+                action: Some(CtaAction::StripeCheckout),
                 analytics_id: Some("cart.cta.checkout".to_string()),
             },
             Block::Cta {
@@ -301,11 +304,13 @@ fn build_cart_card_with_checkout(
 /// **PostalCode / Tel の inputmode 切替**: client renderer が `kind` で分岐するので
 /// server 側は kind を正しく付けるだけで OK (= input mode は HTML 標準にお任せ)。
 fn build_shipping_form_blocks(checkout: &crate::handlers::checkout::CheckoutState) -> Vec<Block> {
-    let prefectures = japan_prefectures()
-        .iter()
-        .map(|p| SelectOption {
-            id: (*p).to_string(),
-            label: raw(p),
+    // Phase 9.B 段階 6: 都道府県は repos::prefectures cache から取得 (= sort_order = JIS 順)。
+    // pool 不在時は in-memory fallback で同 47 件を返す。
+    let prefectures = crate::repos::prefectures::cached_prefectures_ja()
+        .into_iter()
+        .map(|name_ja| SelectOption {
+            label: raw(&name_ja),
+            id: name_ja,
         })
         .collect::<Vec<_>>();
 
@@ -407,17 +412,23 @@ fn build_form_field(
     }
 }
 
-/// 配送方法ピッカーを 1 件組む (Phase 8)。
+/// 配送方法ピッカーを 1 件組む (Phase 8 / 9.B 段階 6 で DB 化)。
+///
+/// **Phase 9.B 段階 6** (= DB 移行 / 2026-04):
+///   `shipping_methods` + `shipping_method_translations` (ja) を `repos::shipping_methods`
+///   経由でキャッシュから取得。method_name_ja / method_desc_ja のハードコード関数は撤去。
+///   pool 不在時は 0002_master_data.sql の seed と同値の in-memory fallback で同等の出力。
 fn build_shipping_method_picker(checkout: &crate::handlers::checkout::CheckoutState) -> Block {
-    let options = crate::handlers::checkout::SHIPPING_METHODS
-        .iter()
+    let methods = crate::repos::shipping_methods::cached_methods_sorted();
+    let options = methods
+        .into_iter()
         .map(|m| ShippingMethodOption {
-            id: m.id.to_string(),
-            // Phase 8 簡易版: name / description は raw 文 (i18n キー切り出しは Phase 8+)。
-            // 既存の cart card と整合させるため raw (= 翻訳辞書経由しない) で出す。
-            name: raw(method_name_ja(m.id)),
-            description: raw(method_desc_ja(m.id)),
-            amount: m.amount_yen,
+            id: m.id,
+            // 翻訳済み name / description は repo cache から直接 raw で出す
+            // (i18n キー化は SDUI Localizable::I18n に切り替える Phase 9+ で再検討)。
+            name: raw(&m.name),
+            description: raw(&m.description),
+            amount: m.amount_jpy,
             currency: Currency::JPY,
         })
         .collect();
@@ -430,27 +441,9 @@ fn build_shipping_method_picker(checkout: &crate::handlers::checkout::CheckoutSt
     }
 }
 
-/// Phase 8 簡易: 配送方法 id → 表示名 (日本語)。
-/// i18n 化は Phase 8+ で `method_name_key` を i18n() で出すように切り替える。
-fn method_name_ja(id: &str) -> &'static str {
-    match id {
-        "cold" => "温度制御便（推奨）",
-        "normal" => "通常便",
-        _ => "配送方法",
-    }
-}
-
-fn method_desc_ja(id: &str) -> &'static str {
-    match id {
-        "cold" => "生体含むため必須設定 · 15〜25℃",
-        "normal" => "用品のみの場合",
-        _ => "",
-    }
-}
-
 /// checkout state が「全 5 フィールド非空」かを判定。
 /// `is_shipping_complete` の名前は legacy /cart `store/checkout.ts` と揃える。
-fn is_shipping_complete(checkout: &crate::handlers::checkout::CheckoutState) -> bool {
+pub(crate) fn is_shipping_complete(checkout: &crate::handlers::checkout::CheckoutState) -> bool {
     !checkout.address_name.trim().is_empty()
         && !checkout.address_tel.trim().is_empty()
         && !checkout.address_zip.trim().is_empty()
@@ -458,60 +451,8 @@ fn is_shipping_complete(checkout: &crate::handlers::checkout::CheckoutState) -> 
         && !checkout.address_addr.trim().is_empty()
 }
 
-/// 都道府県 47 件 (legacy `store/checkout.ts` PREFECTURES と同じ並び)。
-/// const ではなく fn で返す理由は `&'static [&'static str]` の static lifetime を取り回す
-/// 構築コストが小さいため + 将来 i18n キー化する際にここを差し替えやすい。
-fn japan_prefectures() -> &'static [&'static str] {
-    &[
-        "北海道",
-        "青森県",
-        "岩手県",
-        "宮城県",
-        "秋田県",
-        "山形県",
-        "福島県",
-        "茨城県",
-        "栃木県",
-        "群馬県",
-        "埼玉県",
-        "千葉県",
-        "東京都",
-        "神奈川県",
-        "新潟県",
-        "富山県",
-        "石川県",
-        "福井県",
-        "山梨県",
-        "長野県",
-        "岐阜県",
-        "静岡県",
-        "愛知県",
-        "三重県",
-        "滋賀県",
-        "京都府",
-        "大阪府",
-        "兵庫県",
-        "奈良県",
-        "和歌山県",
-        "鳥取県",
-        "島根県",
-        "岡山県",
-        "広島県",
-        "山口県",
-        "徳島県",
-        "香川県",
-        "愛媛県",
-        "高知県",
-        "福岡県",
-        "佐賀県",
-        "長崎県",
-        "熊本県",
-        "大分県",
-        "宮崎県",
-        "鹿児島県",
-        "沖縄県",
-    ]
-}
+// Phase 9.B 段階 6: 旧 `japan_prefectures()` (= ハードコード 47 配列) は撤去。
+// 取得元は `crate::repos::prefectures::cached_prefectures_ja()` (= 0002_master_data.sql seed)。
 
 /// `GET /api/v1/cards/products` の query 文字列。
 ///
@@ -567,86 +508,51 @@ pub struct ListQuery {
 ///         shop 名も入れたければここに足す)。
 ///     Card 表示文字列とずれないよう、build_specimen_card / build_supply_card 引数の
 ///     `title` 引数とこの値を一致させる。`title_synced_with_card_meta` テストで保証。
-fn product_filter_meta() -> &'static HashMap<&'static str, ProductMeta> {
+/// **Phase 9.B 段階 3** (= DB 移行 / 2026-04):
+///   従来は本関数内に **ハードコード 6 件** の `ProductMeta` を持っていたが、
+///   `crate::repos::products::cached_meta()` (= 起動時に DB から warm したキャッシュ /
+///   pool 不在時は in-memory fallback) に源泉を移し、本関数はそれを &'static の
+///   ProductMeta map にマップする変換層になった。
+///
+///   - 戻り値型 (`&'static HashMap<&'static str, ProductMeta>`) は変えない (= 全 caller 互換)。
+///   - 変換は `OnceLock` 1 度きり: cache を **先に warm しておく** のが本番起動の前提。
+///     warm 前に呼ばれた場合は in-memory fallback が読まれ、その値で OnceLock が固まる。
+///   - `Box::leak` で String → &'static str に変換して Copy 互換性を維持する
+///     (= プロセス寿命と等価な leak / warm cache が小サイズのため許容)。
+pub(crate) fn product_filter_meta() -> &'static HashMap<&'static str, ProductMeta> {
     static META: OnceLock<HashMap<&'static str, ProductMeta>> = OnceLock::new();
     META.get_or_init(|| {
-        let mut m: HashMap<&'static str, ProductMeta> = HashMap::new();
-        // 生体 4 件
-        m.insert(
-            "p-hh-m-142",
-            ProductMeta {
-                category: "live",
-                difficulty: "hard",
-                price_yen: 48_000,
-                created_days_ago: 7,
-                title: "ヘラクレスオオカブト ♂ 142mm",
-            },
-        );
-        m.insert(
-            "p-cat-l",
-            ProductMeta {
-                category: "live",
-                difficulty: "medium",
-                price_yen: 12_000,
-                created_days_ago: 30,
-                title: "コーカサス幼虫 3齢 ♂ 52g",
-            },
-        );
-        m.insert(
-            "p-neo-m",
-            ProductMeta {
-                category: "live",
-                difficulty: "hard",
-                price_yen: 28_000,
-                created_days_ago: 14,
-                title: "ネプチューン ♂ 初令ペア",
-            },
-        );
-        m.insert(
-            "p-aki",
-            ProductMeta {
-                category: "live",
-                difficulty: "hard",
-                price_yen: 62_000,
-                created_days_ago: 2,
-                title: "アクタエオン WILD F1 ♂",
-            },
-        );
-        // 用品 2 件
-        m.insert(
-            "p-jelly",
-            ProductMeta {
-                category: "supply",
-                difficulty: "easy",
-                price_yen: 1_480,
-                created_days_ago: 60,
-                title: "高栄養ゼリー 17g × 50個",
-            },
-        );
-        m.insert(
-            "p-mat",
-            ProductMeta {
-                category: "supply",
-                difficulty: "easy",
-                price_yen: 1_280,
-                created_days_ago: 45,
-                title: "完熟発酵マット 10L",
-            },
-        );
+        let cached = crate::repos::products::cached_meta();
+        let mut m: HashMap<&'static str, ProductMeta> = HashMap::with_capacity(cached.len());
+        for (public_id, view) in cached {
+            // OnceLock 内に閉じ込めるので一度だけ leak。プロセス寿命と等価で安全。
+            let id_static: &'static str = Box::leak(public_id.into_boxed_str());
+            let title_static: &'static str = Box::leak(view.title.into_boxed_str());
+            m.insert(
+                id_static,
+                ProductMeta {
+                    category: view.category,
+                    difficulty: view.difficulty,
+                    price_yen: view.price_yen,
+                    created_days_ago: view.created_days_ago,
+                    title: title_static,
+                },
+            );
+        }
         m
     })
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct ProductMeta {
-    category: &'static str,
-    difficulty: &'static str,
+pub(crate) struct ProductMeta {
+    pub(crate) category: &'static str,
+    pub(crate) difficulty: &'static str,
     /// 価格 (円, 税込)。Phase 5: price_asc / price_desc sort で使う。
-    price_yen: u32,
+    pub(crate) price_yen: u32,
     /// 登録から経過日数 (新着 sort 用)。小さいほど新しい。
-    created_days_ago: u32,
+    pub(crate) created_days_ago: u32,
     /// Phase 6: 検索対象タイトル (= Card の headline と同じ文字列)。
-    title: &'static str,
+    pub(crate) title: &'static str,
 }
 
 /// 絞り軸の宣言 (group_key, chip_key, label)。

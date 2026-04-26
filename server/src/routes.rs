@@ -59,10 +59,24 @@ pub fn api_v1() -> Router {
             patch(handlers::checkout::patch_shipping_method),
         )
         .route("/checkout", get(handlers::checkout::get_checkout_snapshot))
+        // Phase 9.1: Stripe Checkout 統合 (mock provider)。
+        // クライアント (CtaBlockView の stripe_checkout 分岐) が叩く。
+        // レスポンス JSON `{ orderId, sessionUrl }` の sessionUrl で window.location.href 遷移。
+        .route(
+            "/checkout/submit",
+            post(handlers::checkout::post_checkout_submit),
+        )
         // SDUI Analytics ingest (Phase 3):
         //   - POST /events           → batch ingest (impression / click)
         //   - GET  /events?limit=N   → 直近 N 件 (debug 用、新しい順)
         // クライアント側 sdui/analytics.ts が定期 flush で叩く。
         .route("/events", post(handlers::events::post_events))
         .route("/events", get(handlers::events::list_events))
+        // Phase 9.1: Stripe webhook stub (HMAC 検証は scaffolding)。
+        // 本番では POST /api/v1/stripe/webhook に Stripe の event が届く。
+        // 現状は MockStripeEvent を JSON で受け、orders.status を遷移させる。
+        .route(
+            "/stripe/webhook",
+            post(handlers::stripe_webhook::post_stripe_webhook),
+        )
 }

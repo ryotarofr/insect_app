@@ -82,47 +82,26 @@ pub(crate) const ALLOWED_FIELDS: &[&str] = &[
     "addressAddr",
 ];
 
-/// 配送方法の定義。Phase 8 ハードコード。Phase 8+ で DB / 設定ファイル化想定。
+/// 既定の shipping_method_id (= 新規 CheckoutState 生成時の値)。
 ///
-/// `id` は安定 ID (= legacy /cart と意図的に揃える: "cold" / "normal")。
-/// `amount` は税込円。`name_key` / `desc_key` は i18n キー (= L コンポーネントで描画)。
-pub(crate) struct ShippingMethodDef {
-    pub id: &'static str,
-    pub name_key: &'static str,
-    pub desc_key: &'static str,
-    pub amount_yen: i64,
-}
-
-pub(crate) const SHIPPING_METHODS: &[ShippingMethodDef] = &[
-    ShippingMethodDef {
-        id: "cold",
-        name_key: "shipping.method.cold.name",
-        desc_key: "shipping.method.cold.desc",
-        amount_yen: 1800,
-    },
-    ShippingMethodDef {
-        id: "normal",
-        name_key: "shipping.method.normal.name",
-        desc_key: "shipping.method.normal.desc",
-        amount_yen: 800,
-    },
-];
-
+/// **Phase 9.B 段階 6** (= DB 移行 / 2026-04):
+///   配送方法の本体は `crate::repos::shipping_methods` に移動。本ファイルからは
+///   `shipping_amount_for` / `is_known_shipping_method_id` を repo 経由で公開する。
+///   "cold" は 0002_master_data.sql で sort_order=0 (= 推奨枠) を指す前提で固定値。
 pub(crate) const DEFAULT_SHIPPING_METHOD_ID: &str = "cold";
 
 /// 現在 selected な配送方法の amount を返す。未知 id ならデフォルトにフォールバック。
 /// `build_cart_card` から OrderSummary.shipping_amount に詰めるため使う。
+///
+/// Phase 9.B 段階 6: 実体は `repos::shipping_methods::amount_for` に委譲。
+/// pool 不在時 (= warm 前) も in-memory fallback で同値を返す。
 pub(crate) fn shipping_amount_for(id: &str) -> i64 {
-    SHIPPING_METHODS
-        .iter()
-        .find(|m| m.id == id)
-        .or_else(|| {
-            SHIPPING_METHODS
-                .iter()
-                .find(|m| m.id == DEFAULT_SHIPPING_METHOD_ID)
-        })
-        .map(|m| m.amount_yen)
-        .unwrap_or(0)
+    crate::repos::shipping_methods::amount_for(id)
+}
+
+/// id が既知の配送方法か判定 (= patch validation 用)。
+fn is_known_shipping_method_id(id: &str) -> bool {
+    crate::repos::shipping_methods::has_method(id)
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -199,8 +178,7 @@ pub async fn patch_shipping_field(
 pub async fn patch_shipping_method(
     Json(req): Json<PatchShippingMethodRequest>,
 ) -> Result<Json<PatchShippingMethodResponse>, AppError> {
-    let known = SHIPPING_METHODS.iter().any(|m| m.id == req.id);
-    if !known {
+    if !is_known_shipping_method_id(&req.id) {
         return Err(AppError::BadRequest(format!(
             "unknown shipping method id: {}",
             req.id
@@ -237,6 +215,147 @@ pub async fn get_checkout_snapshot() -> Result<Json<CheckoutSnapshotResponse>, A
         address_pref: snap.address_pref,
         address_addr: snap.address_addr,
         shipping_method_id: snap.shipping_method_id,
+    }))
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// POST /api/v1/checkout/submit (Phase 9.1 / Stripe3)
+//
+// cart snapshot + checkout state を読み、
+//   1. Validate (cart 非空 / shipping 必須項目埋まり / qty 範囲 / 値段 >=0)
+//   2. orders / order_items / shipping_addresses に INSERT (= repos::orders)
+//   3. Stripe Checkout Session を作成 (= stripe::CheckoutProvider, MVP は mock)
+//   4. orders.stripe_session_id を更新 (mock の場合は INSERT 時に直接書く)
+//   5. JSON `{ orderId, sessionUrl }` を返す
+//
+// レスポンス JSON は client (CtaBlockView の stripe_checkout 分岐) が
+// `window.location.href = sessionUrl` で遷移する前提。
+// ──────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CheckoutSubmitResponse {
+    pub order_id: String,
+    pub session_url: String,
+}
+
+/// `POST /api/v1/checkout/submit` — 注文を確定し Stripe Checkout Session URL を返す。
+///
+/// MVP では cart_store + checkout_store の global state を直接参照し、anonymous session
+/// として 1 注文を発行する。将来 Cookie ベース session が入ったら `session_id` を
+/// それに置き換える。
+pub async fn post_checkout_submit() -> Result<Json<CheckoutSubmitResponse>, AppError> {
+    use crate::handlers::cards::{is_shipping_complete, product_filter_meta};
+    use crate::handlers::cart::snapshot_cart;
+    use crate::repos::orders::{
+        OrderInsertRequest, OrderLineInsert, ShippingAddressInsert, insert_order,
+    };
+    use crate::stripe::{CheckoutLineItem, CheckoutProvider, CheckoutSessionRequest};
+
+    // ── 1. Validate cart ──────────────────────────────────────────
+    let cart = snapshot_cart();
+    if cart.is_empty() {
+        return Err(AppError::BadRequest("cart is empty".to_string()));
+    }
+
+    // ── 2. Validate shipping ───────────────────────────────────────
+    let checkout = snapshot_checkout();
+    if !is_shipping_complete(&checkout) {
+        return Err(AppError::BadRequest(
+            "shipping address is incomplete".to_string(),
+        ));
+    }
+
+    // ── 3. cart entries → order line items + Stripe LineItem 並列構築 ──
+    let meta = product_filter_meta();
+    let mut order_lines: Vec<OrderLineInsert> = Vec::with_capacity(cart.len());
+    let mut stripe_lines: Vec<CheckoutLineItem> = Vec::with_capacity(cart.len());
+    let mut subtotal_jpy: i64 = 0;
+
+    for (_token, entry) in &cart {
+        let m = meta.get(entry.product_id.as_str()).ok_or_else(|| {
+            AppError::BadRequest(format!(
+                "unknown product in cart: {}",
+                entry.product_id
+            ))
+        })?;
+        let unit_price_jpy: i64 = m.price_yen as i64;
+        let qty = entry.qty;
+        if qty == 0 {
+            return Err(AppError::BadRequest(format!(
+                "cart entry has qty=0 for {}",
+                entry.product_id
+            )));
+        }
+        let line_subtotal: i64 = unit_price_jpy * qty as i64;
+        subtotal_jpy += line_subtotal;
+
+        order_lines.push(OrderLineInsert {
+            product_id: entry.product_id.clone(),
+            title: m.title.to_string(),
+            unit_price_jpy,
+            qty,
+            subtotal_jpy: line_subtotal,
+        });
+        stripe_lines.push(CheckoutLineItem {
+            product_id: entry.product_id.clone(),
+            title: m.title.to_string(),
+            unit_price_jpy,
+            qty,
+        });
+    }
+
+    // ── 4. Shipping fee ───────────────────────────────────────────
+    let shipping_jpy = shipping_amount_for(&checkout.shipping_method_id);
+    let total_amount_jpy: i64 = subtotal_jpy + shipping_jpy;
+
+    // ── 5. Stripe Session 作成 (mock) ──────────────────────────────
+    // INSERT 前に order_id を発行する必要があるが、mock provider は session id
+    // を `cs_mock_<order_id>` として作る → 先に Uuid を生成してから INSERT で
+    // stripe_session_id を埋める。
+    let order_id = uuid::Uuid::new_v4();
+    let provider = CheckoutProvider::from_env();
+    let session = provider
+        .create_session(CheckoutSessionRequest {
+            order_id,
+            session_id: "anonymous".to_string(),
+            line_items: stripe_lines,
+            shipping_jpy,
+            success_url: "/checkout/success".to_string(),
+            cancel_url: "/checkout/cancel".to_string(),
+        })
+        .await
+        .map_err(|e| AppError::BadRequest(format!("stripe session: {e}")))?;
+
+    // ── 6. orders / order_items / shipping_addresses INSERT ────────
+    // pool は AppState 経由で渡すのが正規の axum パターンだが、現状 main.rs は
+    // pool を AppState に乗せていない (MVP)。orders_repo は pool=None で
+    // in-memory fallback に倒れる。Phase 9.2 で AppState 経由に切り替える。
+    let _record = insert_order(
+        None, // TODO(Phase 9.2): AppState 経由で PgPool を渡す
+        OrderInsertRequest {
+            session_id: "anonymous".to_string(),
+            stripe_session_id: Some(session.stripe_session_id.clone()),
+            amount_jpy: total_amount_jpy,
+            shipping_jpy: Some(shipping_jpy),
+            line_items: order_lines,
+            shipping_address: ShippingAddressInsert {
+                address_name: checkout.address_name.clone(),
+                address_tel: checkout.address_tel.clone(),
+                address_zip: checkout.address_zip.clone(),
+                address_pref: checkout.address_pref.clone(),
+                address_addr: checkout.address_addr.clone(),
+                shipping_method_id: checkout.shipping_method_id.clone(),
+            },
+        },
+    )
+    .await
+    .map_err(|e| AppError::BadRequest(format!("order insert: {e}")))?;
+
+    // ── 7. Response ──────────────────────────────────────────────
+    Ok(Json(CheckoutSubmitResponse {
+        order_id: order_id.to_string(),
+        session_url: session.session_url,
     }))
 }
 

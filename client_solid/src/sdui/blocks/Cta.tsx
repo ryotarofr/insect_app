@@ -39,6 +39,7 @@ import {
   SduiFetchError,
   deleteCartItem,
   postCartAdd,
+  postCheckoutSubmit,
   postWatchToggle,
 } from "../api";
 import { L, resolveLocalizable } from "../L";
@@ -208,6 +209,23 @@ export const CtaBlockView = (props: { block: CtaBlock }) => {
     }
   };
 
+  /** Phase 9.1: Stripe Checkout を開始。成功時は sessionUrl に navigate。 */
+  const runStripeCheckout = async () => {
+    try {
+      const res = await postCheckoutSubmit();
+      // SPA 内遷移ではなく、外部 (Stripe Hosted Checkout / mock landing) に行くため
+      // window.location.href で navigate する。`/checkout/mock/{order_id}` は同一オリジン。
+      if (typeof window !== "undefined") {
+        window.location.href = res.sessionUrl;
+      }
+    } catch (err) {
+      showToast({
+        message: toUserMessage(err, "決済画面に進めませんでした"),
+        tone: "error",
+      });
+    }
+  };
+
   const onClick = async (e: MouseEvent) => {
     // <button type="button"> なので default は何もしないが、念のため。
     e.preventDefault();
@@ -221,6 +239,8 @@ export const CtaBlockView = (props: { block: CtaBlock }) => {
         await runAddToCart(action.productId, action.qty);
       } else if (action.type === "toggle_watch") {
         await runToggleWatch(action.productId);
+      } else if (action.type === "stripe_checkout") {
+        await runStripeCheckout();
       }
     } finally {
       setPending(false);
@@ -236,8 +256,7 @@ export const CtaBlockView = (props: { block: CtaBlock }) => {
       aria-busy={pending()}
       aria-label={labelText()}
       onClick={onClick}
-      style={style()}
-    >
+        >
       <L value={props.block.label} />
     </button>
   );

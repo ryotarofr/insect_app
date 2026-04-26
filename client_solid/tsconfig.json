@@ -15,5 +15,6 @@
     "types": ["vite/client", "vitest/globals", "@testing-library/jest-dom/vitest"],
     "lib": ["ESNext", "DOM", "DOM.Iterable"]
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/**/*.legacy.tsx", "src/**/*.legacy.ts"]
 }

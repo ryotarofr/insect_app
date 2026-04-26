@@ -249,6 +249,11 @@ pub enum CtaAction {
     AddToCart { product_id: String, qty: u32 },
     /// ウォッチリストへの追加 / 削除トグル。`/api/v1/watch/:productId` に POST する想定。
     ToggleWatch { product_id: String },
+    /// Stripe Checkout を開始 (Phase 9.1)。
+    /// `/api/v1/checkout/submit` に POST し、レスポンスの `sessionUrl` に redirect する。
+    /// payload-less (= server 側 cart_store + checkout_store の snapshot を使う)。
+    /// `STRIPE_PROVIDER=mock` の時は `/checkout/mock/{order_id}` を返す。
+    StripeCheckout,
 }
 
 // ──────────────────────────────────────────────────────────────────────

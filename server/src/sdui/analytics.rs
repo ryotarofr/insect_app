@@ -42,16 +42,8 @@ pub struct AnalyticsEvent {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub context: Option<BTreeMap<String, String>>,
-    /// サーバ受信時刻 (ms epoch)。設計書 §11.2 規約により集計の真実値はこちら側で持つ。
-    ///
-    /// **POST /events 受信時に handler が必ず stamp する**。
-    /// クライアント送信 body には乗らないため `skip_deserializing` で受信時に Default (None)
-    /// に倒し、handler 側で `chrono::Utc::now().timestamp_millis()` を Some(_) に書き込む。
-    /// `GET /events` 出力時はそのまま serialize される (= 集計クエリで使う)。
-    ///
-    /// **clock skew 対策**: `timestamp_ms` (= client 観測値) は端末時計のズレ・悪意ある送信に
-    /// 晒されているため信用しない。集計上は `serverReceivedAtMs` を真実値とし、両者の差分を
-    /// 観測することで「クライアント時計ズレ / 悪意ある送信」の兆候を後段で検出できる。
+    /// サーバ受信時刻 (ms epoch)。設計書 §11.2 の真実値。
+    /// handler が stamp し GET /events 出力で見える (skip_deserializing)。
     #[serde(
         default,
         skip_deserializing,
