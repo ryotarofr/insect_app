@@ -33,7 +33,7 @@ use axum::{
     extract::{Request, State},
     http::{HeaderValue, header},
     middleware::Next,
-    response::Response,
+    response::{IntoResponse, Response},
 };
 use uuid::Uuid;
 
@@ -122,6 +122,70 @@ fn cookie_secure_enabled() -> bool {
     std::env::var("KOCHU_COOKIE_SECURE").ok().as_deref() == Some("true")
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// CSRF 保護 (= Origin ヘッダチェック / Phase 9.x hardening)
+// ──────────────────────────────────────────────────────────────────────
+//
+// 状態変更メソッド (POST / PATCH / DELETE / PUT) に対して、リクエストの `Origin`
+// ヘッダが `KOCHU_ALLOWED_ORIGINS` env (= CSV) のいずれかに一致しているかをチェック
+// する。一致しない / Origin 欠落 → 403。
+//
+// **設計判断**:
+//   - 単純な Origin ヘッダ照合は SameSite=Lax / HTTPS と組み合わせると実用十分。
+//     synchronizer token / double-submit cookie まで実装する必要は production 規模に
+//     達するまで無し (= MVP 範囲)。
+//   - GET / HEAD / OPTIONS は副作用なしなので skip。
+//   - `/api/v1/stripe/webhook` は HMAC-SHA256 で別経路の検証 (= Origin = stripe.com の
+//     server-to-server) なので skip。
+//   - env 未設定 (= dev / test) は CSRF check 自体をスキップして、ローカル開発を
+//     妨げない (= scaffolding mode)。production では必ず env を設定すること。
+
+/// `axum::middleware::from_fn` 直接渡し可能な関数。
+///
+/// state-changing request の `Origin` を `KOCHU_ALLOWED_ORIGINS` (CSV) と照合する。
+pub async fn csrf_middleware(req: Request, next: Next) -> Response {
+    use axum::http::{Method, StatusCode};
+
+    let method = req.method().clone();
+    let path = req.uri().path().to_string();
+
+    // ── 安全なメソッドは無条件 pass ───────────────────────────────
+    if matches!(method, Method::GET | Method::HEAD | Method::OPTIONS) {
+        return next.run(req).await;
+    }
+    // ── stripe webhook は HMAC で別経路の検証 → skip ──────────────
+    if path == "/api/v1/stripe/webhook" {
+        return next.run(req).await;
+    }
+    // ── env 未設定 → scaffolding mode (= dev) で skip ──────────────
+    let allowed = match std::env::var("KOCHU_ALLOWED_ORIGINS") {
+        Ok(s) if !s.trim().is_empty() => s,
+        _ => return next.run(req).await,
+    };
+
+    // ── Origin ヘッダを CSV と比較 ────────────────────────────────
+    let origin = req
+        .headers()
+        .get(header::ORIGIN)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    let ok = allowed
+        .split(',')
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .any(|allow| allow == origin);
+    if !ok {
+        tracing::warn!(
+            "csrf_middleware: rejected origin={:?} method={} path={}",
+            origin,
+            method,
+            path
+        );
+        return (StatusCode::FORBIDDEN, "csrf check failed").into_response();
+    }
+    next.run(req).await
+}
+
 /// `Cookie` ヘッダ文字列から `kochu_session=<UUID>` を取り出す。
 ///
 /// 仕様:
@@ -179,8 +243,17 @@ mod tests {
         );
     }
 
+    /// `KOCHU_COOKIE_SECURE` env を弄る 3 テストを逐次化する mutex。
+    /// 並列実行下で他テストが同じ env を書くと set/assert 間で値が入れ替わるため、
+    /// poison-tolerant な共有 GUARD で 1 つずつ走らせる。
+    fn cookie_secure_guard() -> std::sync::MutexGuard<'static, ()> {
+        static GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        GUARD.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
     #[test]
     fn cookie_secure_default_is_off() {
+        let _g = cookie_secure_guard();
         // env を空にしてからのテスト。SAFETY: edition 2024 では set_var が unsafe。
         unsafe {
             std::env::remove_var("KOCHU_COOKIE_SECURE");
@@ -190,6 +263,7 @@ mod tests {
 
     #[test]
     fn cookie_secure_enabled_when_env_is_true() {
+        let _g = cookie_secure_guard();
         unsafe {
             std::env::set_var("KOCHU_COOKIE_SECURE", "true");
         }
@@ -201,6 +275,7 @@ mod tests {
 
     #[test]
     fn cookie_secure_disabled_when_env_is_other() {
+        let _g = cookie_secure_guard();
         unsafe {
             std::env::set_var("KOCHU_COOKIE_SECURE", "1"); // "true" 以外
         }
@@ -274,5 +349,200 @@ mod tests {
         let body = axum::body::to_bytes(res.into_body(), 1024).await.unwrap();
         let body_str = std::str::from_utf8(&body).unwrap();
         assert_eq!(body_str, known, "既存 cookie がそのまま session_id に");
+    }
+
+    // ── CSRF middleware ─────────────────────────────────────────────
+
+    /// CSRF テストは `KOCHU_ALLOWED_ORIGINS` env を弄るので逐次化が必要。
+    fn csrf_guard() -> std::sync::MutexGuard<'static, ()> {
+        static GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        GUARD.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    fn unset_csrf_env() {
+        unsafe {
+            std::env::remove_var("KOCHU_ALLOWED_ORIGINS");
+        }
+    }
+
+    fn build_csrf_app() -> axum::Router {
+        use axum::{Router, routing::get};
+        async fn ok() -> &'static str {
+            "ok"
+        }
+        Router::new()
+            .route("/x", get(ok).post(ok))
+            .route("/api/v1/stripe/webhook", axum::routing::post(ok))
+            .layer(axum::middleware::from_fn(csrf_middleware))
+    }
+
+    #[tokio::test]
+    async fn csrf_skips_get_requests() {
+        let _g = csrf_guard();
+        unset_csrf_env();
+        unsafe {
+            std::env::set_var("KOCHU_ALLOWED_ORIGINS", "https://kochu.example");
+        }
+
+        use axum::{body::Body, http::Request};
+        use tower::ServiceExt;
+        let res = build_csrf_app()
+            .oneshot(
+                Request::builder()
+                    .method("GET")
+                    .uri("/x")
+                    .header(header::ORIGIN, "https://attacker.example") // 無関係でも GET なので通る
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 200);
+        unset_csrf_env();
+    }
+
+    #[tokio::test]
+    async fn csrf_skips_when_env_unset() {
+        let _g = csrf_guard();
+        unset_csrf_env();
+
+        use axum::{body::Body, http::Request};
+        use tower::ServiceExt;
+        let res = build_csrf_app()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/x")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 200, "env 未設定 (= dev) では CSRF check skip");
+    }
+
+    #[tokio::test]
+    async fn csrf_accepts_matching_origin() {
+        let _g = csrf_guard();
+        unsafe {
+            std::env::set_var("KOCHU_ALLOWED_ORIGINS", "https://kochu.example");
+        }
+
+        use axum::{body::Body, http::Request};
+        use tower::ServiceExt;
+        let res = build_csrf_app()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/x")
+                    .header(header::ORIGIN, "https://kochu.example")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 200);
+        unset_csrf_env();
+    }
+
+    #[tokio::test]
+    async fn csrf_rejects_mismatched_origin() {
+        let _g = csrf_guard();
+        unsafe {
+            std::env::set_var("KOCHU_ALLOWED_ORIGINS", "https://kochu.example");
+        }
+
+        use axum::{body::Body, http::Request};
+        use tower::ServiceExt;
+        let res = build_csrf_app()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/x")
+                    .header(header::ORIGIN, "https://attacker.example")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 403);
+        unset_csrf_env();
+    }
+
+    #[tokio::test]
+    async fn csrf_rejects_missing_origin_header() {
+        let _g = csrf_guard();
+        unsafe {
+            std::env::set_var("KOCHU_ALLOWED_ORIGINS", "https://kochu.example");
+        }
+
+        use axum::{body::Body, http::Request};
+        use tower::ServiceExt;
+        let res = build_csrf_app()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/x")
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 403, "Origin 欠落も 403");
+        unset_csrf_env();
+    }
+
+    #[tokio::test]
+    async fn csrf_skips_stripe_webhook_path() {
+        let _g = csrf_guard();
+        unsafe {
+            std::env::set_var("KOCHU_ALLOWED_ORIGINS", "https://kochu.example");
+        }
+
+        use axum::{body::Body, http::Request};
+        use tower::ServiceExt;
+        // stripe webhook は HMAC で別経路の検証をするので CSRF は skip
+        let res = build_csrf_app()
+            .oneshot(
+                Request::builder()
+                    .method("POST")
+                    .uri("/api/v1/stripe/webhook")
+                    .header(header::ORIGIN, "https://stripe.com") // 一覧に無くても通る
+                    .body(Body::empty())
+                    .unwrap(),
+            )
+            .await
+            .unwrap();
+        assert_eq!(res.status(), 200);
+        unset_csrf_env();
+    }
+
+    #[tokio::test]
+    async fn csrf_accepts_any_of_csv_origins() {
+        let _g = csrf_guard();
+        unsafe {
+            std::env::set_var(
+                "KOCHU_ALLOWED_ORIGINS",
+                "https://a.example, https://b.example,https://c.example",
+            );
+        }
+
+        use axum::{body::Body, http::Request};
+        use tower::ServiceExt;
+        for origin in ["https://a.example", "https://b.example", "https://c.example"] {
+            let res = build_csrf_app()
+                .oneshot(
+                    Request::builder()
+                        .method("POST")
+                        .uri("/x")
+                        .header(header::ORIGIN, origin)
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap();
+            assert_eq!(res.status(), 200, "{origin} should be allowed");
+        }
+        unset_csrf_env();
     }
 }

@@ -123,6 +123,45 @@ pub async fn insert(
     }
 }
 
+/// auction の current_price_jpy を更新 (= bid 受領後に呼ぶ)。
+///
+/// CHECK 制約 (`current_price_ge_starting`) は schema 側で握っているので、低い値で UPDATE
+/// すると DB 側が拒否する。
+pub async fn update_current_price(
+    pool: Option<&PgPool>,
+    id: Uuid,
+    new_price: i64,
+) -> Result<(), ListingRepoError> {
+    if new_price < 0 {
+        return Err(ListingRepoError::Invalid(
+            "current_price must be >= 0".to_string(),
+        ));
+    }
+    match pool {
+        Some(p) => {
+            let res = sqlx::query("UPDATE listings SET current_price_jpy = $2 WHERE id = $1")
+                .bind(id)
+                .bind(new_price)
+                .execute(p)
+                .await
+                .map_err(ListingRepoError::Db)?;
+            if res.rows_affected() == 0 {
+                return Err(ListingRepoError::NotFound(id));
+            }
+            Ok(())
+        }
+        None => {
+            let mut store = memory_lock_mut();
+            let row = store
+                .iter_mut()
+                .find(|r| r.id == id)
+                .ok_or(ListingRepoError::NotFound(id))?;
+            row.current_price_jpy = Some(new_price);
+            Ok(())
+        }
+    }
+}
+
 /// status を 'sold' / 'canceled' / 'expired' に書き換える。invalid な遷移チェックは
 /// MVP では省略 (= 上位ロジックで握る前提)。
 pub async fn update_status(

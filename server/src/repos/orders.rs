@@ -24,6 +24,10 @@ use uuid::Uuid;
 #[derive(Debug, Clone)]
 pub struct OrderInsertRequest {
     pub session_id: String,
+    /// **Phase 9.G / 0011_orders_user_fk.sql**: 注文時に login していたら user_id を埋める。
+    /// 匿名注文 (= 未ログインの guest checkout) は None で許容され、後で UPDATE で紐付け
+    /// 直す経路 (= 設計書 §8.2 と同じ pattern) も将来追加可能。
+    pub user_id: Option<Uuid>,
     pub stripe_session_id: Option<String>,
     pub amount_jpy: i64,
     pub shipping_jpy: Option<i64>,
@@ -59,6 +63,7 @@ pub struct ShippingAddressInsert {
 pub struct OrderRecord {
     pub id: Uuid,
     pub session_id: String,
+    pub user_id: Option<Uuid>,
     pub stripe_session_id: Option<String>,
     pub stripe_payment_intent_id: Option<String>,
     pub status: String,
@@ -199,13 +204,14 @@ async fn insert_order_db(
     // ── orders INSERT ──
     let row = sqlx::query(
         r#"
-        INSERT INTO orders (session_id, stripe_session_id, status, amount_jpy, shipping_jpy)
-        VALUES ($1, $2, 'pending', $3, $4)
-        RETURNING id, session_id, stripe_session_id, stripe_payment_intent_id,
+        INSERT INTO orders (session_id, user_id, stripe_session_id, status, amount_jpy, shipping_jpy)
+        VALUES ($1, $2, $3, 'pending', $4, $5)
+        RETURNING id, session_id, user_id, stripe_session_id, stripe_payment_intent_id,
                   status, amount_jpy, shipping_jpy, created_at, updated_at
         "#,
     )
     .bind(&req.session_id)
+    .bind(req.user_id)
     .bind(&req.stripe_session_id)
     .bind(req.amount_jpy)
     .bind(req.shipping_jpy)
@@ -216,6 +222,7 @@ async fn insert_order_db(
     let record = OrderRecord {
         id: row.try_get("id").map_err(OrderRepoError::Db)?,
         session_id: row.try_get("session_id").map_err(OrderRepoError::Db)?,
+        user_id: row.try_get("user_id").map_err(OrderRepoError::Db)?,
         stripe_session_id: row.try_get("stripe_session_id").map_err(OrderRepoError::Db)?,
         stripe_payment_intent_id: row
             .try_get("stripe_payment_intent_id")
@@ -282,7 +289,7 @@ async fn find_by_stripe_session_id_db(
 ) -> Result<Option<OrderRecord>, OrderRepoError> {
     let row: Option<OrderRecord> = sqlx::query_as::<_, OrderRecord>(
         r#"
-        SELECT id, session_id, stripe_session_id, stripe_payment_intent_id,
+        SELECT id, session_id, user_id, stripe_session_id, stripe_payment_intent_id,
                status, amount_jpy, shipping_jpy, created_at, updated_at
         FROM orders
         WHERE stripe_session_id = $1
@@ -295,6 +302,44 @@ async fn find_by_stripe_session_id_db(
     .await
     .map_err(OrderRepoError::Db)?;
     Ok(row)
+}
+
+/// 1 user の注文履歴を created_at 降順で返す (= GET /api/v1/orders/me 用)。
+pub async fn list_by_user_id(
+    pool: Option<&PgPool>,
+    user_id: Uuid,
+) -> Result<Vec<OrderRecord>, OrderRepoError> {
+    match pool {
+        Some(p) => sqlx::query_as::<_, OrderRecord>(
+            r#"
+            SELECT id, session_id, user_id, stripe_session_id, stripe_payment_intent_id,
+                   status, amount_jpy, shipping_jpy, created_at, updated_at
+            FROM orders
+            WHERE user_id = $1
+            ORDER BY created_at DESC, id
+            "#,
+        )
+        .bind(user_id)
+        .fetch_all(p)
+        .await
+        .map_err(OrderRepoError::Db),
+        None => {
+            let store = memory_store()
+                .lock()
+                .map_err(|_| OrderRepoError::Invalid("in-memory mutex poisoned".to_string()))?;
+            let mut rows: Vec<OrderRecord> = store
+                .iter()
+                .filter(|r| r.user_id == Some(user_id))
+                .cloned()
+                .collect();
+            rows.sort_by(|a, b| {
+                b.created_at
+                    .cmp(&a.created_at)
+                    .then_with(|| a.id.cmp(&b.id))
+            });
+            Ok(rows)
+        }
+    }
 }
 
 async fn update_status_db(
@@ -340,6 +385,7 @@ fn insert_order_memory(req: OrderInsertRequest) -> Result<OrderRecord, OrderRepo
     let rec = OrderRecord {
         id: Uuid::new_v4(),
         session_id: req.session_id,
+        user_id: req.user_id,
         stripe_session_id: req.stripe_session_id,
         stripe_payment_intent_id: None,
         status: "pending".to_string(),
@@ -382,6 +428,7 @@ mod tests {
     fn req() -> OrderInsertRequest {
         OrderInsertRequest {
             session_id: "anonymous".to_string(),
+            user_id: None,
             stripe_session_id: Some("cs_mock_test".to_string()),
             amount_jpy: 96000,
             shipping_jpy: Some(1800),

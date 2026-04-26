@@ -4,7 +4,7 @@ use axum::{
 };
 
 use crate::handlers;
-use crate::session::session_middleware;
+use crate::session::{csrf_middleware, session_middleware};
 use crate::state::AppState;
 
 /// `/api/v1` 配下のルート定義。
@@ -93,6 +93,62 @@ pub fn api_v1(state: AppState) -> Router {
         .route("/auth/login", post(handlers::auth::post_login))
         .route("/auth/logout", post(handlers::auth::post_logout))
         .route("/auth/me", get(handlers::auth::get_me))
+        // Phase 9.D: 個体カルテ (specimens) 用 endpoint。
+        // - /specimens/me と POST / archive は login 必須 (401)、GET /{public_id} は public 閲覧 OK。
+        .route("/specimens/me", get(handlers::specimens::list_my_specimens))
+        .route("/specimens", post(handlers::specimens::create_specimen))
+        .route("/specimens/{public_id}", get(handlers::specimens::get_specimen))
+        .route(
+            "/specimens/{id}/archive",
+            post(handlers::specimens::archive_specimen),
+        )
+        // 飼育ログ (= /specimens/{id}/logs)。{id} は specimen の internal UUID。
+        .route(
+            "/specimens/{id}/logs",
+            get(handlers::specimen_logs::list_logs)
+                .post(handlers::specimen_logs::create_log),
+        )
+        // life_status 遷移 + 履歴 (= Medium #3 規律 / 必ず history 経由で更新)
+        .route(
+            "/specimens/{id}/life_status",
+            post(handlers::specimens::change_life_status),
+        )
+        .route(
+            "/specimens/{id}/status_history",
+            get(handlers::specimens::list_status_history),
+        )
+        // 注文履歴 (= /orders/me)。Phase 9.G: orders.user_id を引いて自分の注文だけ返す。
+        .route("/orders/me", get(handlers::orders::list_my_orders))
+        // 交配記録 (= /mating_records)。breeder = current user に固定。
+        .route(
+            "/mating_records",
+            post(handlers::mating_records::create_record),
+        )
+        .route(
+            "/mating_records/me",
+            get(handlers::mating_records::list_my_records),
+        )
+        .route(
+            "/mating_records/{id}/status",
+            post(handlers::mating_records::update_status_handler),
+        )
+        .route(
+            "/mating_records/{id}/egg_count",
+            post(handlers::mating_records::update_egg_count_handler),
+        )
+        // Phase 9.E: C2C marketplace (= listings / bids / listing_watches)。
+        .route("/listings", get(handlers::listings::list_active))
+        .route("/listings", post(handlers::listings::create_listing))
+        .route("/listings/{public_id}", get(handlers::listings::get_listing))
+        .route(
+            "/listings/{id}/cancel",
+            post(handlers::listings::cancel_listing),
+        )
+        .route("/listings/{id}/bids", post(handlers::listings::place_bid))
+        .route(
+            "/listings/{id}/watch",
+            post(handlers::listings::toggle_watch_listing),
+        )
         // Phase 9.E 補助: 全 /api/v1/* に session middleware を適用。
         // /health は外側 (main.rs::build_app) で別途 nest しているので影響なし。
         // `from_fn_with_state` で middleware に AppState を渡し、新規 session 発行時に
@@ -101,5 +157,9 @@ pub fn api_v1(state: AppState) -> Router {
             state.clone(),
             session_middleware,
         ))
+        // Phase 9.x hardening: CSRF (= Origin ヘッダ照合)。state-changing メソッドのみ。
+        // session_middleware より外側 (= 後に追加 = 先に走る) に置き、Origin 不一致は
+        // session 発行前に 403 で弾く。stripe webhook は middleware 内部で path で skip。
+        .layer(axum::middleware::from_fn(csrf_middleware))
         .with_state(state)
 }

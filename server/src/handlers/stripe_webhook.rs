@@ -288,6 +288,7 @@ mod tests {
             None,
             OrderInsertRequest {
                 session_id: "anonymous".to_string(),
+                user_id: None,
                 stripe_session_id: Some("cs_mock_test".to_string()),
                 amount_jpy: 96000,
                 shipping_jpy: Some(1800),

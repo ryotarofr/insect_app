@@ -355,10 +355,20 @@ pub async fn post_checkout_submit(
     // ── 6. orders / order_items / shipping_addresses INSERT ────────
     // Phase 9.x AppState 配線: pool が `Some` なら DB トランザクションで永続化、
     // `None` なら in-memory fallback。テストや DB 切れ時もそのまま動く。
+    //
+    // Phase 9.G: login user の場合は orders.user_id を埋める。anonymous なら None。
+    // session 行が無い (= cookie 来たが user_sessions 未登録) ケースは Ok(None) → user_id=None。
+    let user_id_opt = match crate::repos::user_sessions::find_by_id(state.db(), session_id.0).await
+    {
+        Ok(Some(s)) => s.user_id,
+        _ => None,
+    };
+
     let _record = insert_order(
         state.db(),
         OrderInsertRequest {
             session_id: session_id_str,
+            user_id: user_id_opt,
             stripe_session_id: Some(session.stripe_session_id.clone()),
             amount_jpy: total_amount_jpy,
             shipping_jpy: Some(shipping_jpy),

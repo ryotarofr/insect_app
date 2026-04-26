@@ -172,6 +172,99 @@ pub async fn insert(
     }
 }
 
+/// `life_status` を遷移させる + 履歴を `specimen_status_history` に積む。
+///
+/// **Medium #3 規律**: life_status の更新はこの関数経由で行うことで、UPDATE と
+/// 履歴 INSERT が **トランザクション内で原子的** に実行される。直接 UPDATE specimens
+/// SET life_status = ... をする SQL は避け、必ず本関数を通すこと。
+///
+/// `note` / `life_status_at` は specimens 行にも反映する (= 現在値スナップショット)。
+pub async fn update_life_status(
+    pool: Option<&PgPool>,
+    id: Uuid,
+    new_status: &str,
+    changed_at: chrono::NaiveDate,
+    note: Option<&str>,
+    author_user_id: Uuid,
+) -> Result<(), SpecimenRepoError> {
+    crate::repos::specimen_status_history::validate_status(new_status).map_err(|e| {
+        SpecimenRepoError::Invalid(format!("life_status: {e}"))
+    })?;
+
+    match pool {
+        Some(pool) => {
+            // トランザクション: UPDATE specimens + INSERT history を一括で
+            let mut tx = pool.begin().await.map_err(SpecimenRepoError::Db)?;
+
+            let res = sqlx::query(
+                r#"
+                UPDATE specimens
+                SET life_status = $2,
+                    life_status_at = $3,
+                    life_status_note = $4
+                WHERE id = $1
+                "#,
+            )
+            .bind(id)
+            .bind(new_status)
+            .bind(changed_at)
+            .bind(note)
+            .execute(&mut *tx)
+            .await
+            .map_err(SpecimenRepoError::Db)?;
+            if res.rows_affected() == 0 {
+                return Err(SpecimenRepoError::NotFound(id));
+            }
+
+            sqlx::query(
+                r#"
+                INSERT INTO specimen_status_history
+                    (specimen_id, status, changed_at, note, author_user_id)
+                VALUES ($1, $2, $3, $4, $5)
+                "#,
+            )
+            .bind(id)
+            .bind(new_status)
+            .bind(changed_at)
+            .bind(note)
+            .bind(author_user_id)
+            .execute(&mut *tx)
+            .await
+            .map_err(SpecimenRepoError::Db)?;
+
+            tx.commit().await.map_err(SpecimenRepoError::Db)?;
+            Ok(())
+        }
+        None => {
+            // in-memory: specimens の row を直接書き換え + history repo に append
+            {
+                let mut store = memory_store_lock_mut();
+                let row = store
+                    .iter_mut()
+                    .find(|r| r.id == id)
+                    .ok_or(SpecimenRepoError::NotFound(id))?;
+                row.life_status = new_status.to_string();
+                row.life_status_at = Some(changed_at);
+                row.life_status_note = note.map(|s| s.to_string());
+            }
+            // history insert (= validate は specimen_status_history 内で再実行されるが冪等)
+            crate::repos::specimen_status_history::insert(
+                None,
+                crate::repos::specimen_status_history::StatusHistoryInsert {
+                    specimen_id: id,
+                    status: new_status.to_string(),
+                    changed_at,
+                    note: note.map(|s| s.to_string()),
+                    author_user_id,
+                },
+            )
+            .await
+            .map_err(|e| SpecimenRepoError::Invalid(format!("history insert: {e}")))?;
+            Ok(())
+        }
+    }
+}
+
 /// archive フラグを true にして表示から除外する。physical DELETE はしない方針。
 pub async fn archive(
     pool: Option<&PgPool>,
@@ -361,13 +454,22 @@ pub fn reset_memory_for_test() {
     }
 }
 
+/// クロスモジュールテスト用 (= handlers::specimens::tests から共有)。poison-tolerant。
+#[cfg(test)]
+pub fn memory_guard() -> std::sync::MutexGuard<'static, ()> {
+    static GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    GUARD.lock().unwrap_or_else(|p| p.into_inner())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex as StdMutex;
 
-    /// グローバル in-memory store の競合を避けるため逐次化。
-    static GUARD: StdMutex<()> = StdMutex::new(());
+    /// 本モジュール公開の `memory_guard()` (= poison-tolerant) で逐次化する。
+    /// `handlers::specimens::tests` 等のクロスモジュールテストと GUARD を共有する。
+    fn lock_guard() -> std::sync::MutexGuard<'static, ()> {
+        memory_guard()
+    }
 
     fn owner() -> Uuid {
         Uuid::parse_str("a0a0a0a0-0000-4000-8000-00000000a0a0").unwrap()
@@ -400,7 +502,7 @@ mod tests {
 
     #[tokio::test]
     async fn validate_rejects_empty_public_id() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         let mut p = payload("ok");
         p.public_id = "".to_string();
         match insert(None, p).await {
@@ -413,7 +515,7 @@ mod tests {
 
     #[tokio::test]
     async fn validate_rejects_invalid_sex() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         let mut p = payload("ok");
         p.sex = "alien".to_string();
         match insert(None, p).await {
@@ -424,7 +526,7 @@ mod tests {
 
     #[tokio::test]
     async fn validate_rejects_stage_progress_out_of_range() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         for bad in [-0.1f64, 1.1, 2.0] {
             let mut p = payload("ok");
             p.stage_progress = bad;
@@ -437,7 +539,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_insert_and_find_by_id_and_public_id() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         reset_memory_for_test();
         let id = insert(None, payload("#DHH-TEST-1")).await.unwrap();
 
@@ -455,7 +557,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_find_by_owner_filters_archived() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         reset_memory_for_test();
         let active_id = insert(None, payload("#DHH-A")).await.unwrap();
         let arch_id = insert(None, payload("#DHH-B")).await.unwrap();
@@ -471,7 +573,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_archive_unknown_returns_not_found() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         reset_memory_for_test();
         let unknown = Uuid::new_v4();
         match archive(None, unknown).await {
