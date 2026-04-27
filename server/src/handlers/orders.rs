@@ -170,7 +170,7 @@ mod tests {
 
     async fn login_session() -> (Uuid, Uuid) {
         let session = Uuid::new_v4();
-        user_sessions::create_anonymous(None, session).await.unwrap();
+        user_sessions::create_anonymous_for_test(None, session).await.unwrap();
         let id = users::create_with_password(
             None,
             users::UserRegisterInput {
@@ -242,7 +242,7 @@ mod tests {
         reset_all();
 
         let session = Uuid::new_v4();
-        user_sessions::create_anonymous(None, session).await.unwrap();
+        user_sessions::create_anonymous_for_test(None, session).await.unwrap();
         // attach_user していない → 401
         match list_my_orders(st(), ext(session)).await {
             Err(AppError::Unauthorized) => {}
@@ -299,7 +299,7 @@ mod tests {
         reset_all();
         // anonymous session を用意し、その session_id 文字列を orders.session_id に詰めて INSERT
         let session = Uuid::new_v4();
-        user_sessions::create_anonymous(None, session).await.unwrap();
+        user_sessions::create_anonymous_for_test(None, session).await.unwrap();
         let mut req = order_req(None, 3000);
         req.session_id = session.to_string();
         let rec = orders::insert_order(None, req).await.unwrap();
@@ -312,7 +312,7 @@ mod tests {
 
         // 別 anonymous session では 404
         let other_session = Uuid::new_v4();
-        user_sessions::create_anonymous(None, other_session).await.unwrap();
+        user_sessions::create_anonymous_for_test(None, other_session).await.unwrap();
         match get_order_detail(st(), ext(other_session), Path(rec.id.to_string())).await {
             Err(AppError::NotFound) => {}
             other => panic!("expected NotFound for other anonymous, got {other:?}"),

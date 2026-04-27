@@ -1169,6 +1169,33 @@
   grid-template-columns: repeat(4, 1fr);
 }
 
+/* v2.8: 商品カードを行内で同じ高さに揃える + 価格を下端固定。
+   素の grid は align-items:stretch だが、CardRenderer をラップする
+   <div role="button"> と内側の <article class="card"> は明示的に
+   高さを伝播していないと content 量で縮んでしまう。
+   下記ルールはすべての grid-cards-* に適用するため共通化する。 */
+.grid-cards-2 > *,
+.grid-cards-3 > *,
+.grid-cards-4 > * {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.grid-cards-2 > * > article.card,
+.grid-cards-3 > * > article.card,
+.grid-cards-4 > * > article.card {
+  flex: 1;
+}
+/* ProductFeature カード: 内側の content (= 2 つ目の div = padding 領域) を
+   flex-grow させ、最後の region (= footer = 価格・羽化予測) を margin-top:auto で
+   下端に押し付ける。これで全カードの価格が同じ Y 座標に揃う。 */
+article.card[data-template="product_feature"] > div + div {
+  flex: 1;
+}
+article.card[data-template="product_feature"] > div + div > :last-child {
+  margin-top: auto;
+}
+
 /* P4-12: サンプルデータ バナー (Shop 等のダッシュボードで偽数値の誤解を避ける) */
 .sample-banner {
   display: flex;

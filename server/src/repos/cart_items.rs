@@ -372,15 +372,24 @@ pub fn reset_memory_for_test() {
     }
 }
 
+/// クロスモジュールテスト用の共有 GUARD (= poison-tolerant)。
+/// `handlers::cart::tests` / `handlers::auth::tests` 等が同じ mutex を取って逐次化する。
+#[cfg(test)]
+pub fn memory_guard() -> std::sync::MutexGuard<'static, ()> {
+    static GUARD: std::sync::Mutex<()> = std::sync::Mutex::new(());
+    GUARD.lock().unwrap_or_else(|p| p.into_inner())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::sync::Mutex as StdMutex;
 
-    /// グローバル in-memory store の競合を避けるため、reset 経由のテストは
-    /// 1 つずつ走らせる。validation 系 (= store を触らない) は GUARD 不要だが、
-    /// 揃えるために全テストで取得しておく。
-    static GUARD: StdMutex<()> = StdMutex::new(());
+    /// 本モジュール公開の `memory_guard()` (= poison-tolerant) で逐次化する。
+    /// `handlers::cart::tests` / `handlers::auth::tests` 等のクロスモジュールテストとも
+    /// 同 GUARD を共有する。
+    fn lock_guard() -> std::sync::MutexGuard<'static, ()> {
+        memory_guard()
+    }
 
     fn user() -> Uuid {
         Uuid::parse_str("a0a0a0a0-0000-4000-8000-00000000a0a0").unwrap()
@@ -392,7 +401,7 @@ mod tests {
 
     #[tokio::test]
     async fn validate_rejects_owner_missing() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         let res = insert(
             None,
             CartItemInsert {
@@ -411,7 +420,7 @@ mod tests {
 
     #[tokio::test]
     async fn validate_rejects_qty_out_of_range() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         for bad in [0, 100, -3] {
             let res = insert(
                 None,
@@ -432,7 +441,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_insert_find_by_user_and_set_qty_and_delete() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         reset_memory_for_test();
         let id = insert(
             None,
@@ -462,7 +471,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_set_qty_rejects_out_of_range_after_insert() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         reset_memory_for_test();
         let id = insert(
             None,
@@ -488,7 +497,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_promote_session_to_user_moves_rows() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         reset_memory_for_test();
         let session = Uuid::new_v4();
         let _ = insert(
@@ -525,7 +534,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_delete_by_session_id_clears_only_target_session() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         reset_memory_for_test();
         let session_a = Uuid::new_v4();
         let session_b = Uuid::new_v4();
@@ -576,7 +585,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_delete_by_session_id_returns_zero_when_empty() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         reset_memory_for_test();
         let removed = delete_by_session_id(None, Uuid::new_v4()).await.unwrap();
         assert_eq!(removed, 0, "空 session の削除は 0 を返し NotFound にしない");
@@ -584,7 +593,7 @@ mod tests {
 
     #[tokio::test]
     async fn in_memory_delete_unknown_id_returns_not_found() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         reset_memory_for_test();
         let unknown = Uuid::new_v4();
         match delete(None, unknown).await {

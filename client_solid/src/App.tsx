@@ -41,6 +41,7 @@ import { MarketPage } from "./pages/Market";
 import { CartSduiPage } from "./pages/CartSdui";
 import { LoginPage } from "./pages/Login";
 import { MyOrdersPage } from "./pages/MyOrders";
+import { OrderDetailPage } from "./pages/OrderDetail";
 import { WarrantyPage } from "./pages/help/Warranty";
 import { NotFoundPage } from "./pages/NotFound";
 import { cartCount } from "./store/cart";
@@ -276,6 +277,13 @@ export const App = () => {
     return productFallback();
   });
 
+  // Phase 9.G: /orders/:id 用に URL から id を取り出す。
+  //   存在性チェックは server 側 (= 404) に任せる (= 注文 UUID は client 側に
+  //   全部の id 一覧を持たないため productExists 相当の whitelist は無い)。
+  const currentOrderId = createMemo<string>(() => {
+    return extractPathId(location.pathname, "/orders") ?? "";
+  });
+
   // localStorage へ永続化 (P2-3 で見直し)
   createEffect(() => {
     localStorage.setItem("kochu:specimen", specimenFallback());
@@ -465,6 +473,11 @@ export const App = () => {
           {/* Phase 9.G: 自分の注文履歴一覧 (= /api/v1/orders/me)。
               anonymous は inline で「ログインが必要」表示 + /login への navigate。 */}
           <MyOrdersPage setRoute={setRoute} />
+        </Show>
+        <Show when={route() === "order-detail"}>
+          {/* Phase 9.G: 1 注文詳細 + line_items (= /api/v1/orders/{id})。
+              所有者でない / 不存在は server 側 404 → inline error で「注文履歴に戻る」。 */}
+          <OrderDetailPage orderId={currentOrderId()} setRoute={setRoute} />
         </Show>
         <Show when={route() === "not-found"}>
           <NotFoundPage />

@@ -112,7 +112,7 @@ SELECT public_id, t.title
 ```bash
 # 4.1 商品一覧 (= cards.rs / DB から products / translations を読む経路)
 curl -s -i http://localhost:3000/api/v1/cards/products | head -20
-# → 200, Set-Cookie: kochu_session=<UUID>; Path=/; HttpOnly; SameSite=Lax
+# → 200, Set-Cookie: kochu_session=<UUID>:<hex64>; Path=/; HttpOnly; SameSite=Lax
 #   レスポンス JSON.cards に 6 件
 
 # 4.2 cookie を保持して cart 投入
@@ -152,10 +152,12 @@ curl -s -X POST http://localhost:3000/api/v1/stripe/webhook \
 ## 5. DB 永続化確認 (psql)
 
 ```sql
--- session が user_sessions に書かれた
-SELECT count(*), token_hash LIKE '$kochu$mvp$%' AS phc_shape
-  FROM user_sessions GROUP BY token_hash LIKE '$kochu$mvp$%';
+-- session が user_sessions に書かれた (Phase 9.H 以降は Argon2id phc 文字列)
+SELECT count(*), token_hash LIKE '$argon2id$%' AS phc_shape
+  FROM user_sessions GROUP BY token_hash LIKE '$argon2id$%';
 -- count > 0, phc_shape = true
+-- phc_shape = false (= 旧 `$kochu$mvp$<UUID>` 行) が混在していたら、それは Phase 9.G 以前
+-- に作られた古い session で、middleware 側で silent rotate される (= 危険ではない)。
 
 -- 注文がある
 SELECT id, session_id, status, amount_jpy, stripe_session_id FROM orders ORDER BY created_at DESC LIMIT 3;

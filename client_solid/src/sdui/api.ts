@@ -471,3 +471,324 @@ export const fetchOrderDetail = async (id: string): Promise<OrderDetail> => {
   const safe = encodeURIComponent(id);
   return fetchJson<OrderDetail>(`/orders/${safe}`);
 };
+
+// ──────────────────────────────────────────────────────────────────────
+// Phase 9.D: 個体カルテ (= /api/v1/specimens/*)
+// ──────────────────────────────────────────────────────────────────────
+
+export interface SpecimenView {
+  id: string;
+  publicId: string;                                    // "#DHH-0271"
+  ownerUserId: string;
+  speciesId: string;
+  name: string;
+  sex: string;                                         // "male" / "female" / "unknown"
+  stage: string;
+  stageProgress: number;
+  sizeMm: number | null;
+  weightG: number | null;
+  birthDate: string | null;                            // "2024-08-12" (= NaiveDate)
+  purchasedAt: string | null;
+  generation: string | null;
+  eclosionEta: string | null;
+  lifeStatus: string;                                  // "active" / "deceased" / "transferred" / "escaped"
+  isArchived: boolean;
+}
+
+export interface CreateSpecimenRequest {
+  publicId: string;
+  speciesId: string;
+  name: string;
+  sex: string;
+  stage: string;
+  stageProgress: number;
+  sizeMm?: number | null;
+  weightG?: number | null;
+  birthDate?: string | null;
+  purchasedAt?: string | null;
+  generation?: string | null;
+  eclosionEta?: string | null;
+  notes?: string | null;
+}
+
+export interface CreateSpecimenResponse {
+  id: string;
+  publicId: string;
+}
+
+/** `GET /api/v1/specimens/me` — login user の active な individuals。 */
+export const fetchMySpecimens = async (): Promise<SpecimenView[]> => {
+  return fetchJson<SpecimenView[]>(`/specimens/me`);
+};
+
+/** `POST /api/v1/specimens` — 新規登録。owner_user_id は server 側で session から確定。 */
+export const postSpecimen = async (
+  req: CreateSpecimenRequest,
+): Promise<CreateSpecimenResponse> => {
+  return fetchJson<CreateSpecimenResponse>(`/specimens`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+};
+
+/** `GET /api/v1/specimens/{public_id}` — 公開閲覧 OK (= archived は 404)。 */
+export const fetchSpecimen = async (publicId: string): Promise<SpecimenView> => {
+  return fetchJson<SpecimenView>(`/specimens/${encodeURIComponent(publicId)}`);
+};
+
+/** `POST /api/v1/specimens/{id}/archive` — 自分の specimen を archive (= 204)。 */
+export const postSpecimenArchive = async (id: string): Promise<void> => {
+  return fetchNoContent(`/specimens/${encodeURIComponent(id)}/archive`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+};
+
+export interface ChangeLifeStatusRequest {
+  status: string;                                      // "active" / "deceased" / "transferred" / "escaped"
+  changedAt: string;                                   // YYYY-MM-DD
+  note?: string | null;
+}
+
+/** `POST /api/v1/specimens/{id}/life_status` — life_status 遷移 + 履歴 INSERT (= 204)。 */
+export const postSpecimenLifeStatus = async (
+  id: string,
+  req: ChangeLifeStatusRequest,
+): Promise<void> => {
+  return fetchNoContent(`/specimens/${encodeURIComponent(id)}/life_status`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+};
+
+export interface StatusHistoryView {
+  id: string;
+  specimenId: string;
+  status: string;
+  changedAt: string;
+  note: string | null;
+  authorUserId: string;
+  createdAt: string;
+}
+
+/** `GET /api/v1/specimens/{id}/status_history` — life_status 遷移履歴 (= changed_at 降順)。 */
+export const fetchSpecimenStatusHistory = async (
+  id: string,
+): Promise<StatusHistoryView[]> => {
+  return fetchJson<StatusHistoryView[]>(
+    `/specimens/${encodeURIComponent(id)}/status_history`,
+  );
+};
+
+// 飼育ログ
+export type SpecimenLogType = "weight" | "feed" | "mat" | "molt" | "observation";
+
+export interface SpecimenLogView {
+  id: string;
+  specimenId: string;
+  authorUserId: string;
+  logType: SpecimenLogType;
+  loggedAt: string;
+  loggedAtTime: string | null;                         // "HH:MM:SS"
+  title: string;
+  body: string;
+  hasPhoto: boolean;
+  metrics: Record<string, unknown>;                    // JSONB / 自由構造
+}
+
+export interface CreateSpecimenLogRequest {
+  logType: SpecimenLogType;
+  loggedAt: string;
+  loggedAtTime?: string | null;
+  title: string;
+  body?: string;
+  hasPhoto?: boolean;
+  metrics?: Record<string, unknown>;
+}
+
+/** `GET /api/v1/specimens/{id}/logs` — 飼育ログを時系列降順で返す (= public 閲覧 OK)。 */
+export const fetchSpecimenLogs = async (id: string): Promise<SpecimenLogView[]> => {
+  return fetchJson<SpecimenLogView[]>(`/specimens/${encodeURIComponent(id)}/logs`);
+};
+
+/** `POST /api/v1/specimens/{id}/logs` — 飼育ログ追加 (= login + 所有者必須)。 */
+export const postSpecimenLog = async (
+  id: string,
+  req: CreateSpecimenLogRequest,
+): Promise<{ id: string }> => {
+  return fetchJson<{ id: string }>(
+    `/specimens/${encodeURIComponent(id)}/logs`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(req),
+    },
+  );
+};
+
+// ──────────────────────────────────────────────────────────────────────
+// Phase 9.D: 交配記録 (= /api/v1/mating_records/*)
+// ──────────────────────────────────────────────────────────────────────
+
+export type MatingStatus = "planned" | "mated" | "eggs_laid" | "hatched" | "failed";
+
+export interface MatingRecordView {
+  id: string;
+  breederUserId: string;
+  fatherId: string | null;
+  motherId: string | null;
+  fatherLabel: string | null;
+  motherLabel: string | null;
+  matedAt: string;
+  eggCount: number | null;
+  status: MatingStatus;
+  notes: string | null;
+}
+
+export interface CreateMatingRequest {
+  fatherId?: string | null;
+  motherId?: string | null;
+  fatherLabel?: string | null;
+  motherLabel?: string | null;
+  matedAt: string;
+  eggCount?: number | null;
+  status?: MatingStatus;                               // 省略時 server 側 default "planned"
+  notes?: string | null;
+}
+
+/** `POST /api/v1/mating_records` — 新規記録 (= login 必須)。 */
+export const postMatingRecord = async (
+  req: CreateMatingRequest,
+): Promise<{ id: string }> => {
+  return fetchJson<{ id: string }>(`/mating_records`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+};
+
+/** `GET /api/v1/mating_records/me` — 自分の交配記録 (= mated_at 降順)。 */
+export const fetchMyMatingRecords = async (): Promise<MatingRecordView[]> => {
+  return fetchJson<MatingRecordView[]>(`/mating_records/me`);
+};
+
+/** `POST /api/v1/mating_records/{id}/status` — status 遷移 (= 204)。 */
+export const postMatingStatus = async (
+  id: string,
+  status: MatingStatus,
+): Promise<void> => {
+  return fetchNoContent(`/mating_records/${encodeURIComponent(id)}/status`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ status }),
+  });
+};
+
+/** `POST /api/v1/mating_records/{id}/egg_count` — 採卵数を更新 (= 204)。 */
+export const postMatingEggCount = async (
+  id: string,
+  eggCount: number,
+): Promise<void> => {
+  return fetchNoContent(`/mating_records/${encodeURIComponent(id)}/egg_count`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ eggCount }),
+  });
+};
+
+// ──────────────────────────────────────────────────────────────────────
+// Phase 9.E: C2C marketplace (= /api/v1/listings/*)
+// ──────────────────────────────────────────────────────────────────────
+
+export interface ListingView {
+  id: string;
+  publicId: string;                                    // "L-0421"
+  sellerUserId: string;
+  specimenId: string | null;
+  title: string;
+  description: string | null;
+  isAuction: boolean;
+  startingPriceJpy: number;
+  currentPriceJpy: number | null;
+  endsAt: string | null;
+  status: string;                                      // "active" / "sold" / "canceled" / "expired"
+  isVerified: boolean;
+}
+
+export interface CreateListingRequest {
+  publicId: string;
+  specimenId?: string | null;
+  title: string;
+  description?: string | null;
+  isAuction: boolean;
+  startingPriceJpy: number;
+  endsAt?: string | null;
+}
+
+/** `GET /api/v1/listings` — active な出品一覧 (= public 閲覧 OK)。 */
+export const fetchListings = async (): Promise<ListingView[]> => {
+  return fetchJson<ListingView[]>(`/listings`);
+};
+
+/** `POST /api/v1/listings` — 新規出品 (= login 必須)。 */
+export const postListing = async (
+  req: CreateListingRequest,
+): Promise<{ id: string; publicId: string }> => {
+  return fetchJson<{ id: string; publicId: string }>(`/listings`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+};
+
+/** `GET /api/v1/listings/{public_id}` — 1 件取得 (= public)。 */
+export const fetchListing = async (publicId: string): Promise<ListingView> => {
+  return fetchJson<ListingView>(`/listings/${encodeURIComponent(publicId)}`);
+};
+
+/** `POST /api/v1/listings/{id}/cancel` — 自分の出品をキャンセル (= 204)。 */
+export const postListingCancel = async (id: string): Promise<void> => {
+  return fetchNoContent(`/listings/${encodeURIComponent(id)}/cancel`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: "{}",
+  });
+};
+
+export interface PlaceBidResponse {
+  bidId: string;
+  currentPriceJpy: number;
+}
+
+/** `POST /api/v1/listings/{id}/bids` — auction 入札。
+ *  amount は現在値より厳格に大きい必要があり、seller の自分入札は不可。 */
+export const postListingBid = async (
+  id: string,
+  amountJpy: number,
+): Promise<PlaceBidResponse> => {
+  return fetchJson<PlaceBidResponse>(
+    `/listings/${encodeURIComponent(id)}/bids`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ amountJpy }),
+    },
+  );
+};
+
+/** `POST /api/v1/listings/{id}/watch` — listing watch トグル。 */
+export const postListingWatch = async (
+  id: string,
+): Promise<{ watching: boolean }> => {
+  return fetchJson<{ watching: boolean }>(
+    `/listings/${encodeURIComponent(id)}/watch`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    },
+  );
+};

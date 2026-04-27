@@ -194,7 +194,7 @@ mod tests {
 
     async fn login_session() -> (Uuid, Uuid) {
         let session = Uuid::new_v4();
-        user_sessions::create_anonymous(None, session).await.unwrap();
+        user_sessions::create_anonymous_for_test(None, session).await.unwrap();
         let id = users::create_with_password(
             None,
             users::UserRegisterInput {
@@ -286,7 +286,7 @@ mod tests {
         reset_all();
 
         let session = Uuid::new_v4();
-        user_sessions::create_anonymous(None, session).await.unwrap();
+        user_sessions::create_anonymous_for_test(None, session).await.unwrap();
         // attach_user していない
         match create_log(st(), ext(session), Path(Uuid::new_v4().to_string()), Json(req("weight")))
             .await

@@ -51,7 +51,10 @@ pub(crate) struct CartEntry {
 /// product_uuid → public_id の逆引きは `repos::products::find_by_id` で 1 件ずつ解決
 /// (= MVP は cart 内の行数が小さいので N+1 でも実用上問題なし。性能要件が出たら
 /// JOIN クエリ or `find_many_by_ids` バッチ取得に切替)。
-pub async fn snapshot_cart_for_session(
+///
+/// **可視性**: `CartEntry` は `pub(crate)` なので関数も `pub(crate)` に揃える
+/// (= crate 内部 (cards.rs / checkout.rs) からのみ使う API)。
+pub(crate) async fn snapshot_cart_for_session(
     state: &AppState,
     session_id: Uuid,
 ) -> Result<Vec<(String, CartEntry)>, AppError> {
@@ -256,8 +259,11 @@ mod tests {
 
     /// **重要**: グローバル in-memory store を触る各テストは GUARD で逐次化する。
     /// reset_cart_for_test() を冒頭で呼ばないと前テストの cart が混ざる。
-    use std::sync::Mutex as StdMutex;
-    static GUARD: StdMutex<()> = StdMutex::new(());
+    /// `repos::cart_items::memory_guard()` を共有して、`handlers::auth::tests` 等の
+    /// クロスモジュールテストとも同 mutex で逐次化する (= 2 重 GUARD で race するのを回避)。
+    fn lock_guard() -> std::sync::MutexGuard<'static, ()> {
+        crate::repos::cart_items::memory_guard()
+    }
 
     fn ext(session_id: Uuid) -> Extension<SessionId> {
         Extension(SessionId(session_id))
@@ -269,7 +275,7 @@ mod tests {
 
     #[tokio::test]
     async fn add_then_delete_roundtrip() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         reset_cart_for_test();
         let session = Uuid::new_v4();
 
@@ -304,7 +310,7 @@ mod tests {
 
     #[tokio::test]
     async fn cart_count_accumulates_across_adds() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         reset_cart_for_test();
         let session = Uuid::new_v4();
 
@@ -350,7 +356,7 @@ mod tests {
 
     #[tokio::test]
     async fn empty_product_id_is_400() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         reset_cart_for_test();
         match add_to_cart(
             st(),
@@ -369,7 +375,7 @@ mod tests {
 
     #[tokio::test]
     async fn zero_qty_is_400() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         reset_cart_for_test();
         match add_to_cart(
             st(),
@@ -388,7 +394,7 @@ mod tests {
 
     #[tokio::test]
     async fn unknown_product_id_is_400() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         reset_cart_for_test();
         match add_to_cart(
             st(),
@@ -409,7 +415,7 @@ mod tests {
 
     #[tokio::test]
     async fn delete_unknown_token_is_404() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         reset_cart_for_test();
         // 不正な (UUID parse 失敗) トークン → 404
         match delete_cart_item(st(), Path("undo_nope".to_string())).await {
@@ -457,7 +463,7 @@ mod tests {
 
     #[tokio::test]
     async fn patch_qty_updates_entry() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         reset_cart_for_test();
         let session = Uuid::new_v4();
 
@@ -495,7 +501,7 @@ mod tests {
 
     #[tokio::test]
     async fn patch_qty_zero_is_400() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         reset_cart_for_test();
         let session = Uuid::new_v4();
         let r = add_to_cart(
@@ -524,7 +530,7 @@ mod tests {
 
     #[tokio::test]
     async fn patch_qty_too_large_is_400() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         reset_cart_for_test();
         let session = Uuid::new_v4();
         let r = add_to_cart(
@@ -552,7 +558,7 @@ mod tests {
 
     #[tokio::test]
     async fn patch_unknown_token_is_404() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         reset_cart_for_test();
         match patch_cart_item(
             st(),
@@ -569,7 +575,7 @@ mod tests {
 
     #[tokio::test]
     async fn snapshot_returns_token_sorted() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         reset_cart_for_test();
         let session = Uuid::new_v4();
         // 3 件 add (token は UUID なので順序は random だが str ソートで安定)
@@ -616,7 +622,7 @@ mod tests {
 
     #[tokio::test]
     async fn cart_is_isolated_per_session() {
-        let _g = GUARD.lock().unwrap();
+        let _g = lock_guard();
         reset_cart_for_test();
         let session_a = Uuid::new_v4();
         let session_b = Uuid::new_v4();

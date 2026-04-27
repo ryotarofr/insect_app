@@ -1,0 +1,744 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>血統マインドマップ モックアップ — KOCHU</title>
+<style>
+  /* ─────────────────────────────────────────────
+     既存アプリのトークン (client_solid/src/styles/tokens.css)
+     ───────────────────────────────────────────── */
+  :root {
+    --font-sans: "Noto Sans JP", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+    --font-serif: "Noto Serif JP", "Hiragino Mincho ProN", serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+    --bg: oklch(0.985 0.004 80);
+    --bg-raised: oklch(1 0 0);
+    --bg-sunken: oklch(0.96 0.006 80);
+    --bg-inverse: oklch(0.18 0.01 80);
+
+    --ink: oklch(0.22 0.01 80);
+    --ink-mute: oklch(0.48 0.01 80);
+    --ink-faint: oklch(0.68 0.008 80);
+    --ink-inverse: oklch(0.98 0.004 80);
+
+    --line: oklch(0.9 0.006 80);
+    --line-strong: oklch(0.82 0.008 80);
+
+    /* 種別カラー (lineage tint) */
+    --sp-dhh:      oklch(0.55 0.10 150); /* ヘラクレス: forest */
+    --sp-dhh-soft: oklch(0.94 0.04 150);
+    --sp-cat:      oklch(0.55 0.10 265); /* コーカサス: indigo */
+    --sp-cat-soft: oklch(0.94 0.04 265);
+    --sp-nat:      oklch(0.60 0.12 70);  /* 国産: amber */
+    --sp-nat-soft: oklch(0.95 0.04 70);
+    --sp-neo:      oklch(0.58 0.12 25);  /* ネプチューン: rose */
+    --sp-neo-soft: oklch(0.94 0.03 25);
+
+    --r-card: 12px; --r-btn: 8px; --r-chip: 999px;
+    --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px; --s-5: 24px;
+
+    --shadow-sm: 0 1px 0 oklch(0 0 0 / 0.04);
+    --shadow-md: 0 1px 2px oklch(0 0 0 / 0.04), 0 4px 12px oklch(0 0 0 / 0.04);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    font-family: var(--font-sans);
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+    overflow: hidden;
+  }
+  h1, h2, h3 { font-family: var(--font-serif); margin: 0; font-weight: 600; }
+
+  .app {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    grid-template-rows: auto 1fr;
+    height: 100vh;
+  }
+
+  /* ── ヘッダ ─────────────────────────── */
+  header.top {
+    grid-column: 1 / -1;
+    display: flex; align-items: center; justify-content: space-between;
+    gap: var(--s-4);
+    padding: var(--s-3) var(--s-5);
+    border-bottom: 1px solid var(--line);
+    background: var(--bg-raised);
+    z-index: 10;
+  }
+  header.top .crumb { font-size: 11px; color: var(--ink-faint); letter-spacing: .04em; }
+  header.top h1 { font-size: 18px; }
+  header.top .actions { display: flex; gap: var(--s-2); }
+  .seg {
+    display: inline-flex; padding: 2px;
+    background: var(--bg-sunken); border: 1px solid var(--line);
+    border-radius: var(--r-btn);
+  }
+  .seg button {
+    appearance: none; border: 0; background: transparent;
+    color: var(--ink-mute); font: inherit; font-size: 12px;
+    padding: 4px 10px; border-radius: 6px; cursor: pointer;
+  }
+  .seg button[aria-pressed="true"] {
+    background: var(--bg-inverse); color: var(--ink-inverse);
+  }
+  .btn {
+    appearance: none; border: 1px solid var(--line-strong);
+    background: var(--bg-raised); color: var(--ink); cursor: pointer;
+    font: inherit; font-size: 12px;
+    height: 28px; padding: 0 12px; border-radius: var(--r-btn);
+  }
+
+  /* ── キャンバス ───────────────────────── */
+  .canvas-wrap {
+    grid-column: 1; grid-row: 2;
+    position: relative; overflow: hidden;
+    background:
+      radial-gradient(circle at 20% 20%, oklch(0.95 0.02 150 / 0.4), transparent 40%),
+      radial-gradient(circle at 80% 30%, oklch(0.95 0.02 70  / 0.4), transparent 45%),
+      radial-gradient(circle at 30% 80%, oklch(0.95 0.02 265 / 0.35), transparent 45%),
+      radial-gradient(circle at 80% 80%, oklch(0.95 0.02 25  / 0.35), transparent 45%),
+      var(--bg);
+  }
+  .canvas-wrap::after {
+    /* 微細なグリッド */
+    content: ""; position: absolute; inset: 0; pointer-events: none;
+    background-image:
+      linear-gradient(to right, oklch(0.85 0.005 80 / 0.25) 1px, transparent 1px),
+      linear-gradient(to bottom, oklch(0.85 0.005 80 / 0.25) 1px, transparent 1px);
+    background-size: 32px 32px;
+    mask-image: radial-gradient(ellipse at center, black 60%, transparent 100%);
+  }
+  svg.canvas {
+    width: 100%; height: 100%;
+    cursor: grab;
+    user-select: none;
+  }
+  svg.canvas.dragging { cursor: grabbing; }
+
+  /* ── ノード (個体カルテ) ───────────────── */
+  /* 1 個の colored border だけで種別を示す。トップストライプ等の重複装飾は外す。 */
+  .node rect {
+    fill: var(--bg-raised);
+    stroke: var(--line-strong); stroke-width: 1.25;
+    filter: drop-shadow(0 1px 2px oklch(0 0 0 / 0.04));
+    transition: filter .15s, stroke-width .15s;
+  }
+  .node[data-sp="dhh"] rect { stroke: var(--sp-dhh); }
+  .node[data-sp="cat"] rect { stroke: var(--sp-cat); }
+  .node[data-sp="nat"] rect { stroke: var(--sp-nat); }
+  .node[data-sp="neo"] rect { stroke: var(--sp-neo); }
+
+  .node text { font-family: var(--font-sans); pointer-events: none; }
+  .node .name { font-family: var(--font-serif); font-size: 13.5px; font-weight: 600; fill: var(--ink); letter-spacing: .01em; }
+  .node .id   { font-family: var(--font-mono); font-size: 9px; fill: var(--ink-faint); letter-spacing: .02em; }
+  .node .meta { font-size: 10.5px; fill: var(--ink-mute); }
+  /* 性別は控えめに記号 1 文字だけを ink-faint で。色はボーダーだけが運ぶ。 */
+  .node .sex { font-family: var(--font-mono); font-size: 11px; font-weight: 500; fill: var(--ink-faint); }
+
+  .node { cursor: pointer; }
+  .node:hover rect { stroke-width: 1.75; }
+  .node.selected rect {
+    stroke-width: 2;
+    filter: drop-shadow(0 3px 10px oklch(0 0 0 / 0.10));
+  }
+
+  /* 故 / 譲渡: 破線ボーダー + 透過のみで表現する (= 文字ラベルは廃止) */
+  .node[data-end="deceased"] rect,
+  .node[data-end="transferred"] rect {
+    fill: var(--bg-sunken);
+    stroke-dasharray: 3 4;
+  }
+  .node[data-end="deceased"]    { opacity: .55; }
+  .node[data-end="transferred"] { opacity: .60; }
+
+  /* 緊急: 右上隅に色ドット 1 つ。本文は侵さない。 */
+  .urgent-dot { fill: var(--sp-nat); stroke: var(--bg); stroke-width: 1.2; }
+
+  /* ── エッジ (= 親子線) ─────────────────── */
+  .edge {
+    fill: none; stroke-width: 1.5; opacity: .55;
+  }
+  .edge[data-sp="dhh"] { stroke: var(--sp-dhh); }
+  .edge[data-sp="cat"] { stroke: var(--sp-cat); }
+  .edge[data-sp="nat"] { stroke: var(--sp-nat); }
+  .edge[data-sp="neo"] { stroke: var(--sp-neo); }
+
+  /* ペアマーカー */
+  .pair-link { stroke: var(--ink-faint); stroke-width: 1; stroke-dasharray: 2 3; opacity: .8; fill: none; }
+  .pair-mark { font-family: var(--font-mono); font-size: 14px; font-weight: 600; fill: var(--ink-mute); pointer-events: none; }
+
+  /* セクションラベル (= 種ごとのキャプション) */
+  .section-label {
+    font-family: var(--font-serif); font-size: 15px; font-weight: 500;
+    fill: var(--ink); opacity: .55; pointer-events: none;
+    letter-spacing: .04em;
+  }
+  .section-sub {
+    font-family: var(--font-sans); font-size: 10.5px;
+    fill: var(--ink-faint); pointer-events: none;
+    letter-spacing: .02em;
+  }
+
+  /* ── サイドパネル ─────────────────────── */
+  aside.panel {
+    grid-column: 2; grid-row: 2;
+    background: var(--bg-raised);
+    border-left: 1px solid var(--line);
+    overflow-y: auto;
+    padding: var(--s-4);
+  }
+  .panel h3 {
+    font-size: 16px; display: flex; align-items: center; gap: var(--s-2);
+    margin-bottom: 2px;
+  }
+  .panel .sub { color: var(--ink-mute); font-size: 12px; margin-bottom: var(--s-3); }
+  .panel .kv {
+    display: grid; grid-template-columns: 80px 1fr; gap: var(--s-2);
+    font-size: 12px; padding: var(--s-1) 0;
+    border-bottom: 1px dashed var(--line);
+  }
+  .panel .kv k { color: var(--ink-mute); }
+  .panel .kv v { color: var(--ink); font-family: var(--font-mono); }
+  .panel .section { margin-top: var(--s-4); }
+  .panel .section-title {
+    font-size: 11px; color: var(--ink-mute); letter-spacing: .04em;
+    text-transform: uppercase; margin-bottom: var(--s-2);
+  }
+  .relations { display: flex; flex-direction: column; gap: var(--s-1); }
+  .relation {
+    display: flex; align-items: center; gap: var(--s-2);
+    font-size: 12px; padding: 6px var(--s-2);
+    border: 1px solid var(--line); border-radius: var(--r-btn);
+    background: var(--bg-sunken); cursor: pointer;
+  }
+  .relation:hover { border-color: var(--line-strong); }
+  .relation .role { font-size: 10px; color: var(--ink-faint); width: 36px; }
+  .relation .nm { font-family: var(--font-serif); font-weight: 600; color: var(--ink); }
+  .relation .id { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-faint); margin-left: auto; }
+  .actions { display: flex; gap: var(--s-2); margin-top: var(--s-3); flex-wrap: wrap; }
+  .btn-primary {
+    appearance: none; border: 0; cursor: pointer; font: inherit; font-size: 12px; font-weight: 500;
+    padding: 8px var(--s-3); border-radius: var(--r-btn);
+    background: var(--bg-inverse); color: var(--ink-inverse);
+  }
+
+  /* 凡例 (canvas overlay) */
+  .legend {
+    position: absolute; bottom: var(--s-3); left: var(--s-3);
+    background: var(--bg-glass-strong, oklch(1 0 0 / .85));
+    backdrop-filter: blur(6px);
+    border: 1px solid var(--line);
+    border-radius: var(--r-card);
+    padding: var(--s-2) var(--s-3);
+    display: flex; gap: var(--s-3); align-items: center;
+    font-size: 11px; color: var(--ink-mute);
+    box-shadow: var(--shadow-md);
+  }
+  .legend .sw { width: 10px; height: 10px; border-radius: 50%; display: inline-block; vertical-align: middle; margin-right: 4px; }
+  .sw.dhh { background: var(--sp-dhh); }
+  .sw.cat { background: var(--sp-cat); }
+  .sw.nat { background: var(--sp-nat); }
+  .sw.neo { background: var(--sp-neo); }
+
+  /* ズームコントロール */
+  .zoomctl {
+    position: absolute; top: var(--s-3); right: var(--s-3);
+    display: flex; gap: var(--s-2);
+  }
+  .zoomctl button {
+    appearance: none; border: 1px solid var(--line);
+    background: var(--bg-raised); color: var(--ink); cursor: pointer;
+    font: inherit; font-size: 14px; line-height: 1;
+    width: 32px; height: 32px; border-radius: var(--r-btn);
+    box-shadow: var(--shadow-sm);
+  }
+
+  .help {
+    position: absolute; bottom: var(--s-3); right: var(--s-3);
+    font-size: 11px; color: var(--ink-mute);
+    background: var(--bg-glass-strong, oklch(1 0 0 / .85));
+    border: 1px solid var(--line);
+    padding: 4px 10px; border-radius: var(--r-chip);
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <header class="top">
+    <div>
+      <div class="crumb">マイページ · 血統管理</div>
+      <h1>血統マインドマップ</h1>
+    </div>
+    <div class="actions">
+      <div class="seg" id="filter-seg" role="tablist" aria-label="表示する種">
+        <button aria-pressed="true"  data-sp="all">すべて</button>
+        <button aria-pressed="false" data-sp="dhh">ヘラクレス</button>
+        <button aria-pressed="false" data-sp="cat">コーカサス</button>
+        <button aria-pressed="false" data-sp="nat">国産</button>
+        <button aria-pressed="false" data-sp="neo">ネプチューン</button>
+      </div>
+      <button class="btn" id="reset-view">⟲ 表示をリセット</button>
+    </div>
+  </header>
+
+  <!-- ── キャンバス ───────────────────── -->
+  <div class="canvas-wrap" id="wrap">
+    <svg class="canvas" id="canvas" viewBox="0 0 1700 1200" preserveAspectRatio="xMidYMid meet">
+      <g id="viewport"></g>
+    </svg>
+
+    <div class="zoomctl">
+      <button id="zoom-in" aria-label="拡大">＋</button>
+      <button id="zoom-out" aria-label="縮小">−</button>
+    </div>
+
+    <div class="legend" role="note">
+      <span><span class="sw dhh"></span>ヘラクレス</span>
+      <span><span class="sw cat"></span>コーカサス</span>
+      <span><span class="sw nat"></span>国産</span>
+      <span><span class="sw neo"></span>ネプチューン</span>
+      <span style="margin-left: 12px; color: var(--ink-faint);">破線 = 故 / 譲渡</span>
+    </div>
+
+    <div class="help">ドラッグでパン · ホイールでズーム · ノードをクリックで選択</div>
+  </div>
+
+  <!-- ── サイドパネル ─────────────── -->
+  <aside class="panel" id="panel">
+    <h3 id="p-name"></h3>
+    <div class="sub" id="p-sub"></div>
+
+    <div class="kv"><k>性別</k><v id="p-sex"></v></div>
+    <div class="kv"><k>世代</k><v id="p-gen"></v></div>
+    <div class="kv"><k>サイズ</k><v id="p-size"></v></div>
+    <div class="kv"><k>状態</k><v id="p-state"></v></div>
+    <div class="kv"><k>取得</k><v id="p-from"></v></div>
+
+    <section class="section">
+      <div class="section-title">親 / ペア / 子</div>
+      <div class="relations" id="p-relations"></div>
+    </section>
+
+    <section class="section">
+      <div class="section-title">血統メモ</div>
+      <div style="font-size:12px; color: var(--ink-mute); line-height:1.65;" id="p-memo"></div>
+    </section>
+
+    <div class="actions">
+      <button class="btn-primary">カルテを開く</button>
+      <button class="btn">交配記録</button>
+    </div>
+  </aside>
+</div>
+
+<script>
+// ──────────────────────────────────────────────────────────
+// データ (ノード + ペア)
+// ──────────────────────────────────────────────────────────
+const NODES = [
+  // ── ヘラクレス系統 (左上) ────────────────────────────
+  { id:"#DHH-0150", name:"月影", sp:"dhh", sex:"m", gen:"F0", size:"148mm", from:"野生 (中南米)",  end:"deceased",
+    state:"故 (2025-10-02)",
+    memo:"父系の起点。2024 産卵の残り個体は 漆黒 のみ。",
+    x:120, y:170 },
+  { id:"#DHH-0204", name:"花音", sp:"dhh", sex:"f", gen:"F0", size:"68mm",  from:"ANCHOR BEETLE CO.",
+    state:"成虫 · 産卵終了",
+    memo:"月影 とのペアリングは 2022 のみ。以降は単独飼育。",
+    x:320, y:170 },
+  { id:"#DHH-0244", name:"マリア", sp:"dhh", sex:"f", gen:"F0", size:"66mm", from:"ANCHOR BEETLE CO.",
+    state:"成虫",
+    memo:"漆黒 と組み合わせて F2 を 3 個体獲得。次サイクル候補。",
+    x:560, y:170 },
+  { id:"#DHH-0213", name:"漆黒", sp:"dhh", sex:"m", gen:"F1 (CBF1)", size:"152mm", from:"自家累代",
+    state:"成虫",
+    memo:"自己累代の最大個体。マリア との交配で黒曜・翠・朔を得た。",
+    x:340, y:330 },
+  { id:"#DHH-0271", name:"黒曜", sp:"dhh", sex:"m", gen:"F2 (CBF2)", size:"142mm", from:"自家累代",
+    state:"蛹 · 進捗 72%", urgent:"あと15日",
+    memo:"羽化監視中。羽化後は 朔 とのペアリングを検討。",
+    x:200, y:520 },
+  { id:"#DHH-0272", name:"翠", sp:"dhh", sex:"m", gen:"F2 (CBF2)", size:"146mm", from:"自家累代",
+    state:"成虫 (2025) · 後食",
+    memo:"後食開始済。次 F3 の主役候補。",
+    x:400, y:520 },
+  { id:"#DHH-0273", name:"朔", sp:"dhh", sex:"f", gen:"F2 (CBF2)", size:"65mm",  from:"自家累代",
+    state:"成虫 (2025) · 後食",
+    memo:"♀ 1 個体目。黒曜 / 翠 のいずれかとペアリング予定。",
+    x:600, y:520 },
+
+  // ── コーカサス系統 (左下) ────────────────────────────
+  { id:"#CAT-0091", name:"嵐", sp:"cat", sex:"m", gen:"F0", size:"110mm", from:"KUWAGATA.jp",
+    state:"成虫",
+    memo:"輸入個体。蘭 とのペアリングで F1 ペアを獲得。",
+    x:120, y:790 },
+  { id:"#CAT-0097", name:"蘭", sp:"cat", sex:"f", gen:"F0", size:"60mm", from:"KUWAGATA.jp",
+    state:"成虫 · 産卵終了",
+    memo:"嵐 と組ませて 雷・雪 を獲得。3 齢突入後は単独。",
+    x:320, y:790 },
+  { id:"#CAT-0118", name:"雷", sp:"cat", sex:"m", gen:"F1", size:"95mm", from:"自家累代",
+    state:"幼虫 3齢",
+    memo:"次回マット交換は 5/3 予定。体重伸び良好。",
+    x:160, y:970 },
+  { id:"#CAT-0089", name:"雪", sp:"cat", sex:"f", gen:"F1", size:"50mm", from:"自家累代",
+    state:"幼虫 2齢",
+    memo:"♀ サイドの予備。幼虫期間が長いので春以降の管理に注意。",
+    x:340, y:970 },
+
+  // ── 国産系統 (右上) ──────────────────────────────────
+  { id:"#NAT-0341", name:"武蔵", sp:"nat", sex:"m", gen:"F0", size:"82mm", from:"野外採集 (秋田)",
+    state:"成虫 · 産卵セット中",
+    memo:"地元採集個体。結 と組ませて 4 個体産卵 (1 譲渡済)。",
+    x:1040, y:170 },
+  { id:"#NAT-0355", name:"結", sp:"nat", sex:"f", gen:"F0", size:"45mm", from:"野外採集 (秋田)",
+    state:"成虫",
+    memo:"武蔵 とのペア相手。産卵終了済。",
+    x:1240, y:170 },
+  { id:"#NAT-0402", name:"小次郎", sp:"nat", sex:"m", gen:"F1", size:"78mm", from:"自家累代",
+    state:"前蛹 · 進捗 88%", urgent:"あと33日",
+    memo:"羽化期近づく。蛹室を崩さないよう静置中。",
+    x:1000, y:380 },
+  { id:"#NAT-0480", name:"陣", sp:"nat", sex:"u", gen:"F1", size:"42mm", from:"自家累代",
+    state:"幼虫 2齢",
+    memo:"性別未確定。次回計測は 4/30。",
+    x:1180, y:380 },
+  { id:"#NAT-0481", name:"勘助", sp:"nat", sex:"u", gen:"F1", size:"24mm", from:"自家累代",
+    state:"幼虫 1齢",
+    memo:"性別未確定。マット劣化注意。",
+    x:1340, y:380 },
+  { id:"#NAT-0420", name:"駿", sp:"nat", sex:"m", gen:"F1", size:"78mm", from:"自家累代", end:"transferred",
+    state:"譲渡済 (2026-01-15)",
+    memo:"友人へ譲渡。系統参考のため記録は残す。",
+    x:1500, y:380 },
+
+  // ── ネプチューン系統 (右下) ─────────────────────────
+  { id:"#NEO-0011", name:"蒼", sp:"neo", sex:"m", gen:"F0", size:"125mm", from:"MIYAMA FARM",
+    state:"成虫",
+    memo:"購入個体。凜 とのペアリング検討中。",
+    x:1080, y:790 },
+  { id:"#NEO-0024", name:"凜", sp:"neo", sex:"f", gen:"F0", size:"68mm",  from:"MIYAMA FARM",
+    state:"成虫",
+    memo:"購入個体。後食終了済。",
+    x:1280, y:790 },
+  { id:"#NEO-0058", name:"青嵐", sp:"neo", sex:"m", gen:"F1", size:"102mm", from:"自家累代",
+    state:"幼虫 3齢",
+    memo:"羽化予定 2026-08-30。マット交換頻度が鍵。",
+    x:1180, y:970 },
+];
+
+// ペア (= 親 × 親 → 子 N 体)
+const PAIRS = [
+  { a:"#DHH-0150", b:"#DHH-0204", children:["#DHH-0213"] },
+  { a:"#DHH-0213", b:"#DHH-0244", children:["#DHH-0271","#DHH-0272","#DHH-0273"] },
+  { a:"#CAT-0091", b:"#CAT-0097", children:["#CAT-0118","#CAT-0089"] },
+  { a:"#NAT-0341", b:"#NAT-0355", children:["#NAT-0402","#NAT-0480","#NAT-0481","#NAT-0420"] },
+  { a:"#NEO-0011", b:"#NEO-0024", children:["#NEO-0058"] },
+];
+
+const SECTIONS = [
+  { sp:"dhh", title:"ヘラクレス", sub:"3 世代 / 7 個体",  x:80,   y:90  },
+  { sp:"cat", title:"コーカサス", sub:"2 世代 / 4 個体",  x:80,   y:710 },
+  { sp:"nat", title:"国産",       sub:"2 世代 / 6 個体",  x:1000, y:90  },
+  { sp:"neo", title:"ネプチューン", sub:"2 世代 / 3 個体", x:1040, y:710 },
+];
+
+const NODE_W = 156, NODE_H = 64;
+
+// ──────────────────────────────────────────────────────────
+// SVG レンダリング
+// ──────────────────────────────────────────────────────────
+const SVG_NS = "http://www.w3.org/2000/svg";
+const viewport = document.getElementById("viewport");
+const findNode = id => NODES.find(n => n.id === id);
+
+function el(name, attrs = {}, children = []) {
+  const e = document.createElementNS(SVG_NS, name);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (v == null) continue;
+    e.setAttribute(k, v);
+  }
+  for (const c of children) {
+    if (typeof c === "string") e.appendChild(document.createTextNode(c));
+    else if (c) e.appendChild(c);
+  }
+  return e;
+}
+
+function renderEdges() {
+  const g = el("g", { class: "edges" });
+  PAIRS.forEach(p => {
+    const a = findNode(p.a), b = findNode(p.b);
+    if (!a || !b) return;
+    const ax = a.x + NODE_W/2, ay = a.y + NODE_H;
+    const bx = b.x + NODE_W/2, by = b.y + NODE_H;
+    // ペアミッドポイント (両親の下端の中央)
+    const mx = (ax + bx) / 2;
+    const my = Math.max(ay, by) + 28;
+
+    // 親 → ペアマーク (cubic Bezier で柔らかく)
+    g.appendChild(el("path", {
+      class: "edge", "data-sp": a.sp,
+      d: `M ${ax} ${ay} C ${ax} ${ay+20}, ${mx} ${my-10}, ${mx} ${my}`,
+    }));
+    g.appendChild(el("path", {
+      class: "edge", "data-sp": b.sp,
+      d: `M ${bx} ${by} C ${bx} ${by+20}, ${mx} ${my-10}, ${mx} ${my}`,
+    }));
+
+    // ペアミッドポイント → 各子 (top center) へ
+    p.children.forEach(cid => {
+      const c = findNode(cid);
+      if (!c) return;
+      const cx = c.x + NODE_W/2, cy = c.y;
+      g.appendChild(el("path", {
+        class: "edge", "data-sp": c.sp,
+        d: `M ${mx} ${my} C ${mx} ${my+50}, ${cx} ${cy-50}, ${cx} ${cy}`,
+      }));
+    });
+
+    // ペアマーク (×)
+    g.appendChild(el("text", {
+      class: "pair-mark",
+      x: mx, y: my + 4, "text-anchor": "middle",
+    }, ["×"]));
+  });
+  viewport.appendChild(g);
+}
+
+function renderNodes() {
+  // 1 ノードあたり情報を 3 行に整理:
+  //   row 1 = 名前 + 性別記号 (ink-faint)
+  //   row 2 = ID (mono / 微細)
+  //   row 3 = 状態 · サイズ (世代は side panel に逃がす)
+  // 種別はボーダー色のみで運ぶ (top stripe / fill tint は廃止)。
+  // 緊急 = 右上の小さなドット 1 つ。
+  // 故 / 譲渡 = 破線ボーダー + 透過のみ (文字ラベルなし)。
+  const g = el("g", { class: "nodes" });
+  NODES.forEach(n => {
+    const node = el("g", {
+      class: "node",
+      "data-id": n.id,
+      "data-sp": n.sp,
+      "data-end": n.end || "active",
+      transform: `translate(${n.x},${n.y})`,
+    });
+    node.appendChild(el("rect", { x:0, y:0, width:NODE_W, height:NODE_H, rx:16, ry:16 }));
+    node.appendChild(el("text", { class:"name", x:14, y:24 }, [n.name]));
+    node.appendChild(el("text", {
+      class:"sex", x:NODE_W-14, y:24, "text-anchor":"end",
+    }, [n.sex==="m"?"♂":n.sex==="f"?"♀":"?"]));
+    node.appendChild(el("text", { class:"id",   x:14, y:39 }, [n.id]));
+    node.appendChild(el("text", { class:"meta", x:14, y:55 }, [`${condense(n.state)} · ${n.size}`]));
+
+    if (n.urgent) {
+      node.appendChild(el("circle", {
+        class:"urgent-dot", cx:NODE_W-9, cy:9, r:5,
+      }));
+    }
+
+    g.appendChild(node);
+  });
+  viewport.appendChild(g);
+}
+
+// 状態文字列を card 表示用に短縮する (= "蛹 · 進捗 72%" → "蛹 72%" 等)。
+// パネル側には full text を渡すので情報損失は無い。
+function condense(state) {
+  if (!state) return "";
+  return state
+    .replace(/\s*·\s*進捗\s*/g, " ")     // 蛹 · 進捗 72% → 蛹 72%
+    .replace(/\s*·\s*後食.*$/g, "")        // 成虫 · 後食終了 → 成虫
+    .replace(/\s*·\s*産卵.*$/g, "")        // 成虫 · 産卵セット中 → 成虫
+    .replace(/\s*\(\d{4}-\d{2}-\d{2}\)\s*/g, "") // 故 (2025-10-02) → 故
+    .replace(/譲渡済.*$/g, "譲渡済")
+    .trim();
+}
+
+function renderSections() {
+  const g = el("g", { class: "section-labels" });
+  SECTIONS.forEach(s => {
+    g.appendChild(el("text", { class:"section-label", x:s.x, y:s.y }, [s.title]));
+    g.appendChild(el("text", { class:"section-sub",   x:s.x, y:s.y+18 }, [s.sub]));
+  });
+  viewport.appendChild(g);
+}
+
+renderSections();
+renderEdges();
+renderNodes();
+
+// ──────────────────────────────────────────────────────────
+// 選択 / サイドパネル
+// ──────────────────────────────────────────────────────────
+let selectedId = "#DHH-0271";
+
+function selectNode(id) {
+  selectedId = id;
+  document.querySelectorAll(".node").forEach(n => n.classList.toggle("selected", n.dataset.id === id));
+  renderPanel();
+}
+
+function findRelations(id) {
+  const out = { parents: [], pair: null, children: [], siblings: [] };
+  PAIRS.forEach(p => {
+    if (p.children.includes(id)) {
+      out.parents.push(p.a, p.b);
+      out.siblings.push(...p.children.filter(x => x !== id));
+    }
+    if (p.a === id) { out.pair = p.b; out.children.push(...p.children); }
+    if (p.b === id) { out.pair = p.a; out.children.push(...p.children); }
+  });
+  return out;
+}
+
+function spLabel(sp) {
+  return { dhh:"ヘラクレス", cat:"コーカサス", nat:"国産", neo:"ネプチューン" }[sp];
+}
+
+function renderPanel() {
+  const n = findNode(selectedId);
+  if (!n) return;
+  const sex = n.sex==="m"?"♂":n.sex==="f"?"♀":"?";
+  const sexLabel = n.sex==="m"?"オス":n.sex==="f"?"メス":"未確定";
+  document.getElementById("p-name").innerHTML =
+    `${spLabel(n.sp)} ${n.name} <span style="color: oklch(.55 .1 80);">${sex}</span>`;
+  document.getElementById("p-sub").textContent  = `${n.id} · ${spLabel(n.sp)}`;
+  document.getElementById("p-sex").textContent  = sexLabel;
+  document.getElementById("p-gen").textContent  = n.gen;
+  document.getElementById("p-size").textContent = n.size;
+  document.getElementById("p-state").textContent = (n.urgent ? `⚠ ${n.urgent} · ` : "") + n.state;
+  document.getElementById("p-from").textContent = n.from;
+  document.getElementById("p-memo").textContent = n.memo || "—";
+
+  const rel = findRelations(n.id);
+  const rels = document.getElementById("p-relations");
+  const lines = [];
+  if (rel.parents.length === 0) {
+    lines.push(`<div class="relation"><span class="role">起点</span><span class="nm">F0 (起点個体)</span></div>`);
+  } else {
+    rel.parents.forEach((pid, i) => {
+      const p = findNode(pid);
+      if (!p) return;
+      const role = p.sex === "m" ? "♂ 父" : "♀ 母";
+      lines.push(`<div class="relation" data-jump="${pid}"><span class="role">${role}</span><span class="nm">${p.name}</span><span class="id">${p.id}</span></div>`);
+    });
+  }
+  if (rel.pair) {
+    const p = findNode(rel.pair);
+    if (p) lines.push(`<div class="relation" data-jump="${p.id}"><span class="role">ペア</span><span class="nm">${p.name}</span><span class="id">${p.id}</span></div>`);
+  }
+  rel.children.forEach(cid => {
+    const c = findNode(cid);
+    if (c) lines.push(`<div class="relation" data-jump="${c.id}"><span class="role">子</span><span class="nm">${c.name}</span><span class="id">${c.id}</span></div>`);
+  });
+  rel.siblings.forEach(sid => {
+    const s = findNode(sid);
+    if (s) lines.push(`<div class="relation" data-jump="${s.id}"><span class="role">同腹</span><span class="nm">${s.name}</span><span class="id">${s.id}</span></div>`);
+  });
+  rels.innerHTML = lines.join("");
+  rels.querySelectorAll("[data-jump]").forEach(r => {
+    r.addEventListener("click", () => {
+      selectNode(r.dataset.jump);
+      centerOn(r.dataset.jump);
+    });
+  });
+}
+
+document.querySelectorAll(".node").forEach(node => {
+  node.addEventListener("click", e => {
+    e.stopPropagation();
+    selectNode(node.dataset.id);
+  });
+});
+
+// ──────────────────────────────────────────────────────────
+// パン / ズーム
+// ──────────────────────────────────────────────────────────
+const canvas = document.getElementById("canvas");
+let tx = 0, ty = 0, scale = 1;
+const SCALE_MIN = 0.4, SCALE_MAX = 2.5;
+
+function applyT() {
+  viewport.setAttribute("transform", `translate(${tx},${ty}) scale(${scale})`);
+}
+
+canvas.addEventListener("wheel", e => {
+  e.preventDefault();
+  // SVG 座標へ正規化
+  const rect = canvas.getBoundingClientRect();
+  const px = (e.clientX - rect.left) / rect.width  * 1700;
+  const py = (e.clientY - rect.top)  / rect.height * 1200;
+  const factor = Math.exp(-e.deltaY * 0.0015);
+  const nextScale = Math.min(SCALE_MAX, Math.max(SCALE_MIN, scale * factor));
+  // ズーム中心を保つ: (px - tx)/scale = (px - tx')/nextScale
+  tx = px - (px - tx) * (nextScale / scale);
+  ty = py - (py - ty) * (nextScale / scale);
+  scale = nextScale;
+  applyT();
+}, { passive: false });
+
+let dragging = false, sx = 0, sy = 0;
+canvas.addEventListener("pointerdown", e => {
+  if (e.target.closest(".node")) return;
+  dragging = true;
+  canvas.classList.add("dragging");
+  sx = e.clientX - tx; sy = e.clientY - ty;
+  canvas.setPointerCapture(e.pointerId);
+});
+canvas.addEventListener("pointermove", e => {
+  if (!dragging) return;
+  tx = e.clientX - sx; ty = e.clientY - sy;
+  applyT();
+});
+canvas.addEventListener("pointerup",   () => { dragging = false; canvas.classList.remove("dragging"); });
+canvas.addEventListener("pointerleave", () => { dragging = false; canvas.classList.remove("dragging"); });
+
+function centerOn(id) {
+  const n = findNode(id); if (!n) return;
+  const cx = n.x + NODE_W/2, cy = n.y + NODE_H/2;
+  // canvas の中心 (= 850, 600) に持ってくる
+  scale = Math.max(scale, 0.9);
+  tx = 850 - cx * scale;
+  ty = 600 - cy * scale;
+  applyT();
+}
+
+document.getElementById("zoom-in").addEventListener("click", () => {
+  scale = Math.min(SCALE_MAX, scale * 1.2); applyT();
+});
+document.getElementById("zoom-out").addEventListener("click", () => {
+  scale = Math.max(SCALE_MIN, scale / 1.2); applyT();
+});
+document.getElementById("reset-view").addEventListener("click", () => {
+  tx = 0; ty = 0; scale = 1; applyT();
+});
+
+// 種別フィルタ (淡色化)
+document.querySelectorAll("#filter-seg button").forEach(b => {
+  b.addEventListener("click", () => {
+    document.querySelectorAll("#filter-seg button").forEach(x => x.setAttribute("aria-pressed","false"));
+    b.setAttribute("aria-pressed","true");
+    const sp = b.dataset.sp;
+    document.querySelectorAll(".node").forEach(n => {
+      n.style.opacity = (sp === "all" || n.dataset.sp === sp) ? "" : "0.18";
+    });
+    document.querySelectorAll(".edge").forEach(e => {
+      e.style.opacity = (sp === "all" || e.dataset.sp === sp) ? "" : "0.08";
+    });
+    document.querySelectorAll(".pair-mark").forEach(m => {
+      // pair-mark には sp が直接無いので親 g 経由で判定
+      m.style.opacity = (sp === "all") ? "" : "0.2";
+    });
+  });
+});
+
+// 初期選択
+selectNode(selectedId);
+</script>
+</body>
+</html>

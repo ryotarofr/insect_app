@@ -81,7 +81,10 @@ const SortOptionView = (props: {
     if (e.button !== 0) return;
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
-    navigate(props.option.href);
+    // `scroll: false` で「並び替え後にページ先頭まで戻される」挙動を抑止。
+    //   FilterBar と同じく、同一一覧の見せ方を変えるだけのアクションでは
+    //   ユーザの現在位置を維持する方が自然 (= sort 適用後も視線の位置に該当するカードが見える)。
+    navigate(props.option.href, { scroll: false });
   };
 
   return (

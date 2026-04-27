@@ -13,16 +13,25 @@
 | 9.1 | orders / order_items / shipping_addresses | `0001_initial.sql` | `repos::orders` / `handlers::checkout::post_checkout_submit` / `handlers::stripe_webhook` | ✅ 完了 |
 | 9.A | species / shops / prefectures / shipping_methods (+ 翻訳) | `0002_master_data.sql` | `repos::{prefectures, shipping_methods}` / handler 切替済 | ✅ 完了 |
 | 9.B | products / product_translations | `0003_products.sql` | `repos::products` / `handlers::cards::product_filter_meta` 切替済 | ✅ 完了 |
-| 9.C | users / user_sessions (+ audit FK 後付け) | `0004_users.sql` | `repos::{users, user_sessions}` (skeleton) / Cookie middleware で session 永続化 | ✅ 基盤完了 (login flow 未) |
+| 9.C | users / user_sessions (+ audit FK 後付け) | `0004_users.sql` | `repos::{users, user_sessions}` / Cookie middleware で session 永続化 | ✅ 完了 |
 | 9.F | order_items.product_uuid を FK 化 + backfill | `0005_order_items_product_fk.sql` | `OrderLineInsert.product_uuid` / post_checkout_submit で UUID 解決 | ✅ 完了 |
-| 9.E (cart/watch) | cart_items / product_watches | `0006_cart_and_watches.sql` | `repos::{cart_items, product_watches}` / `handlers::cart` は repo 経由に移行済 / `handlers::watch` は session 分離 in-memory | 🟡 部分完了 (watch DB 化は schema 拡張待ち) |
-| 9.D | specimens / specimen_status_history / specimen_logs / mating_records | `0007_specimens.sql` | `repos::specimens` (skeleton) | 🟡 schema + 基本 repo 完了 / handler 未 |
-| 9.E (market) | listings / bids / listing_watches / `v_listings_with_counts` | (未投入) | (未) | ⏳ 9.D 完了後に着手 |
+| 9.E (cart/watch) | cart_items / product_watches | `0006_cart_and_watches.sql` + `0012_product_watches_session_owner.sql` | `repos::{cart_items, product_watches}` (= owner = User\|Session) / `handlers::cart` も `handlers::watch` も repo 経由に移行済 | ✅ 完了 |
+| 9.D | specimens / specimen_status_history / specimen_logs / mating_records | `0007_specimens.sql` | `repos::{specimens, specimen_logs, specimen_status_history, mating_records}` + `handlers::{specimens, specimen_logs, mating_records}` | ✅ 完了 (= update_life_status は履歴 INSERT を tx 化) |
+| 9.G (auth) | users.password_hash + login flow | `0008_users_password.sql` | `repos::users::{create_with_password, verify_password, find_password_hash_by_email}` (Argon2id) + `handlers::auth::{post_register, post_login, post_logout, get_me}` | ✅ 完了 |
+| 9.E (market) | listings / bids / listing_watches / `v_listings_with_counts` | `0009_market.sql` | `repos::{listings, bids, listing_watches}` + `handlers::listings` (= list / create / get / cancel / bid / watch) | ✅ 完了 |
+| 9.x hardening | stripe_webhook_events (= 冪等性) | `0010_stripe_webhook_events.sql` | `repos::stripe_webhook_events::record_if_new` + `handlers::stripe_webhook` で HMAC + idempotency | ✅ 完了 |
+| 9.G (orders) | orders.user_id FK + /orders/me + /orders/{id} | `0011_orders_user_fk.sql` | `repos::orders::{find_by_id, list_by_user_id, list_items_by_order_id}` + `handlers::orders::{list_my_orders, get_order_detail}` | ✅ 完了 |
 
 横串:
 - `state::AppState { db: Option<PgPool> }` を全 handler に届ける配線済 (= 各 repo は `Option<&PgPool>` を受け取る `pool 有り → DB / 無し → in-memory fallback` パターンで動く)
-- Cookie session middleware (= `kochu_session` cookie / `SessionId(Uuid)` extension / pool 有り時は user_sessions に INSERT)
-- 実機検証手順は [`db-verify-checklist.md`](db-verify-checklist.md) に整理
+- Cookie session middleware (= `kochu_session` cookie / `SessionId(Uuid)` extension / pool 有り時は user_sessions に INSERT / `KOCHU_COOKIE_SECURE=true` で Secure 属性)
+- CSRF middleware (= `Origin` ヘッダ照合 / `KOCHU_ALLOWED_ORIGINS` CSV env / GET / HEAD / OPTIONS と /stripe/webhook は skip)
+- Stripe webhook: HMAC-SHA256 検証 (= `STRIPE_WEBHOOK_SECRET` env) + event_id 冪等性 (= stripe_webhook_events INSERT ON CONFLICT)
+- 実機検証手順は [`db-verify-checklist.md`](db-verify-checklist.md)、API エンドポイント一覧は [`api-v1-endpoints.md`](api-v1-endpoints.md) に整理
+
+残タスク (= ロードマップ):
+- session token を Argon2 hash 化 (= 現状 `$kochu$mvp$<uuid>` プレースホルダ)
+- frontend (client_solid): specimens / listings 用ページの整備 (= 各種 fetcher は揃い済)
 
 ## レビュー対応 Changelog (v2)
 

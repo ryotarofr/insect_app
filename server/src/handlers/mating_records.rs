@@ -246,7 +246,7 @@ mod tests {
 
     async fn login_session() -> (Uuid, Uuid) {
         let session = Uuid::new_v4();
-        user_sessions::create_anonymous(None, session).await.unwrap();
+        user_sessions::create_anonymous_for_test(None, session).await.unwrap();
         let id = users::create_with_password(
             None,
             users::UserRegisterInput {
@@ -299,7 +299,7 @@ mod tests {
         let _g = lock_all();
         reset_all();
         let session = Uuid::new_v4();
-        user_sessions::create_anonymous(None, session).await.unwrap();
+        user_sessions::create_anonymous_for_test(None, session).await.unwrap();
         match create_record(st(), ext(session), Json(req("2026-04-01", "planned"))).await {
             Err(AppError::Unauthorized) => {}
             other => panic!("expected Unauthorized, got {other:?}"),

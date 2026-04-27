@@ -369,7 +369,7 @@ mod tests {
     /// session を作成 + register でログイン状態にして user_id を返す。
     async fn login_session() -> (Uuid, Uuid) {
         let session = Uuid::new_v4();
-        user_sessions::create_anonymous(None, session).await.unwrap();
+        user_sessions::create_anonymous_for_test(None, session).await.unwrap();
         let id = users::create_with_password(
             None,
             users::UserRegisterInput {
@@ -428,7 +428,7 @@ mod tests {
         specimens::reset_memory_for_test();
 
         let session = Uuid::new_v4();
-        user_sessions::create_anonymous(None, session).await.unwrap();
+        user_sessions::create_anonymous_for_test(None, session).await.unwrap();
         // attach_user していない → user_id None
 
         match list_my_specimens(st(), ext(session)).await {

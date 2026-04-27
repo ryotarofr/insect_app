@@ -1,0 +1,750 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>飼育マップ モックアップ — KOCHU</title>
+<style>
+  /* ──────────────────────────────────────────────────────────
+     既存アプリのトークンに合わせる (client_solid/src/styles/tokens.css)
+     ────────────────────────────────────────────────────────── */
+  :root {
+    --font-sans: "Noto Sans JP", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+    --font-serif: "Noto Serif JP", "Hiragino Mincho ProN", serif;
+    --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+    --bg: oklch(0.985 0.004 80);
+    --bg-raised: oklch(1 0 0);
+    --bg-sunken: oklch(0.96 0.006 80);
+    --bg-inverse: oklch(0.18 0.01 80);
+
+    --ink: oklch(0.22 0.01 80);
+    --ink-mute: oklch(0.48 0.01 80);
+    --ink-faint: oklch(0.68 0.008 80);
+    --ink-inverse: oklch(0.98 0.004 80);
+
+    --line: oklch(0.9 0.006 80);
+    --line-strong: oklch(0.82 0.008 80);
+
+    --accent-forest: oklch(0.45 0.08 150);
+    --accent-forest-soft: oklch(0.93 0.03 150);
+    --accent-amber: oklch(0.70 0.12 70);
+    --accent-amber-soft: oklch(0.94 0.04 70);
+    --accent-amber-ink: oklch(0.45 0.1 70);
+    --accent-rose: oklch(0.60 0.12 25);
+    --accent-rose-soft: oklch(0.94 0.03 25);
+    --accent-indigo: oklch(0.50 0.08 265);
+    --accent-indigo-soft: oklch(0.94 0.02 265);
+
+    --shadow-sm: 0 1px 0 oklch(0 0 0 / 0.04);
+    --shadow-md: 0 1px 2px oklch(0 0 0 / 0.04), 0 4px 12px oklch(0 0 0 / 0.04);
+    --shadow-lg: 0 2px 6px oklch(0 0 0 / 0.06), 0 16px 40px oklch(0 0 0 / 0.08);
+
+    --r-md: 6px;
+    --r-lg: 10px;
+    --r-card: 12px;
+    --r-btn: 8px;
+    --r-chip: 999px;
+
+    --s-1: 4px; --s-2: 8px; --s-3: 12px; --s-4: 16px;
+    --s-5: 24px; --s-6: 32px; --s-7: 48px;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: var(--font-sans);
+    font-feature-settings: "palt";
+    color: var(--ink);
+    background: var(--bg);
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+  h1, h2, h3 { font-family: var(--font-serif); font-weight: 600; margin: 0; }
+
+  /* ── 全体レイアウト ───────────────────────────── */
+  .app {
+    display: grid;
+    grid-template-columns: 1fr 320px;
+    gap: var(--s-5);
+    max-width: 1440px;
+    margin: 0 auto;
+    padding: var(--s-5);
+  }
+  @media (max-width: 1100px) {
+    .app { grid-template-columns: 1fr; }
+    .side-panel { position: sticky; top: var(--s-3); }
+  }
+
+  /* ── ヘッダ ─────────────────────────────────── */
+  .page-head {
+    display: flex; align-items: end; justify-content: space-between;
+    gap: var(--s-4); flex-wrap: wrap;
+    margin-bottom: var(--s-3);
+  }
+  .page-head .crumb {
+    font-size: 12px; color: var(--ink-faint); letter-spacing: .04em;
+    text-transform: uppercase; margin-bottom: var(--s-1);
+  }
+  .page-head h1 { font-size: 28px; letter-spacing: -.01em; }
+  .page-head .lede {
+    color: var(--ink-mute); font-size: 13px;
+    margin-top: var(--s-1); max-width: 60ch;
+  }
+
+  /* ── 概況サマリー ─────────────────────────── */
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: var(--s-3);
+    margin-bottom: var(--s-4);
+  }
+  @media (max-width: 720px) { .stats { grid-template-columns: repeat(2, 1fr); } }
+  .stat {
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--r-card);
+    padding: var(--s-3) var(--s-4);
+  }
+  .stat .k { font-size: 11px; color: var(--ink-mute); letter-spacing: .04em; }
+  .stat .v {
+    font-family: var(--font-serif); font-size: 26px; font-weight: 600;
+    margin-top: var(--s-1); display: flex; align-items: baseline; gap: var(--s-2);
+  }
+  .stat .v small { font-size: 12px; color: var(--ink-faint); font-weight: 400; }
+  .stat.alert  { background: var(--accent-amber-soft); border-color: oklch(0.86 0.05 70); }
+  .stat.alert .v { color: var(--accent-amber-ink); }
+
+  /* ── ツールバー (軸切替 + フィルタ) ──────────────── */
+  .toolbar {
+    display: flex; align-items: center; flex-wrap: wrap;
+    gap: var(--s-3) var(--s-4);
+    padding: var(--s-2) var(--s-3);
+    margin-bottom: var(--s-3);
+    background: var(--bg-sunken);
+    border: 1px solid var(--line);
+    border-radius: var(--r-lg);
+  }
+  .toolbar > .group {
+    display: flex; align-items: center; gap: var(--s-2);
+  }
+  .toolbar .label {
+    font-size: 11px; color: var(--ink-mute); letter-spacing: .04em;
+    margin-right: var(--s-1);
+  }
+  .seg {
+    display: inline-flex; padding: 2px;
+    background: var(--bg-raised); border: 1px solid var(--line);
+    border-radius: var(--r-btn);
+  }
+  .seg button {
+    appearance: none; border: 0; background: transparent; color: var(--ink-mute);
+    font: inherit; font-size: 12px; padding: 4px 12px;
+    border-radius: 6px; cursor: pointer;
+  }
+  .seg button[aria-pressed="true"] {
+    background: var(--bg-inverse); color: var(--ink-inverse);
+  }
+  .chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    height: 28px; padding: 0 10px; font-size: 12px;
+    border: 1px solid var(--line-strong);
+    background: var(--bg-raised);
+    border-radius: var(--r-chip); cursor: pointer;
+    color: var(--ink); user-select: none;
+  }
+  .chip[aria-pressed="true"] {
+    background: var(--bg-inverse); color: var(--ink-inverse);
+    border-color: var(--bg-inverse);
+  }
+  .chip .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .chip[data-tone="forest"] .dot { background: var(--accent-forest); }
+  .chip[data-tone="amber"] .dot { background: var(--accent-amber); }
+  .chip[data-tone="rose"] .dot { background: var(--accent-rose); }
+  .chip[data-tone="indigo"] .dot { background: var(--accent-indigo); }
+
+  /* ── Kanban 列 ─────────────────────────────────── */
+  .board {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(220px, 1fr));
+    gap: var(--s-3);
+    overflow-x: auto;
+    padding-bottom: var(--s-3);
+  }
+  @media (max-width: 1100px) {
+    .board { grid-template-columns: repeat(5, 240px); }
+  }
+  .col {
+    display: flex; flex-direction: column; gap: var(--s-2);
+    background: var(--bg-sunken);
+    border: 1px solid var(--line);
+    border-radius: var(--r-card);
+    padding: var(--s-3);
+    min-height: 480px;
+  }
+  .col-head {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: var(--s-1);
+  }
+  .col-title {
+    display: flex; align-items: center; gap: var(--s-2);
+    font-family: var(--font-serif); font-size: 14px; font-weight: 600;
+    color: var(--ink);
+  }
+  .col-title .stage-dot {
+    width: 10px; height: 10px; border-radius: 50%;
+    background: var(--accent-forest);
+  }
+  .col[data-stage="egg"]    .stage-dot { background: oklch(0.78 0.05 80); }
+  .col[data-stage="larva"]  .stage-dot { background: oklch(0.65 0.07 130); }
+  .col[data-stage="pupa"]   .stage-dot { background: var(--accent-amber); }
+  .col[data-stage="adult"]  .stage-dot { background: var(--accent-forest); }
+  .col[data-stage="ended"]  .stage-dot { background: var(--ink-faint); }
+  .col-count {
+    font-size: 11px; color: var(--ink-mute); font-variant-numeric: tabular-nums;
+  }
+  .col-help {
+    font-size: 11px; color: var(--ink-faint); margin-top: 0;
+  }
+
+  /* ── カード (= 個体カルテ) ─────────────────────── */
+  .card {
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--r-card);
+    padding: var(--s-3);
+    cursor: pointer;
+    transition: border-color .15s, box-shadow .15s, transform .1s;
+    display: flex; flex-direction: column; gap: var(--s-2);
+    position: relative;
+  }
+  .card:hover {
+    border-color: var(--line-strong);
+    box-shadow: var(--shadow-sm);
+  }
+  .card.selected {
+    border-color: var(--accent-amber);
+    box-shadow: 0 0 0 2px var(--accent-amber-soft);
+  }
+  .card .row {
+    display: flex; align-items: center; justify-content: space-between;
+    gap: var(--s-2);
+  }
+  .card .id {
+    font-family: var(--font-mono); font-size: 10.5px;
+    color: var(--ink-faint); letter-spacing: .02em;
+  }
+  .card .name {
+    font-family: var(--font-serif); font-size: 14px; font-weight: 600;
+    color: var(--ink);
+  }
+  .card .sex {
+    width: 22px; height: 22px;
+    display: inline-flex; align-items: center; justify-content: center;
+    border-radius: 50%;
+    font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+  }
+  .sex[data-sex="m"] {
+    background: oklch(0.93 0.04 230); color: oklch(0.40 0.10 240);
+  }
+  .sex[data-sex="f"] {
+    background: oklch(0.94 0.04 0);   color: oklch(0.45 0.12 10);
+  }
+  .sex[data-sex="u"] {
+    background: oklch(0.95 0.005 80); color: var(--ink-faint);
+  }
+  .card .meta {
+    display: flex; flex-wrap: wrap; gap: 4px 8px;
+    font-size: 11px; color: var(--ink-mute);
+  }
+  .card .meta b {
+    font-weight: 500; color: var(--ink); font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+  .pill {
+    display: inline-flex; align-items: center; gap: 4px;
+    height: 20px; padding: 0 8px;
+    font-size: 10.5px; font-weight: 500;
+    border-radius: var(--r-chip);
+    color: var(--ink-mute);
+    background: var(--bg-sunken);
+    border: 1px solid var(--line);
+  }
+  .pill.gen   { color: var(--accent-amber-ink); border-color: oklch(0.85 0.05 70); background: var(--accent-amber-soft); }
+  .pill.alarm { color: var(--accent-rose);      border-color: oklch(0.85 0.05 25); background: var(--accent-rose-soft); }
+  .pill.ready { color: var(--accent-forest);    border-color: oklch(0.85 0.05 150); background: var(--accent-forest-soft); }
+
+  /* 故 / 譲渡カードは目で分かるように落とす */
+  .card.dim { opacity: .58; background: var(--bg-sunken); }
+  .card.dim .name::after {
+    content: ""; display: inline-block; width: 14px; height: 1px;
+    background: currentColor; margin-left: 6px; vertical-align: middle;
+  }
+
+  /* 緊急バッジ (羽化迫る等) */
+  .urgent {
+    position: absolute; top: -6px; right: -6px;
+    background: var(--accent-amber); color: oklch(0.18 0.02 80);
+    font-family: var(--font-mono); font-size: 10px; font-weight: 600;
+    padding: 2px 8px; border-radius: var(--r-chip);
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* ── 右ペイン (個体詳細) ─────────────────────── */
+  .side-panel {
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: var(--r-card);
+    padding: var(--s-4);
+    align-self: start;
+    position: sticky;
+    top: var(--s-4);
+    height: fit-content;
+  }
+  .side-panel h3 {
+    font-size: 16px; margin-bottom: var(--s-2);
+    display: flex; align-items: center; gap: var(--s-2);
+  }
+  .side-panel .sub {
+    color: var(--ink-mute); font-size: 12px; margin-bottom: var(--s-3);
+  }
+  .side-panel .kv {
+    display: grid; grid-template-columns: 80px 1fr; gap: var(--s-2);
+    font-size: 12px; padding: var(--s-1) 0;
+    border-bottom: 1px dashed var(--line);
+  }
+  .side-panel .kv k { color: var(--ink-mute); }
+  .side-panel .kv v { color: var(--ink); font-family: var(--font-mono); }
+  .side-panel .section {
+    margin-top: var(--s-4);
+  }
+  .side-panel .section-title {
+    font-size: 11px; color: var(--ink-mute); letter-spacing: .04em;
+    text-transform: uppercase; margin-bottom: var(--s-2);
+  }
+  .relations { display: flex; flex-direction: column; gap: var(--s-1); }
+  .relation {
+    display: flex; align-items: center; gap: var(--s-2);
+    font-size: 12px; padding: 6px var(--s-2);
+    border: 1px solid var(--line);
+    border-radius: var(--r-md);
+    background: var(--bg-sunken);
+  }
+  .relation .role {
+    font-size: 10px; color: var(--ink-faint); width: 36px;
+  }
+  .relation .nm {
+    font-family: var(--font-serif); font-weight: 600; color: var(--ink);
+  }
+  .relation .id { font-family: var(--font-mono); font-size: 10.5px; color: var(--ink-faint); }
+  .actions { display: flex; gap: var(--s-2); margin-top: var(--s-3); flex-wrap: wrap; }
+  .btn {
+    appearance: none; border: 0; cursor: pointer;
+    font: inherit; font-size: 12px; font-weight: 500;
+    padding: 8px var(--s-3); border-radius: var(--r-btn);
+    background: var(--bg-inverse); color: var(--ink-inverse);
+  }
+  .btn.ghost {
+    background: transparent; color: var(--ink);
+    border: 1px solid var(--line-strong);
+  }
+
+  /* ── 凡例 ──────────────────────────────────── */
+  .legend {
+    display: flex; align-items: center; gap: var(--s-4);
+    font-size: 11px; color: var(--ink-mute);
+    margin-top: var(--s-3); flex-wrap: wrap;
+  }
+  .legend .dot { width: 10px; height: 10px; border-radius: 50%; display: inline-block; }
+  .legend .dot.f  { background: var(--accent-forest); }
+  .legend .dot.am { background: var(--accent-amber); }
+  .legend .dot.la { background: oklch(0.65 0.07 130); }
+  .legend .dot.eg { background: oklch(0.78 0.05 80); }
+  .legend .dot.dm { background: var(--ink-faint); }
+
+  /* ── 軸切替: "種別" モードの代替レイアウト  ───── */
+  .board[data-axis="species"] {
+    grid-template-columns: repeat(4, minmax(220px, 1fr));
+  }
+  .board[data-axis="generation"] {
+    grid-template-columns: repeat(4, minmax(220px, 1fr));
+  }
+</style>
+</head>
+<body>
+<div class="app">
+  <main>
+    <header class="page-head">
+      <div>
+        <div class="crumb">マイページ · 飼育管理</div>
+        <h1>飼育マップ</h1>
+        <p class="lede">所有している全 <b id="total-count">15</b> 個体をライフステージ別に俯瞰します。カードをクリックすると右側に詳細と関連個体が出ます。</p>
+      </div>
+    </header>
+
+    <!-- ── 概況サマリ ─────────────────── -->
+    <section class="stats">
+      <div class="stat">
+        <div class="k">所有 (active)</div>
+        <div class="v">12 <small>/ 累計 15</small></div>
+      </div>
+      <div class="stat">
+        <div class="k">羽化 30日以内</div>
+        <div class="v">2 <small>個体</small></div>
+      </div>
+      <div class="stat alert">
+        <div class="k">要対応</div>
+        <div class="v">3 <small>マット交換 / 産卵セット 等</small></div>
+      </div>
+      <div class="stat">
+        <div class="k">交配可ペア</div>
+        <div class="v">2 <small>同種 ♂♀ 揃い</small></div>
+      </div>
+    </section>
+
+    <!-- ── ツールバー: 軸切替 + フィルタ ────── -->
+    <div class="toolbar" role="toolbar" aria-label="表示軸とフィルタ">
+      <div class="group">
+        <span class="label">表示軸</span>
+        <div class="seg" id="axis-seg">
+          <button aria-pressed="true"  data-axis="stage">ライフステージ</button>
+          <button aria-pressed="false" data-axis="species">種別</button>
+          <button aria-pressed="false" data-axis="generation">世代</button>
+        </div>
+      </div>
+
+      <div class="group">
+        <span class="label">種類</span>
+        <button class="chip" aria-pressed="true"  data-tone="forest"  data-filter-species="dhh">ヘラクレス</button>
+        <button class="chip" aria-pressed="true"  data-tone="indigo"  data-filter-species="cat">コーカサス</button>
+        <button class="chip" aria-pressed="true"  data-tone="amber"   data-filter-species="nat">国産</button>
+        <button class="chip" aria-pressed="true"  data-tone="rose"    data-filter-species="neo">ネプチューン</button>
+      </div>
+
+      <div class="group" style="margin-left: auto;">
+        <button class="chip" aria-pressed="false" id="only-alarm">⚠ 要対応のみ</button>
+        <button class="chip" aria-pressed="true"  id="show-ended">故 / 譲渡を表示</button>
+      </div>
+    </div>
+
+    <!-- ── Kanban ボード ─────────────────────── -->
+    <div class="board" id="board" data-axis="stage">
+      <!-- 卵 -->
+      <section class="col" data-stage="egg" data-stage-key="egg">
+        <header class="col-head">
+          <div class="col-title"><span class="stage-dot"></span>卵</div>
+          <span class="col-count">2 個体</span>
+        </header>
+        <p class="col-help">採卵 → 孵化までは 4〜6 週。マット湿度に注意。</p>
+      </section>
+
+      <!-- 幼虫 -->
+      <section class="col" data-stage="larva" data-stage-key="larva">
+        <header class="col-head">
+          <div class="col-title"><span class="stage-dot"></span>幼虫</div>
+          <span class="col-count">5 個体</span>
+        </header>
+        <p class="col-help">齢数別に管理。マット交換サイクルは齢別に異なる。</p>
+      </section>
+
+      <!-- 前蛹 / 蛹 -->
+      <section class="col" data-stage="pupa" data-stage-key="pupa">
+        <header class="col-head">
+          <div class="col-title"><span class="stage-dot"></span>前蛹 / 蛹</div>
+          <span class="col-count">2 個体</span>
+        </header>
+        <p class="col-help">この期間は触らない。羽化予定日を要監視。</p>
+      </section>
+
+      <!-- 成虫 -->
+      <section class="col" data-stage="adult" data-stage-key="adult">
+        <header class="col-head">
+          <div class="col-title"><span class="stage-dot"></span>成虫</div>
+          <span class="col-count">4 個体</span>
+        </header>
+        <p class="col-help">交配可。後食 → ペアリング → 産卵セットの順で進める。</p>
+      </section>
+
+      <!-- 故 / 譲渡 -->
+      <section class="col" data-stage="ended" data-stage-key="ended">
+        <header class="col-head">
+          <div class="col-title"><span class="stage-dot"></span>故 / 譲渡</div>
+          <span class="col-count">2 個体</span>
+        </header>
+        <p class="col-help">アーカイブ。血統データ参照のために残す。</p>
+      </section>
+    </div>
+
+    <!-- ── 凡例 ─────────────────────────── -->
+    <div class="legend">
+      <span><span class="dot eg"></span> 卵</span>
+      <span><span class="dot la"></span> 幼虫</span>
+      <span><span class="dot am"></span> 前蛹 / 蛹</span>
+      <span><span class="dot f"></span> 成虫</span>
+      <span><span class="dot dm"></span> 故 / 譲渡</span>
+      <span style="margin-left:auto;">サイズはノギス計測値、世代は CBFn 記法</span>
+    </div>
+  </main>
+
+  <!-- ── 右ペイン: 個体詳細 ───────────────── -->
+  <aside class="side-panel" id="panel">
+    <h3 id="p-name">ヘラクレス 黒曜 <span class="sex" data-sex="m" aria-label="オス">♂</span></h3>
+    <div class="sub" id="p-sub">#DHH-0271 · ヘラクレスオオカブト · CBF2</div>
+
+    <div class="kv"><k>ステージ</k><v id="p-stage">蛹 (進捗 72%)</v></div>
+    <div class="kv"><k>サイズ</k><v id="p-size">142.0 mm</v></div>
+    <div class="kv"><k>体重</k><v id="p-weight">28.4 g</v></div>
+    <div class="kv"><k>羽化予定</k><v id="p-eclosion">2026-05-04 (あと 15 日)</v></div>
+    <div class="kv"><k>飼育場所</k><v id="p-cage">A-2 (温度 22℃)</v></div>
+
+    <section class="section">
+      <div class="section-title">血統</div>
+      <div class="relations" id="p-relations">
+        <div class="relation"><span class="role">♂ 父</span><span class="nm">漆黒</span><span class="id">#DHH-0213</span></div>
+        <div class="relation"><span class="role">♀ 母</span><span class="nm">マリア</span><span class="id">#DHH-0244</span></div>
+        <div class="relation"><span class="role">同腹</span><span class="nm">翠 / 朔</span><span class="id">2 個体</span></div>
+      </div>
+    </section>
+
+    <section class="section">
+      <div class="section-title">直近のアクション</div>
+      <div class="relations">
+        <div class="relation"><span class="role">2d前</span><span class="nm">体重ログ +0.4g</span></div>
+        <div class="relation"><span class="role">5d前</span><span class="nm">マット交換</span></div>
+        <div class="relation"><span class="role">12d前</span><span class="nm">蛹化観察</span></div>
+      </div>
+    </section>
+
+    <div class="actions">
+      <button class="btn">カルテを開く</button>
+      <button class="btn ghost">ログ追加</button>
+    </div>
+  </aside>
+</div>
+
+<script>
+// ──────────────────────────────────────────────────────────
+// データ (= /api/v1/specimens/me から取得する想定。今は固定 fixture)
+// ──────────────────────────────────────────────────────────
+const SPECIES = {
+  dhh: { label: "ヘラクレス",     tone: "forest" },
+  cat: { label: "コーカサス",     tone: "indigo" },
+  nat: { label: "国産",           tone: "amber"  },
+  neo: { label: "ネプチューン",   tone: "rose"   },
+};
+
+const SPECIMENS = [
+  // 卵
+  { id:"#DHH-0290", name:"卵 A", sp:"dhh", sex:"u", stage:"egg",   stageLabel:"卵 (採卵後 18日)", gen:"CBF3", size:"-",     date:"採卵 2026-04-09", cage:"A-3",  parents:["#DHH-0271","#DHH-0273"] },
+  { id:"#DHH-0291", name:"卵 B", sp:"dhh", sex:"u", stage:"egg",   stageLabel:"卵 (採卵後 12日)", gen:"CBF3", size:"-",     date:"採卵 2026-04-15", cage:"A-3",  parents:["#DHH-0271","#DHH-0273"] },
+  // 幼虫
+  { id:"#CAT-0118", name:"雷",        sp:"cat", sex:"m", stage:"larva", stageLabel:"幼虫 3齢",  gen:"CBF3", size:"95mm",  weight:"52.0g", date:"羽化予定 2026-11-20",  cage:"B-1", alarm:"マット交換要", parents:["#CAT-0091","#CAT-0097"] },
+  { id:"#CAT-0089", name:"雪",        sp:"cat", sex:"f", stage:"larva", stageLabel:"幼虫 2齢",  gen:"CBF2", size:"50mm",  weight:"22.4g", date:"次回計測 2026-05-01", cage:"B-2",                       parents:["#CAT-0091","#CAT-0097"] },
+  { id:"#NEO-0058", name:"青嵐",      sp:"neo", sex:"m", stage:"larva", stageLabel:"幼虫 3齢",  gen:"CBF2", size:"102mm", weight:"68.5g", date:"羽化予定 2026-08-30", cage:"C-1",                       parents:["#NEO-0011","#NEO-0024"] },
+  { id:"#NAT-0480", name:"陣",        sp:"nat", sex:"u", stage:"larva", stageLabel:"幼虫 2齢",  gen:"CBF4", size:"42mm",  weight:"8.2g",  date:"次回計測 2026-04-30",  cage:"D-1",                       parents:["#NAT-0341","#NAT-0355"] },
+  { id:"#NAT-0481", name:"勘助",      sp:"nat", sex:"u", stage:"larva", stageLabel:"幼虫 1齢",  gen:"CBF4", size:"24mm",  weight:"2.1g",  date:"次回計測 2026-04-29", cage:"D-1",                      parents:["#NAT-0341","#NAT-0355"] },
+  // 前蛹 / 蛹
+  { id:"#DHH-0271", name:"黒曜",      sp:"dhh", sex:"m", stage:"pupa",  stageLabel:"蛹 (進捗 72%)", gen:"CBF2", size:"142mm", weight:"28.4g", date:"羽化予定 2026-05-04", urgent:"あと15日", cage:"A-2", parents:["#DHH-0213","#DHH-0244"] },
+  { id:"#NAT-0402", name:"小次郎",    sp:"nat", sex:"m", stage:"pupa",  stageLabel:"前蛹 (進捗 88%)", gen:"CBF4", size:"78mm",  weight:"22.3g", date:"羽化予定 2026-05-22", urgent:"あと33日", cage:"D-3", parents:["#NAT-0341","#NAT-0355"] },
+  // 成虫
+  { id:"#DHH-0272", name:"翠",        sp:"dhh", sex:"m", stage:"adult", stageLabel:"成虫", gen:"CBF3", size:"146mm", weight:"32.1g", date:"後食開始 2026-02-12", cage:"A-1", ready:true, parents:["#DHH-0213","#DHH-0244"] },
+  { id:"#DHH-0273", name:"朔",        sp:"dhh", sex:"f", stage:"adult", stageLabel:"成虫", gen:"CBF3", size:"65mm",  weight:"12.8g", date:"後食開始 2026-02-15", cage:"A-1", ready:true, parents:["#DHH-0213","#DHH-0244"] },
+  { id:"#DHH-0244", name:"マリア",    sp:"dhh", sex:"f", stage:"adult", stageLabel:"成虫", gen:"CBF1", size:"66mm",  weight:"12.1g", date:"後食 2024-08-01〜",   cage:"A-4",             parents:["wild","wild"] },
+  { id:"#NAT-0341", name:"武蔵",      sp:"nat", sex:"m", stage:"adult", stageLabel:"成虫", gen:"CBF3", size:"82mm",  weight:"23.0g", date:"産卵セット 2026-03-01", cage:"D-2", alarm:"産卵確認", parents:["wild","wild"] },
+  // 故 / 譲渡
+  { id:"#DHH-0150", name:"月影",      sp:"dhh", sex:"m", stage:"ended", stageLabel:"故 (2025-10-02)", gen:"CBF1", size:"148mm", weight:"-",     date:"享年 ~2年",       cage:"-",                    parents:["wild","wild"] },
+  { id:"#NAT-0420", name:"駿 (譲渡)", sp:"nat", sex:"m", stage:"ended", stageLabel:"譲渡済 (2026-01-15)", gen:"CBF3", size:"78mm",  weight:"-",     date:"友人へ", cage:"-", parents:["#NAT-0341","#NAT-0355"] },
+];
+
+// 同腹計算 (= 同じ親ペアを持つ個体)
+function siblingsOf(s) {
+  if (!s.parents || s.parents.includes("wild")) return [];
+  return SPECIMENS.filter(x => x.id !== s.id
+    && x.parents
+    && x.parents[0] === s.parents[0]
+    && x.parents[1] === s.parents[1]);
+}
+function find(id) { return SPECIMENS.find(x => x.id === id); }
+
+// ──────────────────────────────────────────────────────────
+// レンダリング
+// ──────────────────────────────────────────────────────────
+const board = document.getElementById("board");
+const filterSpecies = new Set(["dhh","cat","nat","neo"]);
+let onlyAlarm = false;
+let showEnded = true;
+let axis = "stage";
+let selectedId = "#DHH-0271";
+
+function cardHTML(s) {
+  const sp = SPECIES[s.sp];
+  const dim = s.stage === "ended" ? " dim" : "";
+  const sel = s.id === selectedId ? " selected" : "";
+  const urgent = s.urgent ? `<span class="urgent">⚠ ${s.urgent}</span>` : "";
+  const pills = [
+    `<span class="pill gen">${s.gen}</span>`,
+    s.alarm ? `<span class="pill alarm">⚠ ${s.alarm}</span>` : "",
+    s.ready ? `<span class="pill ready">✦ 交配可</span>` : "",
+  ].filter(Boolean).join(" ");
+  return `<article class="card${dim}${sel}" data-id="${s.id}">
+    ${urgent}
+    <div class="row">
+      <div>
+        <div class="id">${s.id}</div>
+        <div class="name">${s.name}</div>
+      </div>
+      <span class="sex" data-sex="${s.sex}" aria-label="${s.sex==='m'?'オス':s.sex==='f'?'メス':'未確定'}">
+        ${s.sex==='m'?'♂':s.sex==='f'?'♀':'?'}
+      </span>
+    </div>
+    <div class="meta">
+      <span>${sp.label}</span>
+      <span>· <b>${s.size}</b></span>
+      ${s.weight ? `<span>· <b>${s.weight}</b></span>` : ""}
+    </div>
+    <div class="meta" style="color:var(--ink-faint)">${s.stageLabel}</div>
+    <div class="meta" style="color:var(--ink-faint)">${s.date}</div>
+    <div style="display:flex; flex-wrap:wrap; gap:4px; margin-top:auto;">${pills}</div>
+  </article>`;
+}
+
+function render() {
+  // 全 col の中身 (col-head + col-help を除く部分) をクリアして再描画
+  const cols = board.querySelectorAll(".col");
+  // フィルタ済みリスト
+  const visible = SPECIMENS.filter(s => filterSpecies.has(s.sp))
+    .filter(s => showEnded || s.stage !== "ended")
+    .filter(s => !onlyAlarm || s.alarm || s.urgent);
+
+  if (axis === "stage") {
+    // 既存 5 列の構造を再利用
+    board.dataset.axis = "stage";
+    rebuildStageColumns(visible);
+  } else if (axis === "species") {
+    board.dataset.axis = "species";
+    rebuildBy(visible, "sp", Object.keys(SPECIES), id => SPECIES[id].label);
+  } else if (axis === "generation") {
+    board.dataset.axis = "generation";
+    const gens = Array.from(new Set(SPECIMENS.map(s => s.gen))).sort();
+    rebuildBy(visible, "gen", gens, g => g);
+  }
+
+  // total
+  document.getElementById("total-count").textContent = SPECIMENS.length;
+}
+
+function rebuildStageColumns(list) {
+  const stages = ["egg","larva","pupa","adult","ended"];
+  const stageLabels = { egg:"卵", larva:"幼虫", pupa:"前蛹 / 蛹", adult:"成虫", ended:"故 / 譲渡" };
+  const stageHelp = {
+    egg:   "採卵 → 孵化までは 4〜6 週。マット湿度に注意。",
+    larva: "齢数別に管理。マット交換サイクルは齢別に異なる。",
+    pupa:  "この期間は触らない。羽化予定日を要監視。",
+    adult: "交配可。後食 → ペアリング → 産卵セットの順で進める。",
+    ended: "アーカイブ。血統データ参照のために残す。",
+  };
+  board.innerHTML = stages.map(st => {
+    const items = list.filter(s => s.stage === st);
+    return `<section class="col" data-stage="${st}">
+      <header class="col-head">
+        <div class="col-title"><span class="stage-dot"></span>${stageLabels[st]}</div>
+        <span class="col-count">${items.length} 個体</span>
+      </header>
+      <p class="col-help">${stageHelp[st]}</p>
+      ${items.map(cardHTML).join("")}
+    </section>`;
+  }).join("");
+  attachCardListeners();
+}
+
+function rebuildBy(list, key, keys, labelFn) {
+  board.innerHTML = keys.map(k => {
+    const items = list.filter(s => s[key] === k);
+    if (items.length === 0) return "";
+    return `<section class="col" data-stage="${k}">
+      <header class="col-head">
+        <div class="col-title"><span class="stage-dot"></span>${labelFn(k)}</div>
+        <span class="col-count">${items.length} 個体</span>
+      </header>
+      ${items.map(cardHTML).join("")}
+    </section>`;
+  }).join("");
+  attachCardListeners();
+}
+
+function attachCardListeners() {
+  board.querySelectorAll(".card").forEach(el => {
+    el.addEventListener("click", () => {
+      selectedId = el.dataset.id;
+      board.querySelectorAll(".card").forEach(x => x.classList.remove("selected"));
+      el.classList.add("selected");
+      renderPanel();
+    });
+  });
+}
+
+function renderPanel() {
+  const s = find(selectedId);
+  if (!s) return;
+  const sp = SPECIES[s.sp];
+  document.getElementById("p-name").innerHTML =
+    `${sp.label} ${s.name} <span class="sex" data-sex="${s.sex}" aria-label="${s.sex==='m'?'オス':s.sex==='f'?'メス':'未確定'}">${s.sex==='m'?'♂':s.sex==='f'?'♀':'?'}</span>`;
+  document.getElementById("p-sub").textContent = `${s.id} · ${sp.label} · ${s.gen}`;
+  document.getElementById("p-stage").textContent = s.stageLabel;
+  document.getElementById("p-size").textContent = s.size;
+  document.getElementById("p-weight").textContent = s.weight ?? "-";
+  document.getElementById("p-eclosion").textContent = s.date;
+  document.getElementById("p-cage").textContent = s.cage;
+
+  const rel = document.getElementById("p-relations");
+  const lines = [];
+  if (s.parents && s.parents[0] === "wild") {
+    lines.push(`<div class="relation"><span class="role">血統</span><span class="nm">野生個体</span><span class="id">F0</span></div>`);
+  } else if (s.parents) {
+    const f = find(s.parents[0]); const m = find(s.parents[1]);
+    if (f) lines.push(`<div class="relation"><span class="role">♂ 父</span><span class="nm">${f.name}</span><span class="id">${f.id}</span></div>`);
+    if (m) lines.push(`<div class="relation"><span class="role">♀ 母</span><span class="nm">${m.name}</span><span class="id">${m.id}</span></div>`);
+    const sibs = siblingsOf(s);
+    if (sibs.length > 0) {
+      lines.push(`<div class="relation"><span class="role">同腹</span><span class="nm">${sibs.map(x=>x.name).join(" / ")}</span><span class="id">${sibs.length} 個体</span></div>`);
+    }
+  }
+  rel.innerHTML = lines.join("");
+}
+
+// ──────────────────────────────────────────────────────────
+// イベント (toolbar)
+// ──────────────────────────────────────────────────────────
+document.querySelectorAll("#axis-seg button").forEach(b => {
+  b.addEventListener("click", () => {
+    document.querySelectorAll("#axis-seg button").forEach(x => x.setAttribute("aria-pressed","false"));
+    b.setAttribute("aria-pressed","true");
+    axis = b.dataset.axis;
+    render();
+  });
+});
+document.querySelectorAll(".chip[data-filter-species]").forEach(c => {
+  c.addEventListener("click", () => {
+    const sp = c.dataset.filterSpecies;
+    const next = c.getAttribute("aria-pressed") !== "true";
+    c.setAttribute("aria-pressed", String(next));
+    if (next) filterSpecies.add(sp); else filterSpecies.delete(sp);
+    render();
+  });
+});
+document.getElementById("only-alarm").addEventListener("click", e => {
+  onlyAlarm = !onlyAlarm;
+  e.currentTarget.setAttribute("aria-pressed", String(onlyAlarm));
+  render();
+});
+document.getElementById("show-ended").addEventListener("click", e => {
+  showEnded = !showEnded;
+  e.currentTarget.setAttribute("aria-pressed", String(showEnded));
+  render();
+});
+
+render();
+renderPanel();
+</script>
+</body>
+</html>

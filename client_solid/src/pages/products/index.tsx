@@ -25,7 +25,7 @@
 //   (ファイルは git rm 待ち、import は無し)。
 //   保証 card / ウォッチボタン / カート連携は Phase 2.5 で復活させる。
 
-import { ErrorBoundary, For, Show, createMemo, createResource } from "solid-js";
+import { ErrorBoundary, For, Show, createMemo, createResource, createSignal } from "solid-js";
 import { useSearchParams } from "@solidjs/router";
 import type { RouteKey } from "../../data";
 import {
@@ -41,6 +41,11 @@ import { SearchBoxView } from "../../sdui/SearchBox";
 import { PaginationView } from "../../sdui/Pagination";
 import type { CardBlock } from "../../sdui/branded";
 import { Hero } from "./Hero";
+import { BloodlineSummary } from "../../components/products/BloodlineSummary";
+import { BloodlineLineageModal } from "../../components/products/BloodlineLineageModal";
+import { BloodlineCardChips } from "../../components/products/BloodlineCardChips";
+import "../../styles/bloodline.css";
+import "../../styles/product-bloodline.css";
 
 interface ProductsListProps {
   setRoute: (r: RouteKey) => void;
@@ -48,21 +53,8 @@ interface ProductsListProps {
 }
 
 export const ProductsList = (props: ProductsListProps) => {
-  // Phase 4: URL search params を fetch にそのまま渡す。
-  //   - ?category=live&difficulty=hard のような URL を server へ転送し、
-  //     server 側で filter chip の selected / href を組み立ててもらう。
-  //   - useSearchParams は signal getter なので、URL が変わると createResource
-  //     が自動で再 fetch する → SPA で chip クリック → URL 書き換え → 再 fetch
-  //     のループが破綻なく回る。
   const [searchParams] = useSearchParams();
 
-  // ProductListQuery を URL から組み立てる (signal が依存に入るよう memo 経由)。
-  // 配列で来たケース (`?category=a&category=b`) は先頭値だけ採用 — server 側も
-  // single-select 想定なので 2 件目以降は破棄して「最後に勝つ」挙動を避ける。
-  // Phase 5: `?sort=` も同じく forward する。
-  // Phase 6: `?q=` / `?page=` / `?perPage=` も同じく forward する。
-  //   - q は素朴に文字列 forward (trim/正規化はサーバ側に任せる = canonical 化を 1 か所に集約)。
-  //   - page / perPage は数値化。NaN / 0 / 負値は undefined に倒す (= サーバの default を使う)。
   const query = createMemo<ProductListQuery>(() => {
     const pickFirst = (v: string | string[] | undefined): string | undefined => {
       if (!v) return undefined;
@@ -87,8 +79,6 @@ export const ProductsList = (props: ProductsListProps) => {
     };
   });
 
-  // createResource の source 引数に query() を渡すと、URL が変わるたびに
-  // 再 fetch が走る。返り値は ProductListResponse (filterBar + cards)。
   const [list, { refetch }] = createResource(query, fetchProductList);
 
   const onCardClick = (card: CardBlock) => {
@@ -105,11 +95,8 @@ export const ProductsList = (props: ProductsListProps) => {
           <div class="cat">ショップ · ANCHOR BEETLE CO. + MIYAMA FARM</div>
           <h1>生体と用品</h1>
         </div>
-        {/* Phase 4: filter chip 群は server-driven。下の <FilterBarView> が描画する。
-            旧 ProductFilters.tsx (TOMBSTONE 化済み / cleanup task #34) は完全に置き換え済み。 */}
       </div>
 
-      {/* loading / error / empty を Show で吸収 */}
       <Show
         when={!list.loading}
         fallback={
@@ -125,18 +112,12 @@ export const ProductsList = (props: ProductsListProps) => {
         }
       >
         <Show when={!list.error} fallback={<GridErrorView error={list.error} onRetry={refetch} />}>
-          {/* Phase 6: 検索 box は filter / sort より上に置く (= ユーザの目線移動の起点)。
-              0 件マッチでも常に出す (= 検索を直す導線)。 */}
           <Show when={list()?.searchBox}>
             {(box) => <SearchBoxView box={box()} />}
           </Show>
-          {/* filter bar はカード 0 件でも常に出す: ユーザが filter を解除して戻れる導線 */}
           <Show when={list()?.filterBar}>
             {(bar) => <FilterBarView bar={bar()} />}
           </Show>
-          {/* Phase 5: sort bar も常に出す (= 0 件マッチでも sort UI は維持)。
-              filterBar と sortBar は独立の信号源。サーバが sortBar 不在で返してきたら
-              sort 機能 OFF として描かない。 */}
           <Show when={list()?.sortBar}>
             {(bar) => <SortBarView bar={bar()} />}
           </Show>
@@ -160,11 +141,8 @@ export const ProductsList = (props: ProductsListProps) => {
             <div class="grid-cards-3">
               <For each={list()?.cards ?? []}>
                 {(card) => (
-                  // ErrorBoundary は CardRenderer 内にもあるが、
-                  // 念のため二重にしてラッパ div の onClick まで保護する。
                   <ErrorBoundary
                     fallback={(err) => {
-                      // eslint-disable-next-line no-console
                       console.error(`[/products] outer boundary id=${card.id}`, err);
                       return null;
                     }}
@@ -172,6 +150,7 @@ export const ProductsList = (props: ProductsListProps) => {
                     <div
                       role="button"
                       tabindex={0}
+                      class="pbl-card-wrap"
                       style={{ cursor: "pointer" }}
                       onClick={() => onCardClick(card)}
                       onKeyDown={(e) => {
@@ -182,16 +161,15 @@ export const ProductsList = (props: ProductsListProps) => {
                       }}
                     >
                       <CardRenderer card={card} />
+                      {/* Phase 2: 血統バッジを右下に重ねる (= 血統 fixture がある生体カードのみ).
+                          pointer-events: none なのでカードクリックは透過する. */}
+                      <BloodlineCardChips productId={card.id} />
                     </div>
                   </ErrorBoundary>
                 )}
               </For>
             </div>
           </Show>
-          {/* Phase 6: pagination は cards の下 (= 結果集合の境界)。0 件でも shell は出す
-              (server 側が totalPages>=1 にフロアしているので 1/1 として描かれる)。
-              現在 page を超えた out-of-range は server 側が cards=[] で返す + page 番号は
-              clamp 済みの選択候補として描画 (= 戻り導線になる)。 */}
           <Show when={list()?.pagination}>
             {(p) => <PaginationView pagination={p()} />}
           </Show>
@@ -201,7 +179,6 @@ export const ProductsList = (props: ProductsListProps) => {
   );
 };
 
-/** グリッド全体が壊れた時の表示。`SduiFetchError` か unknown を区別。 */
 const GridErrorView = (props: { error: unknown; onRetry: () => void }) => {
   const e = props.error;
   return (
@@ -245,19 +222,15 @@ const GridErrorView = (props: { error: unknown; onRetry: () => void }) => {
 
 interface ProductDetailProps {
   productId: string;
-  // setRoute は SDUI 化により内部からは使わなくなったが、
-  // 呼び出し側 (App.tsx) のシグネチャを変えないために props に残しておく。
-  // CTA から戻る場合は href ベースで遷移する想定 (cart 等)。
   setRoute?: (r: RouteKey) => void;
 }
 
 export const ProductDetail = (props: ProductDetailProps) => {
-  // SDUI 化: id をキーに detail カードを取得する。
-  // productId が変わったら createResource は自動で再取得する。
   const [card, { refetch }] = createResource(
     () => props.productId,
     (id) => fetchProductDetailCard(id),
   );
+  const [bloodlineModalOpen, setBloodlineModalOpen] = createSignal(false);
 
   return (
     <Show
@@ -280,7 +253,6 @@ export const ProductDetail = (props: ProductDetailProps) => {
       >
         <ErrorBoundary
           fallback={(err) => {
-            // eslint-disable-next-line no-console
             console.error(`[/products/${props.productId}] outer boundary`, err);
             return (
               <div
@@ -296,14 +268,24 @@ export const ProductDetail = (props: ProductDetailProps) => {
             );
           }}
         >
-          <CardRenderer card={card()!} />
+          <>
+            <CardRenderer card={card()!} />
+            <BloodlineSummary
+              productId={props.productId}
+              onOpenFull={() => setBloodlineModalOpen(true)}
+            />
+            <BloodlineLineageModal
+              open={bloodlineModalOpen()}
+              productId={props.productId}
+              onClose={() => setBloodlineModalOpen(false)}
+            />
+          </>
         </ErrorBoundary>
       </Show>
     </Show>
   );
 };
 
-/** 詳細取得失敗時の表示。404 / network / unknown を区別する。 */
 const DetailErrorView = (props: { error: unknown; onRetry: () => void }) => {
   const e = props.error;
   const isNotFound = e instanceof SduiFetchError && e.status === 404;

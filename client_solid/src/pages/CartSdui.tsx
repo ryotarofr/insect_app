@@ -7,6 +7,7 @@
 //   2. CartReloadProvider に refetch を流す
 //   3. CardRenderer に渡して描画
 //   4. 失敗時はエラー表示、ロード中はスピナ
+//   5. (Phase 3) 血統リマインダ <CartBloodlineReminder /> をカード直下に重ねる
 //
 // **既存 `/cart` (Cart.tsx) との関係 (Strangler Fig 段階 1)**:
 //   - 旧 Cart.tsx は shipping form / checkout / Stripe 決済を内包しており、
@@ -29,6 +30,9 @@ import { CardRenderer } from "../sdui/CardRenderer";
 import { CartReloadProvider } from "../sdui/CartContext";
 import { SduiFetchError } from "../sdui/api";
 import { useCartSnapshot } from "../sdui/useCartSnapshot";
+import { CartBloodlineReminder } from "../components/products/CartBloodlineReminder";
+import "../styles/bloodline.css";
+import "../styles/product-bloodline.css";
 
 const ErrorView = (props: { err: unknown }) => {
   const message = () => {
@@ -81,6 +85,10 @@ export const CartSduiPage = () => {
                 {(c) => (
                   <CartReloadProvider value={snap.reload}>
                     <CardRenderer card={c()} />
+                    {/* Phase 3: SDUI カード直下に血統リマインダを差し込む.
+                        CartCard は max-width: 640px / margin: 0 auto で中央寄せ
+                        されているので、リマインダ側も同じ制約を CSS で揃える. */}
+                    <CartBloodlineReminder card={c()} />
                   </CartReloadProvider>
                 )}
               </Show>

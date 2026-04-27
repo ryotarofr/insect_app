@@ -47,12 +47,29 @@ fn webhook_secret() -> Option<String> {
 
 /// Stripe-Signature ヘッダから v1=<hex> 部分を抽出する。
 /// 形式: `t=<timestamp>,v1=<hex>,v0=<old>` (= comma 区切り key=value)。
-/// 本 MVP では timestamp 検証 (= replay 対策) は省略し v1 だけ拾う。production では
-/// `|now() - t|` を tolerance window と比較するロジックを足す。
 fn extract_v1(sig_header: &str) -> Option<&str> {
     sig_header.split(',').find_map(|piece| {
         piece.trim().strip_prefix("v1=")
     })
+}
+
+/// Stripe-Signature ヘッダから `t=<unix>` を抽出して i64 に parse。
+/// replay protection で `|now() - t|` を計算するために使う。
+fn extract_timestamp(sig_header: &str) -> Option<i64> {
+    sig_header
+        .split(',')
+        .find_map(|piece| piece.trim().strip_prefix("t="))
+        .and_then(|s| s.parse::<i64>().ok())
+}
+
+/// 許容時間幅 (= 5 分 / 300 秒) を default にし、`KOCHU_STRIPE_TOLERANCE_SEC` env で上書き可。
+/// dev で長く (= 数時間) / prod で 5 分 / 厳格運用なら 30 秒、と環境ごとに調整する余地を残す。
+fn tolerance_seconds() -> i64 {
+    std::env::var("KOCHU_STRIPE_TOLERANCE_SEC")
+        .ok()
+        .and_then(|s| s.parse::<i64>().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(300)
 }
 
 /// raw body と secret から HMAC-SHA256 hex を計算する。
@@ -66,6 +83,8 @@ fn compute_hmac_hex(secret: &str, body: &[u8]) -> String {
 /// HMAC-SHA256 を hex で計算し、一定時間比較で照合する。secret が未設定なら Ok (= 検証スキップ)。
 ///
 /// **timing attack 対策**: `subtle::ConstantTimeEq` で hex 文字列の byte 単位定数時間比較。
+/// **replay 対策**: `t=<unix>` が現在時刻 ± `tolerance_seconds()` 以内であることを要求。
+///   昔受信した正当なペイロードを後から re-POST されても、t が古ければ通らない。
 fn verify_signature(headers: &HeaderMap, body: &[u8]) -> Result<(), AppError> {
     let secret = match webhook_secret() {
         Some(s) => s,
@@ -79,6 +98,19 @@ fn verify_signature(headers: &HeaderMap, body: &[u8]) -> Result<(), AppError> {
         .and_then(|v| v.to_str().ok())
         .ok_or_else(|| AppError::Unauthorized)?;
     let provided_hex = extract_v1(sig_header).ok_or(AppError::Unauthorized)?;
+
+    // ── timestamp tolerance window ────────────────────────────────
+    // `t` が無い / 未来過去どちらでも tolerance を超えると 401。
+    // env `KOCHU_STRIPE_TOLERANCE_SEC` で窓幅を上書き可能。
+    let t = extract_timestamp(sig_header).ok_or(AppError::Unauthorized)?;
+    let now = chrono::Utc::now().timestamp();
+    let drift = (now - t).abs();
+    if drift > tolerance_seconds() {
+        tracing::warn!(
+            "stripe webhook: timestamp drift {drift}s exceeds tolerance (t={t}, now={now})"
+        );
+        return Err(AppError::Unauthorized);
+    }
 
     let expected_hex = compute_hmac_hex(&secret, body);
     if expected_hex.as_bytes().ct_eq(provided_hex.as_bytes()).into() {
@@ -497,6 +529,11 @@ mod tests {
         verify_signature(&h, b"").expect("scaffolding mode skips verification");
     }
 
+    /// 現在の unix timestamp を返す test helper。tolerance window 内に収まる。
+    fn now_ts() -> i64 {
+        chrono::Utc::now().timestamp()
+    }
+
     #[tokio::test]
     async fn verify_signature_accepts_correct_signature() {
         let _g = memory_guard();
@@ -508,7 +545,7 @@ mod tests {
         let mut h = HeaderMap::new();
         h.insert(
             "stripe-signature",
-            format!("t=0,v1={hex}").parse().unwrap(),
+            format!("t={ts},v1={hex}", ts = now_ts()).parse().unwrap(),
         );
         verify_signature(&h, body).expect("正しい署名は通る");
         unset_webhook_secret();
@@ -523,7 +560,7 @@ mod tests {
         let mut h = HeaderMap::new();
         h.insert(
             "stripe-signature",
-            "t=0,v1=deadbeef".parse().unwrap(),
+            format!("t={ts},v1=deadbeef", ts = now_ts()).parse().unwrap(),
         );
         match verify_signature(&h, b"payload") {
             Err(AppError::Unauthorized) => {}
@@ -542,6 +579,125 @@ mod tests {
         match verify_signature(&h, b"payload") {
             Err(AppError::Unauthorized) => {}
             other => panic!("expected Unauthorized for missing header, got {other:?}"),
+        }
+        unset_webhook_secret();
+    }
+
+    // ── replay protection: timestamp tolerance window ────────────────
+
+    #[test]
+    fn extract_timestamp_parses_t_segment() {
+        assert_eq!(
+            extract_timestamp("t=1700000000,v1=abc"),
+            Some(1700000000)
+        );
+        assert_eq!(extract_timestamp("v1=abc"), None);
+        assert_eq!(extract_timestamp("t=notnum,v1=abc"), None);
+    }
+
+    #[test]
+    fn tolerance_seconds_default_is_300() {
+        unsafe {
+            std::env::remove_var("KOCHU_STRIPE_TOLERANCE_SEC");
+        }
+        assert_eq!(tolerance_seconds(), 300);
+    }
+
+    #[test]
+    fn tolerance_seconds_can_be_overridden_by_env() {
+        unsafe {
+            std::env::set_var("KOCHU_STRIPE_TOLERANCE_SEC", "30");
+        }
+        assert_eq!(tolerance_seconds(), 30);
+        unsafe {
+            std::env::remove_var("KOCHU_STRIPE_TOLERANCE_SEC");
+        }
+    }
+
+    #[tokio::test]
+    async fn verify_signature_rejects_too_old_timestamp() {
+        let _g = memory_guard();
+        unsafe {
+            std::env::set_var("STRIPE_WEBHOOK_SECRET", "whsec_test");
+            std::env::remove_var("KOCHU_STRIPE_TOLERANCE_SEC");
+        }
+        let body = b"payload";
+        let hex = compute_hmac_hex("whsec_test", body);
+        // 10 分前 (= 600 秒前) は default の 300 秒を超える → reject
+        let old_ts = now_ts() - 600;
+        let mut h = HeaderMap::new();
+        h.insert(
+            "stripe-signature",
+            format!("t={old_ts},v1={hex}").parse().unwrap(),
+        );
+        match verify_signature(&h, body) {
+            Err(AppError::Unauthorized) => {}
+            other => panic!("expected Unauthorized for old timestamp, got {other:?}"),
+        }
+        unset_webhook_secret();
+    }
+
+    #[tokio::test]
+    async fn verify_signature_rejects_far_future_timestamp() {
+        let _g = memory_guard();
+        unsafe {
+            std::env::set_var("STRIPE_WEBHOOK_SECRET", "whsec_test");
+            std::env::remove_var("KOCHU_STRIPE_TOLERANCE_SEC");
+        }
+        let body = b"payload";
+        let hex = compute_hmac_hex("whsec_test", body);
+        // 10 分先 → reject
+        let future_ts = now_ts() + 600;
+        let mut h = HeaderMap::new();
+        h.insert(
+            "stripe-signature",
+            format!("t={future_ts},v1={hex}").parse().unwrap(),
+        );
+        match verify_signature(&h, body) {
+            Err(AppError::Unauthorized) => {}
+            other => panic!("expected Unauthorized for future timestamp, got {other:?}"),
+        }
+        unset_webhook_secret();
+    }
+
+    #[tokio::test]
+    async fn verify_signature_rejects_missing_timestamp() {
+        let _g = memory_guard();
+        unsafe {
+            std::env::set_var("STRIPE_WEBHOOK_SECRET", "whsec_test");
+        }
+        let body = b"payload";
+        let hex = compute_hmac_hex("whsec_test", body);
+        // t= が無い header (= 古い stripe / 攻撃者の偽装) → reject
+        let mut h = HeaderMap::new();
+        h.insert("stripe-signature", format!("v1={hex}").parse().unwrap());
+        match verify_signature(&h, body) {
+            Err(AppError::Unauthorized) => {}
+            other => panic!("expected Unauthorized for missing t, got {other:?}"),
+        }
+        unset_webhook_secret();
+    }
+
+    #[tokio::test]
+    async fn verify_signature_accepts_within_custom_tolerance() {
+        let _g = memory_guard();
+        unsafe {
+            std::env::set_var("STRIPE_WEBHOOK_SECRET", "whsec_test");
+            // 1 時間まで許容 (= dev 用に長めに広げる例)
+            std::env::set_var("KOCHU_STRIPE_TOLERANCE_SEC", "3600");
+        }
+        let body = b"payload";
+        let hex = compute_hmac_hex("whsec_test", body);
+        // default 300 秒の境を越える 10 分前でも、env で 3600 まで広げれば通る
+        let old_ts = now_ts() - 600;
+        let mut h = HeaderMap::new();
+        h.insert(
+            "stripe-signature",
+            format!("t={old_ts},v1={hex}").parse().unwrap(),
+        );
+        verify_signature(&h, body).expect("env で tolerance を広げれば通る");
+        unsafe {
+            std::env::remove_var("KOCHU_STRIPE_TOLERANCE_SEC");
         }
         unset_webhook_secret();
     }

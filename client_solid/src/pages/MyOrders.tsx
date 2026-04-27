@@ -19,7 +19,7 @@ import {
   SduiFetchError,
   fetchMyOrders,
 } from "../sdui/api";
-import { ROUTE_PATHS } from "../router";
+import { ROUTE_PATHS, orderUrl } from "../router";
 
 interface Props {
   setRoute: (k: RouteKey) => void;
@@ -58,6 +58,8 @@ export const MyOrdersPage = (props: Props) => {
                   {(o) => <OrderRow order={o} />}
                 </For>
               </ul>
+              {/* note: OrderRow は内部で `<a href={orderUrl(o.id)}>` リンクなので、
+                  ブラウザ側 navigation で SPA route が変わる。setRoute の手当ては不要。 */}
             </Show>
           </Show>
         }
@@ -71,42 +73,51 @@ export const MyOrdersPage = (props: Props) => {
 const OrderRow = (props: { order: OrderSummary }) => {
   const o = props.order;
   return (
-    <li
-      class="order-row"
-      style={{
-        padding: "12px 16px",
-        "border-bottom": "1px solid var(--ink-faint, #ddd)",
-        display: "flex",
-        "justify-content": "space-between",
-        "align-items": "center",
-        gap: "16px",
-      }}
-    >
-      <div style={{ flex: "1" }}>
-        <div style={{ "font-size": "12px", color: "var(--ink-faint, #888)" }}>
-          {formatDate(o.createdAt)} · #{shorten(o.id)}
+    <li class="order-row">
+      {/* 行全体を `<a>` にして SPA navigation を有効化 (= middle-click も効く)。
+          a 要素は @solidjs/router の navigate を踏むので setRoute は不要。 */}
+      <a
+        href={orderUrl(o.id)}
+        style={{
+          display: "flex",
+          "justify-content": "space-between",
+          "align-items": "center",
+          gap: "16px",
+          padding: "12px 16px",
+          "border-bottom": "1px solid var(--ink-faint, #ddd)",
+          "text-decoration": "none",
+          color: "inherit",
+        }}
+      >
+        <div style={{ flex: "1" }}>
+          <div style={{ "font-size": "12px", color: "var(--ink-faint, #888)" }}>
+            {formatDate(o.createdAt)} · #{shorten(o.id)}
+          </div>
+          <div style={{ "margin-top": "4px" }}>
+            <StatusBadge status={o.status} />
+            <span style={{ "margin-left": "8px" }}>
+              ¥{o.amountJpy.toLocaleString("ja-JP")}
+            </span>
+          </div>
+          <Show when={o.stripeSessionId}>
+            {(sid) => (
+              <div
+                style={{
+                  "font-size": "10px",
+                  color: "var(--ink-faint, #888)",
+                  "font-family": "var(--font-mono, monospace)",
+                  "margin-top": "2px",
+                }}
+              >
+                {sid()}
+              </div>
+            )}
+          </Show>
         </div>
-        <div style={{ "margin-top": "4px" }}>
-          <StatusBadge status={o.status} />
-          <span style={{ "margin-left": "8px" }}>
-            ¥{o.amountJpy.toLocaleString("ja-JP")}
-          </span>
+        <div aria-hidden="true" style={{ color: "var(--ink-faint, #888)" }}>
+          ▶
         </div>
-        <Show when={o.stripeSessionId}>
-          {(sid) => (
-            <div
-              style={{
-                "font-size": "10px",
-                color: "var(--ink-faint, #888)",
-                "font-family": "var(--font-mono, monospace)",
-                "margin-top": "2px",
-              }}
-            >
-              {sid()}
-            </div>
-          )}
-        </Show>
-      </div>
+      </a>
     </li>
   );
 };

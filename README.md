@@ -270,9 +270,9 @@ cd server
 cargo run
 ```
 
-`DB_AUTO_MIGRATE=true` (default) なら起動時に `server/migrations/*.sql` が自動で流れる。Phase 9.A〜9.F + Phase 9.D 対応で 0001〜0007 が揃っており、適用後は以下のテーブルが利用可能:
+`DB_AUTO_MIGRATE=true` (default) なら起動時に `server/migrations/*.sql` が自動で流れる。Phase 9.A〜9.G の対応で 0001〜0011 が揃っており、適用後は以下のテーブル / 列が利用可能:
 
-| migration | 主なテーブル |
+| migration | 主なテーブル / 変更 |
 |---|---|
 | 0001_initial | `orders` / `order_items` / `shipping_addresses` |
 | 0002_master_data | `species` / `shops` / `prefectures` / `shipping_methods` (+ 各翻訳) |
@@ -281,10 +281,27 @@ cargo run
 | 0005_order_items_product_fk | `order_items.product_uuid` 列 + FK + 既存行 backfill |
 | 0006_cart_and_watches | `cart_items` / `product_watches` |
 | 0007_specimens | `specimens` / `specimen_status_history` / `specimen_logs` / `mating_records` |
+| 0008_users_password | `users.password_hash` 列 (= Argon2id phc 文字列 / NULL 許容) |
+| 0009_market | `listings` / `bids` / `listing_watches` + `v_listings_with_counts` VIEW |
+| 0010_stripe_webhook_events | `stripe_webhook_events` (= event_id 冪等性キャッシュ) |
+| 0011_orders_user_fk | `orders.user_id` FK + 既存行の session 経由 backfill |
+| 0012_product_watches_session_owner | `product_watches` を session_id 許容に拡張 (= UUID PK + CHECK + UNIQUE 部分 index) |
 
-DB 接続失敗 / `DATABASE_URL` 未設定でも server は起動する (= 各 repo が in-memory fallback を持つので、cart / watch / cookie session が機能限定で動く)。production では `db::init_pool` 直接呼び出しに切り替えて DB 不在 = fatal にする想定。
+DB 接続失敗 / `DATABASE_URL` 未設定でも server は起動する (= 各 repo が in-memory fallback を持つので、cart / watch / cookie session / auth (= dynamic store) が機能限定で動く)。production では `db::init_pool` 直接呼び出しに切り替えて DB 不在 = fatal にする想定。
 
 実機での動作確認チェックリストは [`docs/db-verify-checklist.md`](docs/db-verify-checklist.md) を参照。
+API エンドポイントの詳細は [`docs/api-v1-endpoints.md`](docs/api-v1-endpoints.md) を参照。
+
+### production hardening の env 設定
+
+| env 変数 | 用途 | dev での値 |
+|---|---|---|
+| `DATABASE_URL` | PostgreSQL 接続文字列 | `postgresql://kochu:kochu_dev_password@localhost:5432/kochu_dev` |
+| `STRIPE_PROVIDER` | `mock` / `live` | `mock` (= 既定) |
+| `STRIPE_WEBHOOK_SECRET` | webhook の HMAC-SHA256 検証 secret | 未設定 (= scaffolding mode で skip) |
+| `KOCHU_STRIPE_TOLERANCE_SEC` | Stripe-Signature の `t=` から現在時刻のドリフト許容秒数 | `300` (= 5 分) |
+| `KOCHU_COOKIE_SECURE` | cookie に Secure 属性を付ける | 未設定 (= localhost で cookie が立たないため off) |
+| `KOCHU_ALLOWED_ORIGINS` | CSRF Origin allowlist (CSV) | 未設定 (= dev で CSRF check skip) |
 
 ### 4. migration を手で流したい場合
 

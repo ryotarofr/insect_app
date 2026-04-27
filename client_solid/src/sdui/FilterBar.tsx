@@ -96,7 +96,11 @@ const FilterChip = (props: { groupKey: string; chip: FilterChipItem }) => {
     if (e.button !== 0) return;
     if (e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
     e.preventDefault();
-    navigate(props.chip.href);
+    // `scroll: false` で「絞り込み後にページ先頭まで戻される」挙動を抑止。
+    //   @solidjs/router の navigate は default で scroll-to-top するため、
+    //   filter chip クリックのような「同じ一覧を絞り込み直す」UX では明示的に
+    //   off にし、ユーザの現在位置 (= 見ていたカード周辺) を維持する。
+    navigate(props.chip.href, { scroll: false });
   };
 
   // count は number | undefined。`!= null` で 0 を残しつつ undefined を弾く。
