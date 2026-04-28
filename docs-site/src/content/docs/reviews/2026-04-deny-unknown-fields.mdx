@@ -1,0 +1,33 @@
+---
+title: 2026-04 SDUI 構造体に deny_unknown_fields を全面適用
+description: コードレビューで発見した SDUI v6 §10.1 違反 (CardBlock / list shell / AnalyticsEvent / ExperimentRaw) と、適用した修正の根拠 / 影響範囲 / 再発防止策。
+sidebar:
+  order: 1
+---
+
+import { Aside } from "@astrojs/starlight/components";
+
+## 何が問題だったか
+
+`CODE_REVIEW_PROMPT.md` のチェックリスト §2.1 に基づいて SDUI 構造体を点検したところ、**未知 field を silently 受け入れる経路が 4 系統** 残っていました:
+
+1. `CardBlock` 外側 (`tag = "template"`) に `deny_unknown_fields` が無い
+2. `list.rs` の 9 構造体 (`ProductListResponse` / `FilterBar` / `FilterChipItem` / `SortBar` / `SortOption` / `SearchBox` / `Pagination` / `PageLink` / `FilterGroup`) に欠落
+3. `AnalyticsEvent` / `AnalyticsEventBatch` (`POST /api/v1/events` の入力経路) に欠落
+4. `Experiment` は `try_from = "ExperimentRaw"` 経由で deserialize されるため、中間表現 `ExperimentRaw` 側の欠落が effective に効いていた
+
+## なぜ起きたか
+
+`Block` enum 側 (= 内側の判別共用体) は v6 §10.1 規律に従って付いていましたが、**外側のラッパや shell 系構造体には派生した時点で属性が引き継がれない** ため、新しい構造体を足す時に「内側の規約だけコピーして外側を忘れる」ドリフトが起きやすい構造でした。`try_from` 経由の deserialize は特に盲点で、外側の `Experiment` に `deny_unknown_fields` を付けても効きません (= deserializer は `ExperimentRaw` を見るため)。
+
+## 適用した修正
+
+<Aside type="tip" title="修正方針">
+  既存テストとの後方互換を壊さないため、`#[serde(skip_deserializing)]` フィールドはそのまま温存しています。serde-derive は skip 付きフィールド名も `__Field` 列に登録するので、`deny_unknown_fields` でも該当フィールドの入力は **拒否されません**。既存の `serverReceivedAtMs` 受け流しテストは緑のまま動きます。
+</Aside>
+
+`server/src/sdui/blocks.rs` の `CardBlock` enum、`list.rs` の 9 構造体、`analytics.rs` の 2 構造体、`experiment.rs` の `ExperimentRaw` に `deny_unknown_fields` を追加しました。`tests/sdui_roundtrip.rs` には `card_block_rejects_unknown_field_at_top_level` / `analytics_event_rejects_unknown_field` の regression を追加し、ts-rs 派生で属性が落ちた場合に CI で確実に拾えるようにしてあります。
+
+## 再発防止
+
+このサイトの「アーキテクチャ」セクションに [SDUI 三層モデル概観](/insect_app/architecture/sdui-overview/) を置き、「新しい SDUI 構造体を足す時に確認するチェックリスト」として `deny_unknown_fields` の項目を埋め込む予定です。レビュー時のひな形質問として使えるよう、構造体追加 PR テンプレートにもリンクを張ります。

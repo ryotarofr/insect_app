@@ -1,0 +1,149 @@
+---
+title: ブランド型の二段防御
+description: Rust newtype (Href / I18nKey) と TS phantom 型を組み合わせた、SDUI 型契約の実装解説。
+sidebar:
+  order: 2
+---
+
+import BrandFlowDiagram from "../../../components/BrandFlowDiagram.astro";
+import RuntimeFlowDiagram from "../../../components/RuntimeFlowDiagram.astro";
+import { Aside, Code, Tabs, TabItem } from "@astrojs/starlight/components";
+
+`Href` / `I18nKey` といった意味的に厳格な値は、**Rust 側の `parse` 検証** と **TS 側の phantom 型** を組み合わせた二段防御で守られています。このページではその構造を、データフロー図とともに上から下まで追います。
+
+## 全体像
+
+ブランド型は Rust 値 → JSON 文字列 → TS phantom 型と姿を変えながら、**型契約だけは消えずに** クライアントの consumer まで届きます。3 つのレーンで「何が型として残り、何が消えるのか」を整理したのが下の図です。
+
+<BrandFlowDiagram />
+
+色の意味は次の通りです:
+
+- **クリーム + 緑枠** がブランド境界 (= 型契約の主役、注目箇所)。
+- **白 + グレー枠** が通常ステップ。
+- **オレンジ点線** は wire 上の注意書き、または「ブランドが消える区間」の警告。
+
+## レーン①: Rust 側の newtype
+
+`server/src/sdui/blocks.rs` で `Href` と `I18nKey` は newtype として宣言されています。
+
+```rust title="server/src/sdui/blocks.rs"
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq, Hash)]
+#[serde(transparent)]                  // ← ① JSON では中身の String と同形に倒す
+#[ts(export, type = "string")]         // ← ② TS export 時は単なる string にする
+pub struct Href(String);
+
+impl Href {
+    /// 唯一の合法コンストラクタ。"/..." または "https://..." のみ許容する。
+    pub fn parse(raw: &str) -> Result<Self, HrefError> {
+        if raw.starts_with('/') || raw.starts_with("https://") {
+            Ok(Self(raw.into()))
+        } else {
+            Err(HrefError::Disallowed(raw.into()))
+        }
+    }
+}
+```
+
+ポイントが 3 つあります。`#[serde(transparent)]` で wire format 上は普通の文字列に潰すので、JSON の見た目は `"/products/p-1"` 1 行で済みます。`#[ts(export, type = "string")]` で ts-rs に「TS では string として出力してくれ」と明示し、後段で `branded.ts` が上書きしやすい素地を作ります。そして `Href::parse` を **唯一のコンストラクタ** にして、不正な文字列が `Href` 値になる経路を Rust 側で塞いでいます。
+
+<Aside type="caution" title="新規 endpoint で `Href::parse` を呼び忘れない">
+  `Href` を含む `CardBlock` を組み立てる時に **直接 `Href("...")` を書ける場所** が無いように、`pub` で公開しているコンストラクタは `parse` だけにしています。新しい handler を書く時は必ず `Href::parse(...)` を経由させてください。
+</Aside>
+
+## レーン②: JSON 上は単なる文字列
+
+`#[serde(transparent)]` のおかげで、`Href` を含む `CardBlock` をシリアライズすると wire ではこうなります:
+
+```json
+{
+  "type": "cta",
+  "key": "cta-add",
+  "intent": "primary",
+  "label": { "source": "i18n", "key": "products.add_to_cart" },
+  "href": "/products/p-1"
+}
+```
+
+**ブランド情報は JSON には乗っていない** ことに注目してください。ブランドは「TS の型システムだけに存在する印」で、ランタイム値は素の string です。これにより Rust 側 (= 型生成の正)・wire (= ただの string)・TS 側 (= phantom 型) の責務が綺麗に分離されます。
+
+## レーン③: TS 側の二段構え
+
+ts-rs が `server/bindings/Href.ts` を出力し、`scripts/gen-sdui-types.mjs` がそれらを `client_solid/src/generated/sdui.ts` に集約します。生成物はこうなります (= 図中の破線ボックス):
+
+```ts title="client_solid/src/generated/sdui.ts (auto-generated)"
+// 直接 import 禁止
+export type Href = string;
+export type I18nKey = string;
+```
+
+ここで終わると `Href` は単なる `string` の別名で、生 string と区別がつきません。そこで `branded.ts` が overlay として割り込みます。
+
+```ts title="client_solid/src/sdui/branded.ts"
+import type * as G from "../generated/sdui";
+
+declare const __brand: unique symbol;
+
+export type Href     = string & { readonly [__brand]: "Href" };
+export type I18nKey  = string & { readonly [__brand]: "I18nKey" };
+```
+
+`unique symbol` の phantom フィールドを intersect することで、TS の構造的型システム上は **「brand 印を持った string」** になります。`asHref(s)` のような明示的キャストを通さない限り `string` を `Href` に渡せず、コンパイル時に弾かれます。
+
+### Block 単位の手術スタイル上書き
+
+`branded.ts` のもう 1 つの仕事は、ts-rs が出した型 (例えば `Block::Cta`) を取り込んで、**brand 化したい field だけを `Omit` + 交差で差し替える** ことです。
+
+```ts title="client_solid/src/sdui/branded.ts (抜粋)"
+export type Block =
+  | (Omit<Extract<G.Block, { type: "cta" }>, "href" | "label"> & {
+      href: Href;            // ← 生 string から branded Href に置換
+      label: Localizable;    // ← 内部の I18nKey も branded 化済み
+    })
+  | (Omit<Extract<G.Block, { type: "media" }>, "alt"> & {
+      alt?: Localizable;
+    })
+  // 他の variant は brand 化が要らないので G.Block から流用
+  | Extract<G.Block, { type: "price" }>
+  | Extract<G.Block, { type: "divider" }>;
+```
+
+`Omit` で旧 field を剥がして新 field を `&` で繋ぎ直すと、tag union (`type: "cta"` 等) の discriminator はそのまま保ったまま、内部 field だけブランド版にすげ替えられます。これにより TS 側の `<Switch>/<Match>` narrow が壊れません。
+
+## 実行時の流れを 1 リクエスト追う
+
+ブランドの「行き来」を 1 件のリクエストで追うとこうなります。
+
+<RuntimeFlowDiagram />
+
+ステップ 4 で **生 string を渡そうとすると tsc コンパイル時にエラー** になる、というのがブランド型が「実際に効く」瞬間です。値そのものは単なる `"/products/p-1"` ですが、TS の型システム上は `Href` という固有の型として追跡されており、`<a href={someRandomString}>` のような書き方を撥ねます。
+
+## ブランドが守ってくれる範囲・守ってくれない範囲
+
+ブランドは「型エラーで気付ける範囲」を増やす道具で、ランタイム検証の代わりにはなりません。役割分担を整理するとこうなります。
+
+| 検証ポイント | 担当 | 失敗の現れ方 |
+| --- | --- | --- |
+| `"foo"` のような不正な URL を Href にしようとする | Rust の `Href::parse` | 4xx / `HrefError` |
+| 重複 `key` が CardBlock に含まれる | Rust の `ValidateKeys` (deserialize 後) | 400 BadRequest |
+| 未知 field が JSON に含まれる | `#[serde(deny_unknown_fields)]` | deserialize 失敗 |
+| TS で生 string を Href として渡してしまう | `branded.ts` の phantom 型 | **`tsc` コンパイルエラー** |
+| ランタイムで偽 Href (= 単なる string) を捏造 | **守られない** | キャスト経由なら通る |
+
+最後の行が肝で、`branded.ts` の `asHref(s)` / `asI18nKey(s)` は実態としては `s as Href` の単純なキャストです。**「テストフィクスチャを書く時の唯一の合法 escape hatch」** として用意されており、本番コードではこのキャストを書かないのが規律です。
+
+## 新規ブロックを追加するときの手順
+
+「新しい SDUI ブロックに href を持たせたい」と言われた時の作業順がそのままこのデータフローを辿ります。
+
+1. `server/src/sdui/blocks.rs` の `Block` enum に新 variant を追加し、href 系の field を `Href` 型で持たせる。`#[serde(deny_unknown_fields)]` は enum レベルで既に効いている。
+2. `cargo test` で ts-rs 自動エクスポートを再生成 → `server/bindings/Block.ts` が更新される。
+3. `npm run gen:sdui` で `client_solid/src/generated/sdui.ts` に集約 (= 自動生成、人間は触らない)。
+4. `client_solid/src/sdui/branded.ts` に手動で「新 variant の href / Localizable を branded 型に置換する」エントリを足す。
+5. consumer 側 (= `BlockRenderer` に新 view を追加するなど) は `branded.ts` から import するだけ。
+
+ステップ 4 を忘れると「型は通るが href が単なる string 扱いになる」状態になります。レビューで気付くポイントは、`branded.ts` の `Block` 型 union に新 variant が追加されているかどうか — それが **二段防御の 2 段目を貼り直したかの確認** になります。
+
+## まとめ
+
+ブランドの本質は **「Rust 側で validation 済みであることを TS の型システムでも追跡し続ける phantom な印」** です。wire 経由で消えそうな型情報を、`branded.ts` の overlay が物理的に貼り直しています。実装上は単なる `Omit` + 交差ですが、これがあるかないかで「`<a href={raw}>` という事故」が tsc 段階で止まるか、本番で踏むかが分かれます。

@@ -1,0 +1,43 @@
+---
+title: SDUI 三層モデル概観
+description: Region → Block → Role の三層を中心とした SDUI v6 の構造を、本サイトの導線として概観する。
+sidebar:
+  order: 1
+---
+
+import { Aside, LinkCard, CardGrid } from "@astrojs/starlight/components";
+
+このページは **SDUI 三層モデル v6** に関連するページの導線です。本文は移植済みの正典 ([SDUI v6 設計書](/insect_app/architecture/sdui-three-layer-model-v6/)) を読んでいただき、ここではトピックごとの読み始め先を整理します。
+
+<Aside type="note" title="正典の所在">
+  実装の根拠としては [SDUI 三層モデル v6](/insect_app/architecture/sdui-three-layer-model-v6/) を引いてください。`v1` 〜 `v5` は [履歴 (legacy)](/insect_app/legacy/sdui-three-layer-model-v5/) セクションに移してあり、現行の根拠にはなりません。
+</Aside>
+
+## 三層の責務 (要約)
+
+`Region` (= ページ内の意味的領域) → `Block` (= 最小単位の意味的部品) → `Role` (= ブロック内の役割) という階層で UI を server-driven に表現します。各層が「何を表現するか」「何を表現しないか」を明確に分けることで、テンプレート (= `CardBlock` の variant) を増やしても破綻しない契約を維持します。
+
+## どこから読むか
+
+<CardGrid>
+  <LinkCard
+    title="SDUI v6 設計書 (正典)"
+    href="/insect_app/architecture/sdui-three-layer-model-v6/"
+    description="20 章ある仕様書。§4 Block スキーマ・§5 Region・§10 deserialize 規律・§11.8 server-driven state pattern が中核。"
+  />
+  <LinkCard
+    title="フロントエンド統合ガイド"
+    href="/insect_app/architecture/sdui-frontend-integration-guide/"
+    description="SDUI API を消費するフロントエンド開発者向け 30 分ガイド。"
+  />
+  <LinkCard
+    title="ブランド型の二段防御"
+    href="/insect_app/architecture/brand-types/"
+    description="Rust newtype + TS phantom 型でデータフローを通す仕組み。図入り。"
+  />
+  <LinkCard
+    title="API endpoint 一覧"
+    href="/insect_app/architecture/api-v1-endpoints/"
+    description="/api/v1/* 各エンドポイントの実装逆引き reference。"
+  />
+</CardGrid>

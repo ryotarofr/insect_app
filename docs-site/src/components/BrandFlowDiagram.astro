@@ -1,0 +1,144 @@
+---
+// BrandFlowDiagram.astro — ブランド型データフロー図 (Rust → JSON → TS の 3 レーン)
+//
+// **使い方** (MDX 内):
+//   import BrandFlowDiagram from "../../../components/BrandFlowDiagram.astro";
+//   <BrandFlowDiagram />
+//
+// **設計判断**:
+//   - 色は CSS 変数に頼らず明示色で定義 (Starlight の light/dark どちらでも視認できるよう)。
+//   - aria-labelledby で title / desc を持たせ、スクリーンリーダー対応。
+//   - viewBox は 980x580。レスポンシブで縮むよう width: 100% を style に当てる。
+---
+
+<svg
+  viewBox="0 0 980 580"
+  xmlns="http://www.w3.org/2000/svg"
+  role="img"
+  aria-labelledby="brand-flow-title brand-flow-desc"
+  style="width: 100%; height: auto; max-width: 980px; display: block;"
+>
+  <title id="brand-flow-title">Branded type data flow: Rust → JSON → TypeScript</title>
+  <desc id="brand-flow-desc">
+    Three vertical lanes show how Href and I18nKey travel from Rust newtype to JSON wire format
+    to a TypeScript phantom-branded type.
+  </desc>
+
+  <rect x="0" y="0" width="980" height="580" fill="#faf8f3" />
+
+  <defs>
+    <marker id="brand-flow-arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569" />
+    </marker>
+    <marker id="brand-flow-arr-accent" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="9" markerHeight="9" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#15803d" />
+    </marker>
+  </defs>
+
+  <text x="20" y="30" font-family="system-ui, sans-serif" font-size="15" font-weight="700" fill="#0f172a">
+    Branded 型データフロー (Rust 値 → JSON 文字列 → TS phantom 型)
+  </text>
+
+  <!-- 3 lanes -->
+  <rect x="20"  y="50" width="290" height="490" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2" rx="8" />
+  <rect x="345" y="50" width="290" height="490" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2" rx="8" />
+  <rect x="670" y="50" width="290" height="490" fill="#ffffff" stroke="#cbd5e1" stroke-width="1.2" rx="8" />
+
+  <!-- lane headers -->
+  <rect x="20"  y="50" width="290" height="56" fill="#1e293b" rx="8" />
+  <rect x="20"  y="98" width="290" height="8"  fill="#1e293b" />
+  <text x="40"  y="78" font-family="system-ui, sans-serif" font-size="14" font-weight="700" fill="#ffffff">① Server (Rust)</text>
+  <text x="40"  y="96" font-family="ui-monospace, monospace" font-size="11" fill="#cbd5e1">server/src/sdui/blocks.rs</text>
+
+  <rect x="345" y="50" width="290" height="56" fill="#475569" rx="8" />
+  <rect x="345" y="98" width="290" height="8"  fill="#475569" />
+  <text x="365" y="78" font-family="system-ui, sans-serif" font-size="14" font-weight="700" fill="#ffffff">② Wire (JSON)</text>
+  <text x="365" y="96" font-family="ui-monospace, monospace" font-size="11" fill="#e2e8f0">HTTP body</text>
+
+  <rect x="670" y="50" width="290" height="56" fill="#15803d" rx="8" />
+  <rect x="670" y="98" width="290" height="8"  fill="#15803d" />
+  <text x="690" y="78" font-family="system-ui, sans-serif" font-size="14" font-weight="700" fill="#ffffff">③ Client (TypeScript)</text>
+  <text x="690" y="96" font-family="ui-monospace, monospace" font-size="11" fill="#dcfce7">client_solid/src/sdui/</text>
+
+  <!-- ① Rust newtype -->
+  <rect x="40" y="120" width="250" height="92" fill="#fef9c3" stroke="#15803d" stroke-width="1.8" rx="6" />
+  <text x="55" y="142" font-family="system-ui, sans-serif" font-size="13" font-weight="700" fill="#0f172a">Href / I18nKey  (newtype)</text>
+  <text x="55" y="162" font-family="ui-monospace, monospace" font-size="11.5" fill="#0f172a">pub struct Href(String);</text>
+  <text x="55" y="180" font-family="ui-monospace, monospace" font-size="11.5" fill="#0f172a">#[serde(transparent)]</text>
+  <text x="55" y="198" font-family="ui-monospace, monospace" font-size="11.5" fill="#0f172a">#[ts(export, type="string")]</text>
+
+  <rect x="40" y="225" width="250" height="64" fill="#f1f5f9" stroke="#475569" stroke-width="1" rx="6" />
+  <text x="55" y="245" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#0f172a">Href::parse(&amp;str)</text>
+  <text x="55" y="263" font-family="system-ui, sans-serif" font-size="11" fill="#334155">"/" or "https://" のみ許可。</text>
+  <text x="55" y="279" font-family="system-ui, sans-serif" font-size="11" fill="#334155">不正値は HrefError でビルド時拒否。</text>
+
+  <rect x="40" y="302" width="250" height="62" fill="#f1f5f9" stroke="#475569" stroke-width="1" rx="6" />
+  <text x="55" y="322" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#0f172a">handler が組み立て</text>
+  <text x="55" y="340" font-family="system-ui, sans-serif" font-size="11" fill="#334155">cards.rs / list.rs などが Href を</text>
+  <text x="55" y="356" font-family="system-ui, sans-serif" font-size="11" fill="#334155">含む CardBlock を build → Json で返す</text>
+
+  <!-- ② Wire -->
+  <rect x="365" y="120" width="250" height="92" fill="#fef9c3" stroke="#15803d" stroke-width="1.8" rx="6" />
+  <text x="380" y="142" font-family="system-ui, sans-serif" font-size="13" font-weight="700" fill="#0f172a">serde_json (transparent)</text>
+  <text x="380" y="162" font-family="ui-monospace, monospace" font-size="11.5" fill="#0f172a">{`{`}</text>
+  <text x="390" y="180" font-family="ui-monospace, monospace" font-size="11.5" fill="#0f172a">"href": "/products/p-1",</text>
+  <text x="390" y="198" font-family="ui-monospace, monospace" font-size="11.5" fill="#0f172a">"label": {`{ "source": "i18n",…}`}</text>
+
+  <rect x="365" y="225" width="250" height="48" fill="#fff7ed" stroke="#f59e0b" stroke-width="1" stroke-dasharray="5 3" rx="6" />
+  <text x="380" y="244" font-family="system-ui, sans-serif" font-size="11" fill="#92400e" font-weight="600">JSON は just-string で運ぶ。</text>
+  <text x="380" y="262" font-family="system-ui, sans-serif" font-size="11" fill="#92400e">brand 情報は wire に乗らない。</text>
+
+  <rect x="365" y="302" width="250" height="62" fill="#f1f5f9" stroke="#475569" stroke-width="1" rx="6" />
+  <text x="380" y="322" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#0f172a">fetch(...) → res.json()</text>
+  <text x="380" y="340" font-family="system-ui, sans-serif" font-size="11" fill="#334155">api.ts の fetchJson&lt;T&gt;() が</text>
+  <text x="380" y="356" font-family="system-ui, sans-serif" font-size="11" fill="#334155">JSON を T (= branded 型) として返す</text>
+
+  <!-- ③ Client -->
+  <rect x="690" y="120" width="250" height="80" fill="#f5f5f4" stroke="#94a3b8" stroke-width="1" stroke-dasharray="5 3" rx="6" />
+  <text x="705" y="140" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#475569">generated/sdui.ts (auto-gen)</text>
+  <text x="705" y="160" font-family="ui-monospace, monospace" font-size="11" fill="#334155">export type Href = string;</text>
+  <text x="705" y="180" font-family="system-ui, sans-serif" font-size="11" fill="#475569">直接 import 禁止 (lint で防ぐ予定)</text>
+
+  <rect x="690" y="215" width="250" height="124" fill="#fef9c3" stroke="#15803d" stroke-width="1.8" rx="6" />
+  <text x="705" y="237" font-family="system-ui, sans-serif" font-size="13" font-weight="700" fill="#0f172a">branded.ts (overlay)</text>
+  <text x="705" y="258" font-family="ui-monospace, monospace" font-size="11" fill="#0f172a">declare const __brand: unique</text>
+  <text x="705" y="274" font-family="ui-monospace, monospace" font-size="11" fill="#0f172a">  symbol;</text>
+  <text x="705" y="296" font-family="ui-monospace, monospace" font-size="11" fill="#0f172a">type Href = string &amp;</text>
+  <text x="705" y="312" font-family="ui-monospace, monospace" font-size="11" fill="#0f172a">  {`{ readonly`}</text>
+  <text x="705" y="328" font-family="ui-monospace, monospace" font-size="11" fill="#0f172a">    [__brand]: "Href" {`}`};</text>
+
+  <rect x="690" y="354" width="250" height="62" fill="#f1f5f9" stroke="#475569" stroke-width="1" rx="6" />
+  <text x="705" y="374" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#0f172a">Consumer (Block / Card …)</text>
+  <text x="705" y="392" font-family="system-ui, sans-serif" font-size="11" fill="#334155">Cta.tsx 等は Href を要求 →</text>
+  <text x="705" y="408" font-family="system-ui, sans-serif" font-size="11" fill="#334155">生 string を渡すと型エラー</text>
+
+  <rect x="690" y="430" width="250" height="62" fill="#f1f5f9" stroke="#475569" stroke-width="1" rx="6" />
+  <text x="705" y="450" font-family="system-ui, sans-serif" font-size="12" font-weight="700" fill="#0f172a">asHref / asI18nKey (escape hatch)</text>
+  <text x="705" y="468" font-family="system-ui, sans-serif" font-size="11" fill="#334155">テスト用。本番コードは使わない</text>
+  <text x="705" y="484" font-family="system-ui, sans-serif" font-size="11" fill="#334155">(branded.ts に閉じている)</text>
+
+  <!-- 横向き矢印 -->
+  <line x1="295" y1="165" x2="358" y2="165" stroke="#475569" stroke-width="1.5" marker-end="url(#brand-flow-arr)" />
+  <text x="298" y="155" font-family="system-ui, sans-serif" font-size="10.5" fill="#334155" font-weight="600">to_json()</text>
+
+  <line x1="620" y1="165" x2="683" y2="165" stroke="#475569" stroke-width="1.5" marker-end="url(#brand-flow-arr)" />
+  <text x="623" y="155" font-family="system-ui, sans-serif" font-size="10.5" fill="#334155" font-weight="600">ts-rs export</text>
+
+  <line x1="620" y1="280" x2="683" y2="280" stroke="#15803d" stroke-width="1.8" marker-end="url(#brand-flow-arr-accent)" />
+  <text x="617" y="270" font-family="system-ui, sans-serif" font-size="10.5" fill="#15803d" font-weight="700">overlay (Omit + &amp; brand)</text>
+
+  <line x1="620" y1="385" x2="683" y2="385" stroke="#475569" stroke-width="1.5" marker-end="url(#brand-flow-arr)" />
+  <text x="617" y="375" font-family="system-ui, sans-serif" font-size="10.5" fill="#334155" font-weight="600">import from "./branded"</text>
+
+  <line x1="295" y1="333" x2="358" y2="333" stroke="#475569" stroke-width="1.5" marker-end="url(#brand-flow-arr)" />
+  <text x="298" y="323" font-family="system-ui, sans-serif" font-size="10.5" fill="#334155" font-weight="600">200 OK + body</text>
+
+  <!-- 凡例 -->
+  <rect x="20"  y="552" width="14" height="14" fill="#fef9c3" stroke="#15803d" stroke-width="1.8" rx="3" />
+  <text x="42"  y="563" font-family="system-ui, sans-serif" font-size="11" fill="#0f172a">緑枠 = ブランド境界 (型契約の主役)</text>
+
+  <rect x="350" y="552" width="14" height="14" fill="#f5f5f4" stroke="#94a3b8" stroke-width="1" stroke-dasharray="3 2" rx="3" />
+  <text x="372" y="563" font-family="system-ui, sans-serif" font-size="11" fill="#0f172a">破線 = 自動生成 / 副次ステージ (直接触らない)</text>
+
+  <text x="700" y="563" font-family="system-ui, sans-serif" font-size="11" fill="#475569">brand は TS の phantom 型 (ランタイム 0 cost)</text>
+</svg>
