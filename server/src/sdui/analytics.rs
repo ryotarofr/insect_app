@@ -22,8 +22,14 @@ use serde::{Deserialize, Serialize};
 use ts_rs::TS;
 
 /// 1 件の Analytics イベント。
+///
+/// review fix (major): SDUI v6 §10.1 / CODE_REVIEW_PROMPT §2.1 — `analyticsId` /
+/// `eventType` / `timestampMs` / `context` / `serverReceivedAtMs` 以外の field を
+/// silently 受け入れると後段集計でゴミが混入するため `deny_unknown_fields` を強制する。
+/// 自由記述コンテキストは `context: BTreeMap` に閉じ込める設計で、トップレベルの
+/// 拡張は contract 変更扱いで明示的に追加する。
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 #[ts(export)]
 pub struct AnalyticsEvent {
     /// 対象 Block / Card の analyticsId。空文字は不可。
@@ -66,8 +72,10 @@ pub enum AnalyticsEventType {
 }
 
 /// `POST /api/v1/events` で送られる batch payload。
+///
+/// review fix (major): SDUI v6 §10.1 — batch 包み構造側でも未知 field を弾く。
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 #[ts(export)]
 pub struct AnalyticsEventBatch {
     pub events: Vec<AnalyticsEvent>,

@@ -11,7 +11,7 @@
 //   - status filter / 期間フィルタ
 //   - ページネーション (現状は 1 リクエストで全件返す前提)
 
-import { createResource, For, Show } from "solid-js";
+import { createResource, For, Match, Show, Switch } from "solid-js";
 
 import type { RouteKey } from "../data";
 import {
@@ -150,38 +150,50 @@ const StatusBadge = (props: { status: string }) => {
   );
 };
 
+// review fix (minor / SolidJS): CODE_REVIEW_PROMPT §2.9 — `const err = props.err`
+// + `if (...) return <X>` の早期 return で props を 1 度だけ評価すると、`<Show>` の
+// fallback 側で props.err が 401 → 500 / 500 → 0 と変わった時に古い branch のまま
+// 残る。`<Switch>/<Match>` で reactive 分岐に倒し、各 Match の `when` を function
+// (= reactive getter) で渡すと props.err 更新が DOM に反映される。
 const ErrorBlock = (props: { err: unknown; setRoute: (k: RouteKey) => void }) => {
-  const err = props.err;
-  if (err instanceof SduiFetchError && err.status === 401) {
-    return (
-      <div style={{ padding: "16px 0" }}>
-        <p>注文履歴の閲覧にはログインが必要です。</p>
-        <a
-          href={ROUTE_PATHS.login}
-          onClick={(e) => {
-            // SPA navigation: <a> が router の navigate を叩くようにする
-            e.preventDefault();
-            props.setRoute("login");
-          }}
-          style={{ color: "var(--accent, #1a7f37)" }}
-        >
-          ログインへ
-        </a>
-      </div>
-    );
-  }
-  if (err instanceof SduiFetchError && err.status === 0) {
-    return (
-      <p style={{ color: "var(--alert, #cf222e)" }}>
-        ネットワーク接続を確認してください。
-      </p>
-    );
-  }
-  const msg = err instanceof Error ? err.message : String(err);
+  const isUnauthorized = () =>
+    props.err instanceof SduiFetchError && props.err.status === 401;
+  const isOffline = () =>
+    props.err instanceof SduiFetchError && props.err.status === 0;
+  const fallbackMessage = () => {
+    const e = props.err;
+    return e instanceof Error ? e.message : String(e);
+  };
   return (
-    <p style={{ color: "var(--alert, #cf222e)" }}>
-      注文履歴の取得に失敗しました: {msg}
-    </p>
+    <Switch
+      fallback={
+        <p style={{ color: "var(--alert, #cf222e)" }}>
+          注文履歴の取得に失敗しました: {fallbackMessage()}
+        </p>
+      }
+    >
+      <Match when={isUnauthorized()}>
+        <div style={{ padding: "16px 0" }}>
+          <p>注文履歴の閲覧にはログインが必要です。</p>
+          <a
+            href={ROUTE_PATHS.login}
+            onClick={(e) => {
+              // SPA navigation: <a> が router の navigate を叩くようにする
+              e.preventDefault();
+              props.setRoute("login");
+            }}
+            style={{ color: "var(--accent, #1a7f37)" }}
+          >
+            ログインへ
+          </a>
+        </div>
+      </Match>
+      <Match when={isOffline()}>
+        <p style={{ color: "var(--alert, #cf222e)" }}>
+          ネットワーク接続を確認してください。
+        </p>
+      </Match>
+    </Switch>
   );
 };
 

@@ -17,7 +17,7 @@
 //   `IntersectionObserver` が存在しない (jsdom 等) → mount 時に即発火する。
 //   = 「描画されたら見えたとみなす」近似。テストではこの挙動を assert する。
 
-import { onMount, type JSX, type ParentComponent } from "solid-js";
+import { onCleanup, onMount, type JSX, type ParentComponent } from "solid-js";
 
 import {
   toAnalyticsContext,
@@ -75,6 +75,12 @@ export const TrackImpression: ParentComponent<TrackImpressionProps> = (
       { threshold: props.threshold ?? 0.5 },
     );
     io.observe(elRef);
+    // review fix (minor / SolidJS): CODE_REVIEW_PROMPT §2.9 — `onCleanup` 漏れによるリーク。
+    // 通常は entry.isIntersecting で発火 → io.disconnect() するが、要素が画面に乗る前に
+    // unmount された場合 (例: cards 一覧から別ルートへ遷移、ページ遷移で <For> が再生成)、
+    // observer が detached DOM 要素への参照を保持したままになり、GC が走るまで残る。
+    // 明示的に disconnect しておくのが SolidJS の慣用句。
+    onCleanup(() => io.disconnect());
   });
 
   return (

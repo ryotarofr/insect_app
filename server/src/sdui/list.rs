@@ -65,8 +65,14 @@ use ts_rs::TS;
 use super::blocks::{CardBlock, Href, Localizable};
 
 /// 一覧 endpoint (`GET /api/v1/cards/products?...`) のレスポンス shell。
+///
+/// review fix (major): SDUI v6 §10.1 / CODE_REVIEW_PROMPT §2.1 — list shell 系も
+/// SDUI 契約に乗る型なので `deny_unknown_fields` を付けて、サーバ実装の typo や
+/// 旧クライアントの古い field が silently 通る事故を起こさないようにする。
+/// 任意フィールド (filter_bar / sort_bar / search_box / pagination) は
+/// `Option` + `skip_serializing_if` の組み合わせでそのまま optional に保たれる。
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 #[ts(export)]
 pub struct ProductListResponse {
     /// 絞り込み UI 群。
@@ -97,7 +103,7 @@ pub struct ProductListResponse {
 
 /// 絞り込みエリア全体。複数の `FilterGroup` を縦に並べる想定。
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 #[ts(export)]
 pub struct FilterBar {
     pub groups: Vec<FilterGroup>,
@@ -105,7 +111,7 @@ pub struct FilterBar {
 
 /// 絞り込み 1 軸ぶん (例: 「カテゴリ」「飼育難度」)。
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 #[ts(export)]
 pub struct FilterGroup {
     /// クエリパラメータ名 (`?category=...` の "category")。group 内ユニーク。
@@ -125,7 +131,7 @@ pub struct FilterGroup {
 ///   将来 chip 専用の UI (削除 X ボタン / カウント badge など) を追加する余地を
 ///   残すため、独立 struct とする。
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 #[ts(export)]
 pub struct FilterChipItem {
     /// chip の値識別子 (例: "live" / "supply" / "easy")。group 内一意。
@@ -158,7 +164,7 @@ pub struct FilterChipItem {
 /// クライアントは current === option.key で selected を判定できるが、
 /// `SortOption.selected` も明示的に持たせて renderer の責務を減らしている。
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 #[ts(export)]
 pub struct SortBar {
     /// 現在適用中の sort key (例: "name" / "price_asc" / "new")。
@@ -171,7 +177,7 @@ pub struct SortBar {
 /// 1 つの並び順候補。filter chip と似ているが、selected 切替時に
 /// 「自分を抜く / 自分を追加する」のではなく「自分に置き換える」のが違い。
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 #[ts(export)]
 pub struct SortOption {
     /// sort 値識別子 (例: "name" / "price_asc" / "price_desc" / "new")。
@@ -200,7 +206,7 @@ pub struct SortOption {
 /// `paramName` を field として持つ理由: 将来 `?keyword=` 等にリネームしたくなった時、
 /// クライアントを変えずに移行できる (= server だけで決められる)。
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 #[ts(export)]
 pub struct SearchBox {
     /// 現在の検索文字列 (空 / 未指定なら None)。controlled input の初期値として使う。
@@ -228,7 +234,7 @@ pub struct SearchBox {
 /// page link を flat な Vec<PageLink> で表現するのは、render 側で `for (link of pages)`
 /// するだけで済むようにするため。range collapse のロジックは server に集約。
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
-#[serde(tag = "kind", rename_all = "camelCase")]
+#[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
 #[ts(export)]
 pub enum PageLink {
     /// 数字リンク。
@@ -250,7 +256,7 @@ pub enum PageLink {
 /// **prevHref / nextHref が None** の時は disabled (first/last page を超えるリンクを描かない)。
 /// クライアントは `data-disabled="true"` 付きの span などで render すればよい。
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
 #[ts(export)]
 pub struct Pagination {
     /// 現在のページ番号 (1 始まり)。

@@ -10,7 +10,7 @@
 //   - 「再注文する」「キャンセル申請」等のアクション
 //   - 注文ステータスの timeline / status_history 表示
 
-import { createResource, For, Show } from "solid-js";
+import { createResource, For, Match, Show, Switch } from "solid-js";
 
 import type { RouteKey } from "../data";
 import {
@@ -172,52 +172,63 @@ const StatusBadge = (props: { status: string }) => {
   );
 };
 
+// review fix (minor / SolidJS): CODE_REVIEW_PROMPT §2.9 — `const err = props.err`
+// + 早期 return パターンは props 更新を取りこぼす。`<Switch>/<Match>` で reactive
+// 分岐に置換し、各 `when` を function で渡すことで 401 → 404 → 0 の遷移が DOM に
+// 反映されるようにする。MyOrders.tsx の ErrorBlock と対称な修正。
 const ErrorBlock = (props: { err: unknown; setRoute: (k: RouteKey) => void }) => {
-  const err = props.err;
-  if (err instanceof SduiFetchError && err.status === 401) {
-    return (
-      <div>
-        <p>注文の閲覧にはログインが必要です。</p>
-        <a
-          href={ROUTE_PATHS.login}
-          onClick={(e) => {
-            e.preventDefault();
-            props.setRoute("login");
-          }}
-        >
-          ログインへ
-        </a>
-      </div>
-    );
-  }
-  if (err instanceof SduiFetchError && err.status === 404) {
-    return (
-      <div>
-        <p>注文が見つかりません (URL の id が不正か、他人の注文の可能性があります)。</p>
-        <a
-          href={ROUTE_PATHS.orders}
-          onClick={(e) => {
-            e.preventDefault();
-            props.setRoute("orders");
-          }}
-        >
-          注文履歴に戻る
-        </a>
-      </div>
-    );
-  }
-  if (err instanceof SduiFetchError && err.status === 0) {
-    return (
-      <p style={{ color: "var(--alert, #cf222e)" }}>
-        ネットワーク接続を確認してください。
-      </p>
-    );
-  }
-  const msg = err instanceof Error ? err.message : String(err);
+  const isUnauthorized = () =>
+    props.err instanceof SduiFetchError && props.err.status === 401;
+  const isNotFound = () =>
+    props.err instanceof SduiFetchError && props.err.status === 404;
+  const isOffline = () =>
+    props.err instanceof SduiFetchError && props.err.status === 0;
+  const fallbackMessage = () => {
+    const e = props.err;
+    return e instanceof Error ? e.message : String(e);
+  };
   return (
-    <p style={{ color: "var(--alert, #cf222e)" }}>
-      注文詳細の取得に失敗しました: {msg}
-    </p>
+    <Switch
+      fallback={
+        <p style={{ color: "var(--alert, #cf222e)" }}>
+          注文詳細の取得に失敗しました: {fallbackMessage()}
+        </p>
+      }
+    >
+      <Match when={isUnauthorized()}>
+        <div>
+          <p>注文の閲覧にはログインが必要です。</p>
+          <a
+            href={ROUTE_PATHS.login}
+            onClick={(e) => {
+              e.preventDefault();
+              props.setRoute("login");
+            }}
+          >
+            ログインへ
+          </a>
+        </div>
+      </Match>
+      <Match when={isNotFound()}>
+        <div>
+          <p>注文が見つかりません (URL の id が不正か、他人の注文の可能性があります)。</p>
+          <a
+            href={ROUTE_PATHS.orders}
+            onClick={(e) => {
+              e.preventDefault();
+              props.setRoute("orders");
+            }}
+          >
+            注文履歴に戻る
+          </a>
+        </div>
+      </Match>
+      <Match when={isOffline()}>
+        <p style={{ color: "var(--alert, #cf222e)" }}>
+          ネットワーク接続を確認してください。
+        </p>
+      </Match>
+    </Switch>
   );
 };
 

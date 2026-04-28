@@ -180,7 +180,11 @@ export const ProductsList = (props: ProductsListProps) => {
 };
 
 const GridErrorView = (props: { error: unknown; onRetry: () => void }) => {
-  const e = props.error;
+  // review fix (minor / SolidJS): CODE_REVIEW_PROMPT §2.9 — `const e = props.error` で
+  // proxy getter を 1 度だけ評価するとリアクティビティが切れ、`<Show>` 経由で
+  // 同 fallback が再利用される時に「古い error が DOM に残る」(= 通信失敗 →
+  // 再試行で別エラー → 表示が初回のままになる) 事故が起きる。`props.error` を
+  // JSX 内で直接読む形にして、各アクセスを reactive な getter に保つ。
   return (
     <div
       style={{
@@ -196,9 +200,9 @@ const GridErrorView = (props: { error: unknown; onRetry: () => void }) => {
       <div style={{ flex: 1 }}>
         <strong>商品一覧を取得できませんでした</strong>
         <div style={{ "font-size": "12px", "margin-top": "4px" }}>
-          {e instanceof SduiFetchError
-            ? `HTTP ${e.status} — ${e.message}`
-            : `予期しないエラー: ${String(e)}`}
+          {props.error instanceof SduiFetchError
+            ? `HTTP ${props.error.status} — ${props.error.message}`
+            : `予期しないエラー: ${String(props.error)}`}
         </div>
       </div>
       <button
@@ -287,8 +291,13 @@ export const ProductDetail = (props: ProductDetailProps) => {
 };
 
 const DetailErrorView = (props: { error: unknown; onRetry: () => void }) => {
-  const e = props.error;
-  const isNotFound = e instanceof SduiFetchError && e.status === 404;
+  // review fix (minor / SolidJS): CODE_REVIEW_PROMPT §2.9 — props.error を一度だけ
+  // 取り出して `const e = ...` / `const isNotFound = ...` で固めると、`<Show>` で
+  // 同じ fallback が再評価される際に古いエラー文言が残ったまま 404 ↔ 500 が反映されない。
+  // 各 reactive read を JSX 内に閉じ込めるか、`createMemo` 化する必要がある。
+  // ここでは createMemo を使って 404 判定を再利用しつつ reactivity を維持する。
+  const isNotFound = () =>
+    props.error instanceof SduiFetchError && props.error.status === 404;
 
   return (
     <div
@@ -304,12 +313,12 @@ const DetailErrorView = (props: { error: unknown; onRetry: () => void }) => {
     >
       <div style={{ flex: 1 }}>
         <strong>
-          {isNotFound ? "商品が見つかりませんでした" : "商品詳細を取得できませんでした"}
+          {isNotFound() ? "商品が見つかりませんでした" : "商品詳細を取得できませんでした"}
         </strong>
         <div style={{ "font-size": "12px", "margin-top": "4px" }}>
-          {e instanceof SduiFetchError
-            ? `HTTP ${e.status} — ${e.message}`
-            : `予期しないエラー: ${String(e)}`}
+          {props.error instanceof SduiFetchError
+            ? `HTTP ${props.error.status} — ${props.error.message}`
+            : `予期しないエラー: ${String(props.error)}`}
         </div>
       </div>
       <Show when={!isNotFound}>

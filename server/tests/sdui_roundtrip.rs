@@ -565,6 +565,43 @@ fn block_text_rejects_unknown_field_in_variant() {
     );
 }
 
+// review fix (major): SDUI v6 §10.1 — `CardBlock` の外側 (`tag = "template"`) でも
+// `deny_unknown_fields` が effective であることを regression として固める。
+// `Block` 同様、ts-rs 経由の派生で属性が落ちると silent に通るため、専用テストで保険を掛ける。
+#[test]
+fn card_block_rejects_unknown_field_at_top_level() {
+    let json = r#"{
+        "template": "product_feature",
+        "id": "X-001",
+        "regions": {},
+        "rogueField": 42
+    }"#;
+    let result: Result<CardBlock, _> = serde_json::from_str(json);
+    assert!(
+        result.is_err(),
+        "CardBlock must reject unknown fields (deny_unknown_fields)"
+    );
+}
+
+// review fix (major): SDUI v6 §10.1 — `AnalyticsEvent` も拡張された contract に
+// 乗るため未知 field は弾く。analytics 取り込み経路は外部入力に近い (= client から
+// POST される) ので、特に `analyticsId` の typo / 偽装フィールドが silently
+// 取り込まれないことを保証する。
+#[test]
+fn analytics_event_rejects_unknown_field() {
+    let json = r#"{
+        "analyticsId": "x.y",
+        "eventType": "click",
+        "timestampMs": 1,
+        "rogueField": "should be rejected"
+    }"#;
+    let result: Result<AnalyticsEvent, _> = serde_json::from_str(json);
+    assert!(
+        result.is_err(),
+        "AnalyticsEvent must reject unknown fields (deny_unknown_fields)"
+    );
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // 未使用 import 警告抑制 (将来 strategy 拡張時に活きる)
 // ──────────────────────────────────────────────────────────────────────

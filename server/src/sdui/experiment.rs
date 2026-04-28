@@ -28,7 +28,13 @@ pub enum ExperimentError {
 }
 
 /// JSON deserialize 用の中間表現。`try_from` で `Experiment` に昇格させる。
+///
+/// review fix (major): SDUI v6 §10.1 — `Experiment` は `try_from = "ExperimentRaw"`
+/// 経由で deserialize されるため、外側 (`Experiment`) に `deny_unknown_fields` を付けても
+/// 効かない。中間表現 `ExperimentRaw` 側で未知 field を弾かないと
+/// `{"key":"x","bucket":"y","foo":"bar"}` のようなゴミが silently 通ってしまう。
 #[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
 struct ExperimentRaw {
     key: String,
     bucket: String,

@@ -747,11 +747,15 @@ pub enum CartVariant {
     Default,
 }
 
+// review fix (major): SDUI v6 §10.1 / CODE_REVIEW_PROMPT §2.1 — `Block` 同様に
+// `CardBlock` 外側でも `deny_unknown_fields` を付ける。tag-union 全体としての
+// 「未知フィールドはサイレントに通さない」契約を、テンプレート判別側でも維持する。
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(
     tag = "template",
     rename_all = "snake_case",
-    rename_all_fields = "camelCase"
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
 )]
 #[ts(export)]
 pub enum CardBlock {
