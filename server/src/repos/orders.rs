@@ -176,12 +176,12 @@ fn validate(req: &OrderInsertRequest) -> Result<(), OrderRepoError> {
             "amount_jpy must be >= 0".to_string(),
         ));
     }
-    if let Some(s) = req.shipping_jpy {
-        if s < 0 {
-            return Err(OrderRepoError::Invalid(
-                "shipping_jpy must be >= 0".to_string(),
-            ));
-        }
+    if let Some(s) = req.shipping_jpy
+        && s < 0
+    {
+        return Err(OrderRepoError::Invalid(
+            "shipping_jpy must be >= 0".to_string(),
+        ));
     }
     for li in &req.line_items {
         if li.qty == 0 || li.qty > 99 {

@@ -262,6 +262,7 @@ async fn find_password_hash_by_email_db(
     pool: &PgPool,
     email: &str,
 ) -> Result<Option<(UserRow, Option<String>)>, UserRepoError> {
+    #[allow(clippy::type_complexity)]
     let row: Option<(Uuid, String, String, String, Option<String>, String, bool, Option<String>)> =
         sqlx::query_as(
             r#"
@@ -377,6 +378,7 @@ fn memory_seed_users() -> Vec<UserRow> {
     }]
 }
 
+#[allow(clippy::type_complexity)]
 fn memory_dynamic_store() -> &'static std::sync::Mutex<Vec<(UserRow, Option<String>)>> {
     static S: std::sync::OnceLock<std::sync::Mutex<Vec<(UserRow, Option<String>)>>> =
         std::sync::OnceLock::new();

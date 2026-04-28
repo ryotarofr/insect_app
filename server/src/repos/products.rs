@@ -212,10 +212,10 @@ pub async fn warm_meta_cache(pool: Option<&PgPool>) -> Result<(), ProductRepoErr
 
 /// **互換 cache 取得**: warm_meta_cache 後の HashMap を返す。warm 前は in-memory fallback。
 pub fn cached_meta() -> HashMap<String, ProductMetaView> {
-    if let Ok(r) = meta_cache().read() {
-        if let Some(map) = r.as_ref() {
-            return map.clone();
-        }
+    if let Ok(r) = meta_cache().read()
+        && let Some(map) = r.as_ref()
+    {
+        return map.clone();
     }
     memory_meta_view_map()
 }
@@ -415,6 +415,7 @@ pub async fn find_uuid_for_public_id(
 }
 
 fn memory_products() -> Vec<Product> {
+    #[allow(clippy::too_many_arguments)]
     fn p(
         public_id: &str,
         kind: &str,

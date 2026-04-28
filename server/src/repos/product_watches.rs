@@ -298,6 +298,7 @@ async fn promote_session_to_user_db(
 // owner_key は (kind, uuid) で User(0) / Session(1) を区別する。
 // created_at は持たない (= MVP fallback / 順序が必要なら DB 経路を使う)。
 
+#[allow(clippy::type_complexity)]
 fn memory_set() -> &'static Mutex<HashSet<((u8, Uuid), Uuid)>> {
     static S: OnceLock<Mutex<HashSet<((u8, Uuid), Uuid)>>> = OnceLock::new();
     S.get_or_init(|| Mutex::new(HashSet::new()))

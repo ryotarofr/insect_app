@@ -49,14 +49,32 @@ pub struct AnalyticsEvent {
     #[ts(optional)]
     pub context: Option<BTreeMap<String, String>>,
     /// サーバ受信時刻 (ms epoch)。設計書 §11.2 の真実値。
-    /// handler が stamp し GET /events 出力で見える (skip_deserializing)。
+    /// client 送信時の値は custom deserializer (`always_none`) で読み捨てて常に `None` に
+    /// 倒し、handler が stamp する経路だけが Some を作れる (= 偽装防止)。
+    ///
+    /// **serde quirk**: 当初は `skip_deserializing` を使っていたが、これは「フィールドが
+    /// 存在しない」扱いになる結果、`deny_unknown_fields` 側から見ると JSON に当該キーが
+    /// 乗っているだけで「unknown field」エラーになるため不採用。`deserialize_with` で
+    /// 「フィールドの存在は認識するが値は無視」を表現する。
     #[serde(
         default,
-        skip_deserializing,
+        deserialize_with = "always_none",
         skip_serializing_if = "Option::is_none"
     )]
     #[ts(optional, type = "number")]
     pub server_received_at_ms: Option<i64>,
+}
+
+/// 任意の JSON 値を読み捨てて常に `None` を返す custom deserializer。
+/// `deny_unknown_fields` と「server-side stamping」を両立させるためのヘルパ。
+fn always_none<'de, D>(deserializer: D) -> Result<Option<i64>, D::Error>
+where
+    D: serde::Deserializer<'de>,
+{
+    // `IgnoredAny` は任意の JSON 値 (number / string / object / null) を消費するが
+    // 中身は捨てる。これで「フィールドの存在を認識しつつ値は無視」が表現できる。
+    let _ = serde::de::IgnoredAny::deserialize(deserializer)?;
+    Ok(None)
 }
 
 /// イベント種別。

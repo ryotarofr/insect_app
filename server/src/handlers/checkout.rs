@@ -488,7 +488,7 @@ mod tests {
         let _g = GUARD.lock().unwrap();
         reset_checkout_for_test();
         // まず値を入れて → 空で上書き → 空文字で残ること
-        patch_shipping_field(
+        let _ = patch_shipping_field(
             Path("addressTel".to_string()),
             Json(PatchShippingFieldRequest {
                 value: "080-0000-0000".to_string(),
@@ -496,7 +496,7 @@ mod tests {
         )
         .await
         .unwrap();
-        patch_shipping_field(
+        let _ = patch_shipping_field(
             Path("addressTel".to_string()),
             Json(PatchShippingFieldRequest {
                 value: String::new(),
@@ -599,7 +599,7 @@ mod tests {
         let _g = GUARD.lock().unwrap();
         reset_checkout_for_test();
         // 1 件 patch しておいて GET で読み戻し
-        patch_shipping_field(
+        let _ = patch_shipping_field(
             Path("addressName".to_string()),
             Json(PatchShippingFieldRequest {
                 value: "テスト 太郎".to_string(),

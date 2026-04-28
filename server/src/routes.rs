@@ -151,6 +151,18 @@ pub fn api_v1(state: AppState) -> Router {
             "/listings/{id}/watch",
             post(handlers::listings::toggle_watch_listing),
         )
+        // Week 2 / F4: 画像アップロード基盤 (= local mode で完結する 3 リクエスト構成)。
+        //   POST /uploads/sign            → asset 行を pending で作る + upload URL 返す
+        //   PUT  /uploads/local/{id}      → local mode の body 受信 (dev 専用)
+        //   POST /uploads/complete        → 完了通知 (= status を uploaded に遷移)
+        //   GET  /assets/{id}             → public 取得 (= image src 用)
+        .route("/uploads/sign", post(handlers::uploads::post_sign))
+        .route(
+            "/uploads/local/{asset_id}",
+            axum::routing::put(handlers::uploads::put_local_upload),
+        )
+        .route("/uploads/complete", post(handlers::uploads::post_complete))
+        .route("/assets/{asset_id}", get(handlers::uploads::get_asset))
         // Phase 9.E 補助: 全 /api/v1/* に session middleware を適用。
         // /health は外側 (main.rs::build_app) で別途 nest しているので影響なし。
         // `from_fn_with_state` で middleware に AppState を渡し、新規 session 発行時に

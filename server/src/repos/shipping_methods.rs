@@ -79,10 +79,10 @@ pub async fn warm_methods_cache(
 
 /// warm 後の HashMap を返す。warm 前は in-memory fallback。
 pub fn cached_methods() -> HashMap<String, ShippingMethodView> {
-    if let Ok(r) = methods_cache().read() {
-        if let Some(map) = r.as_ref() {
-            return map.clone();
-        }
+    if let Ok(r) = methods_cache().read()
+        && let Some(map) = r.as_ref()
+    {
+        return map.clone();
     }
     memory_methods_map()
 }

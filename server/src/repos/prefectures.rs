@@ -58,10 +58,10 @@ pub async fn warm_prefectures_cache(
 
 /// warm 後の Vec を返す。warm 前は in-memory fallback。
 pub fn cached_prefectures() -> Vec<PrefectureView> {
-    if let Ok(r) = prefectures_cache().read() {
-        if let Some(v) = r.as_ref() {
-            return v.clone();
-        }
+    if let Ok(r) = prefectures_cache().read()
+        && let Some(v) = r.as_ref()
+    {
+        return v.clone();
     }
     memory_prefectures()
 }

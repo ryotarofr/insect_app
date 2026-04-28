@@ -725,7 +725,7 @@ mod tests {
             .unwrap();
 
         // /me は通る
-        get_me(st(), ext(session)).await.unwrap();
+        let _ = get_me(st(), ext(session)).await.unwrap();
 
         // logout 後は /me が 401
         post_logout(st(), ext(session)).await.unwrap();

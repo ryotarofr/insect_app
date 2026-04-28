@@ -68,6 +68,7 @@ pub async fn toggle_watch(
 }
 
 #[cfg(test)]
+#[allow(dead_code)]
 pub(crate) fn reset_watch_for_test() {
     product_watches::reset_memory_for_test();
 }
@@ -158,7 +159,7 @@ mod tests {
         let session_b = anonymous_session().await;
 
         // session A で p-hh-m-142 を watch
-        toggle_watch(st(), ext(session_a), Path("p-hh-m-142".to_string()))
+        let _ = toggle_watch(st(), ext(session_a), Path("p-hh-m-142".to_string()))
             .await
             .unwrap();
 
@@ -177,7 +178,7 @@ mod tests {
         let (user_session, _user_id) = login_session().await;
 
         // anon が watch
-        toggle_watch(st(), ext(anon_session), Path("p-hh-m-142".to_string()))
+        let _ = toggle_watch(st(), ext(anon_session), Path("p-hh-m-142".to_string()))
             .await
             .unwrap();
         // login user は別 owner なので独立 (= Added)

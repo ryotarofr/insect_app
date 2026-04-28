@@ -606,7 +606,7 @@ fn analytics_event_rejects_unknown_field() {
 // 未使用 import 警告抑制 (将来 strategy 拡張時に活きる)
 // ──────────────────────────────────────────────────────────────────────
 
-#[allow(dead_code)]
+#[allow(dead_code, clippy::type_complexity)]
 fn _unused_imports_suppression() -> (
     CartRegions,
     CartVariant,

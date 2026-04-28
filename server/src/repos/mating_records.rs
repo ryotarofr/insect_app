@@ -79,12 +79,12 @@ fn validate_payload(p: &MatingRecordInsert) -> Result<(), MatingRepoError> {
                 .to_string(),
         ));
     }
-    if let Some(n) = p.egg_count {
-        if n < 0 {
-            return Err(MatingRepoError::Invalid(format!(
-                "egg_count must be >= 0, got {n}"
-            )));
-        }
+    if let Some(n) = p.egg_count
+        && n < 0
+    {
+        return Err(MatingRepoError::Invalid(format!(
+            "egg_count must be >= 0, got {n}"
+        )));
     }
     Ok(())
 }

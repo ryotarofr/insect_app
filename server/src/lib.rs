@@ -4,6 +4,13 @@
 //! 各モジュールを `pub mod` で公開する。
 //! 旧来 `main.rs` 側の `mod` 宣言は本ファイルに移管した。
 
+// 日本語 doc コメント内の箇条書きは clippy の Markdown 解釈と整合しないため、
+// doc 系の 2 lint は crate 全体で許可する (= 機能に影響なし)。
+#![allow(clippy::doc_lazy_continuation, clippy::doc_overindented_list_items)]
+// テストでは `Mutex` でテスト直列化する都合で MutexGuard を await 跨ぎで保持する。
+// 本番コードには登場しないため test build のみ許可する。
+#![cfg_attr(test, allow(clippy::await_holding_lock))]
+
 pub mod db;
 pub mod error;
 pub mod handlers;

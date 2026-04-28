@@ -321,6 +321,7 @@ mod tests {
     }
 
     /// users + user_sessions + listings + bids + listing_watches を触るので順序固定で取得。
+    #[allow(clippy::type_complexity)]
     fn lock_all() -> (
         std::sync::MutexGuard<'static, ()>,
         std::sync::MutexGuard<'static, ()>,

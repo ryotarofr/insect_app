@@ -782,15 +782,15 @@ pub async fn list_product_cards(
 fn matches_query(q: &ListQuery, meta: Option<&ProductMeta>) -> bool {
     match meta {
         Some(m) => {
-            if let Some(c) = &q.category {
-                if c != m.category {
-                    return false;
-                }
+            if let Some(c) = &q.category
+                && c != m.category
+            {
+                return false;
             }
-            if let Some(d) = &q.difficulty {
-                if d != m.difficulty {
-                    return false;
-                }
+            if let Some(d) = &q.difficulty
+                && d != m.difficulty
+            {
+                return false;
             }
             true
         }

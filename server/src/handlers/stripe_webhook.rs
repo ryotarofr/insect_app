@@ -288,6 +288,33 @@ pub async fn post_stripe_webhook(
         )));
     }
 
+    // ── K1: paid 遷移時のみ live 商品の specimens を自動生成 (Week 1) ──
+    // 行レベル冪等性 (= order_items.fulfilled_specimen_id IS NULL ガード) で重複生成を防止。
+    // 失敗時は idempotency キャッシュを rollback して Stripe retry に任せる。
+    if new_status == "paid"
+        && let Err(e) =
+            crate::handlers::specimen_fulfillment::fulfill_paid_order(&state, order_id).await
+    {
+        tracing::error!(
+            "stripe webhook: fulfill_paid_order failed for order {} (event {}): {}",
+            order_id,
+            event.id,
+            e
+        );
+        if let Err(rollback_err) =
+            crate::repos::stripe_webhook_events::delete_by_id(state.db(), &event.id).await
+        {
+            tracing::warn!(
+                "stripe webhook: idempotency rollback failed for event {}: {}",
+                event.id,
+                rollback_err
+            );
+        }
+        return Err(AppError::Internal(anyhow::anyhow!(
+            "fulfillment failed: {e}"
+        )));
+    }
+
     tracing::info!(
         "stripe webhook: order {} → {} (event_type={})",
         order_id,
