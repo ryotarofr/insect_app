@@ -14,6 +14,21 @@ import {
   type LogType,
   type Specimen,
 } from "../../api";
+// Phase 9.D サーバ連携: login 中なら所有個体・ログを **server を真値** として描画する。
+//   anonymous / 取得失敗時は従来 mock (= APP_DATA + listLogsBySpecimen) にフォールバック。
+import { isLoggedIn } from "../../store/auth";
+import {
+  findServerSpecimenByPublicId,
+  serverSpecimens,
+} from "../../store/specimens";
+import {
+  refreshLogsForSpecimen,
+  serverLogsErrorFor,
+  serverLogsFor,
+  toLogEntry,
+} from "../../store/specimenLogs";
+import type { SpecimenView } from "../../sdui/api";
+import { onMount, createEffect } from "solid-js";
 import { Icons } from "../../components/Icons";
 import { SpecDL } from "../../components/specimen/SpecDL";
 import { StageBar } from "../../components/specimen/StageBar";
@@ -178,8 +193,73 @@ const BloodlineTab = (p: { s: Specimen; setRoute: (r: RouteKey) => void }) => (
 );
 
 export const SpecimenDetail = (props: SpecimenDetailProps) => {
-  const s = () => getSpecimen(props.specimenId) ?? listSpecimens()[0];
-  const logs = createMemo(() => listLogsBySpecimen(s().id));
+  // ── server 個体が cache にあれば、その属性で mock を上書きした表示用 Specimen を作る。
+  //    bloodline / shop / sci など server に無い項目は mock 既存値か placeholder で埋める。
+  const serverView = createMemo<SpecimenView | undefined>(() => {
+    if (!isLoggedIn()) return undefined;
+    return findServerSpecimenByPublicId(props.specimenId);
+  });
+
+  const mergeWithServer = (mock: Specimen, sv: SpecimenView): Specimen => ({
+    ...mock,
+    // server 真値で上書き (= 名前 / sex / stage / 各計測値 / 累代 / 羽化 ETA)。
+    id: sv.publicId,
+    name: sv.name,
+    sex: sv.sex,
+    stage: sv.stage,
+    stageProgress: sv.stageProgress,
+    sizeMm: sv.sizeMm ?? mock.sizeMm,
+    weightG: sv.weightG ?? mock.weightG,
+    purchasedAt: sv.purchasedAt ?? mock.purchasedAt,
+    generation: sv.generation ?? mock.generation,
+    eclosionETA: sv.eclosionEta ?? mock.eclosionETA,
+    // 軽量 view: species 表示は speciesId をそのまま (= 翻訳テーブル対応は後続)。
+    species: sv.speciesId,
+  });
+
+  // mock fallback: 旧来の APP_DATA 経由。anonymous / 未取得 / cache miss で必ず使える。
+  const fallbackMock = (): Specimen =>
+    getSpecimen(props.specimenId) ?? listSpecimens()[0];
+
+  const s = createMemo<Specimen>(() => {
+    const sv = serverView();
+    const mock = fallbackMock();
+    return sv ? mergeWithServer(mock, sv) : mock;
+  });
+
+  // server 個体が cache にあるなら logs もサーバ取得を試行 (= UUID は SpecimenView.id)。
+  //   onMount は new specimen への navigation で 1 回しか走らないので、
+  //   serverView の変化に追従する createEffect で呼ぶ。
+  createEffect(() => {
+    const sv = serverView();
+    if (!sv) return;
+    refreshLogsForSpecimen(sv.id).catch((err: unknown) => {
+      // 5xx / network はストア内 error にも詰まっているのでここでは log のみ。
+      // eslint-disable-next-line no-console
+      console.warn("specimen logs refresh failed:", err);
+    });
+  });
+
+  const logs = createMemo<LogEntry[]>(() => {
+    const sv = serverView();
+    if (sv) {
+      const cached = serverLogsFor(sv.id);
+      if (cached) {
+        // server logs を mock LogEntry shape に変換 (= LogTimeline は LogEntry を期待)。
+        // displaySpecimenId = mock 側の Specimen.id (= publicId / 表示用) で揃える。
+        return cached.map((v) => toLogEntry(v, sv.publicId));
+      }
+    }
+    // anonymous / 未取得 / 取得失敗 → mock fallback。
+    return listLogsBySpecimen(s().id);
+  });
+
+  // server logs 取得失敗の banner 用 (= LogTab が表示)。
+  const logsError = createMemo<string | undefined>(() => {
+    const sv = serverView();
+    return sv ? serverLogsErrorFor(sv.id) : undefined;
+  });
+  void logsError; // 現状未使用 (= 後続で LogTab に banner を足す時に拾う)
   const [tab, setTab] = createSignal<Tab>("overview");
   const [sheetOpen, setSheetOpen] = createSignal(false);
   // P4-10: どの種別で QuickLogSheet を開くか。5 ボタンショートカットで設定。

@@ -7,6 +7,14 @@ import { addLog, listSpecimens, type LogType } from "../../api";
 import { LOG_TYPES, buildLogTitle } from "./types";
 import { installFocusTrap, type FocusTrapHandle } from "../../utils/focusTrap";
 
+// Phase 9.D 連携: server-backed specimen が target の時は POST /specimens/{id}/logs
+//   を叩いて、終わったら飼育ログ cache を refresh する。anonymous / mock specimen は
+//   従来 mock fallback (addLog) を保つ (= 既存テスト・UX を壊さない)。
+import { SduiFetchError, postSpecimenLog } from "../../sdui/api";
+import { isLoggedIn } from "../../store/auth";
+import { findServerSpecimenByPublicId } from "../../store/specimens";
+import { refreshLogsForSpecimen } from "../../store/specimenLogs";
+
 interface QuickLogSheetProps {
   open: boolean;
   onClose: () => void;
@@ -88,6 +96,22 @@ export const QuickLogSheet = (p: QuickLogSheetProps) => {
 
   const currentMeta = () => LOG_TYPES.find((t) => t.key === type())!;
 
+  // 投稿中フラグ (= 二重 submit 防止 + ボタン disable)。
+  const [busy, setBusy] = createSignal(false);
+
+  /** YYYY-MM-DD ローカル日付を返す (= server の `loggedAt: NaiveDate` と整合)。 */
+  const todayIso = (): string => {
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+  };
+  /** "HH:MM:SS" ローカル時刻 (= server の `loggedAtTime: NaiveTime` 互換)。 */
+  const nowHms = (): string => {
+    const d = new Date();
+    const pad = (n: number) => String(n).padStart(2, "0");
+    return `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+  };
+
   const submit = (e: Event) => {
     e.preventDefault();
     const t = type();
@@ -96,14 +120,58 @@ export const QuickLogSheet = (p: QuickLogSheetProps) => {
       setError("内容を入力してください");
       return;
     }
-    addLog({
-      type: t,
-      title: buildLogTitle(t, v),
-      body: memo().trim() || v,
-      specimen: target(),
-    });
-    p.onSaved?.();
-    p.onClose();
+    if (busy()) return; // 二重 submit 防止
+
+    const targetId = target();
+    const title = buildLogTitle(t, v);
+    const body = memo().trim() || v;
+
+    // 対象が **server-backed specimen** (= login 中 + cache hit) なら server POST。
+    //   `target()` は publicId (= "#DHH-0271")、server は internal UUID を要求する。
+    //   findServerSpecimenByPublicId で UUID を解決し、無ければ mock fallback。
+    const sv = isLoggedIn() ? findServerSpecimenByPublicId(targetId) : undefined;
+
+    if (!sv) {
+      // mock fallback: 従来動作 (= localStorage に積む)。anonymous / cache miss はここ。
+      addLog({ type: t, title, body, specimen: targetId });
+      p.onSaved?.();
+      p.onClose();
+      return;
+    }
+
+    // server 経路: POST → 成功で refresh して close。失敗は sheet 内 banner に出す。
+    setBusy(true);
+    setError(null);
+    // weight log なら metrics を最低限詰めておく (= server が JSONB で受ける)。
+    const metrics: Record<string, unknown> =
+      t === "weight" && /^\d+(\.\d+)?$/.test(v) ? { weight_g: Number(v) } : {};
+    postSpecimenLog(sv.id, {
+      logType: t,
+      loggedAt: todayIso(),
+      loggedAtTime: nowHms(),
+      title,
+      body,
+      hasPhoto: false,
+      metrics,
+    })
+      .then(async () => {
+        // server cache を最新化 (= SpecimenDetail の log timeline が再レンダリング)。
+        await refreshLogsForSpecimen(sv.id).catch(() => {
+          // 取得 retry の失敗は致命でない (= 次の page 描画で取り直せる)。
+        });
+        p.onSaved?.();
+        p.onClose();
+      })
+      .catch((err: unknown) => {
+        // 401 (= cookie が切れた) は「再ログインしてください」、それ以外は素の文言。
+        if (err instanceof SduiFetchError && err.status === 401) {
+          setError("ログインの有効期限が切れました。もう一度ログインしてください。");
+        } else {
+          const msg = err instanceof Error ? err.message : String(err);
+          setError(`記録できませんでした (${msg})`);
+        }
+      })
+      .finally(() => setBusy(false));
   };
 
   const targetSpec = () => specimens.find((s) => s.id === target());
@@ -265,8 +333,8 @@ export const QuickLogSheet = (p: QuickLogSheetProps) => {
             <button type="button" class="btn ghost" onClick={p.onClose} style={{ flex: 1 }}>
               キャンセル
             </button>
-            <button type="submit" class="btn primary" style={{ flex: 2 }}>
-              ＋ 記録する
+            <button type="submit" class="btn primary" style={{ flex: 2 }} disabled={busy()}>
+              {busy() ? "送信中..." : "＋ 記録する"}
             </button>
           </div>
         </form>
