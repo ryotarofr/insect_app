@@ -1,6 +1,6 @@
 //! ブロック（最小単位の意味的部品）と、テンプレートで判別される `CardBlock`。
 //!
-//! 詳細は `docs/sdui-three-layer-model-v5.md` §4 / §5 / §7 参照。
+//! 詳細は `docs/sdui-three-layer-model-v6.md` §4 / §5 / §7 参照。
 //!
 //! Phase 1 では `CardBlock::ProductFeature` のみ実装。
 //! ブロック型 (`Block`) は将来のテンプレートでも共通利用するため全種類を定義する。
@@ -419,11 +419,16 @@ pub struct ShippingMethodOption {
 // Block: 9 種類の判別共用体 (tag = "type")
 // ──────────────────────────────────────────────────────────────────────
 
+// review fix (major): SDUI v6 §10.1 / CODE_REVIEW_PROMPT §2.1 の規約として、
+// 各 variant の余計なフィールドを reject するため `deny_unknown_fields` を enum レベルで
+// 付ける。個別 struct (MetricItem / MetaItem 等) には既に付いているが、外側の enum で
+// 抜けていると、tag-union ごとに tag + 既知フィールド以外を拒否する保険が効かない。
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(
     tag = "type",
     rename_all = "snake_case",
-    rename_all_fields = "camelCase"
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
 )]
 #[ts(export)]
 pub enum Block {

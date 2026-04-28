@@ -18,11 +18,48 @@
 
 use axum::{Extension, Json, extract::State, http::StatusCode};
 use serde::{Deserialize, Serialize};
+use sqlx::PgPool;
+use std::sync::OnceLock;
+use uuid::Uuid;
 
 use crate::error::AppError;
 use crate::repos::{cart_items, product_watches, user_sessions, users};
 use crate::session::SessionId;
 use crate::state::AppState;
+
+/// register / login 直後に「匿名 session の cart / watch を user に紐付け直す」共通処理。
+/// 失敗しても warn ログだけで返す (= 注文 / 認可は通っているのでクリティカルでない)。
+async fn promote_session_to_user(db: Option<&PgPool>, session: Uuid, user: Uuid) {
+    if let Err(e) = cart_items::promote_session_to_user(db, session, user).await {
+        tracing::warn!(
+            session = %session,
+            user = %user,
+            "promote_session_to_user: cart promote failed: {}",
+            e
+        );
+    }
+    if let Err(e) = product_watches::promote_session_to_user(db, session, user).await {
+        tracing::warn!(
+            session = %session,
+            user = %user,
+            "promote_session_to_user: watch promote failed: {}",
+            e
+        );
+    }
+}
+
+/// timing attack 対策の dummy phc 文字列 (review fix: major)。
+///
+/// `find_password_hash_by_email` で email が引けなかった / hash が NULL だった経路でも、
+/// 必ず Argon2 verify を 1 回回して応答時間を平均化するために使う。
+/// 初期化時に 1 度だけ真の hash_password を回した phc を OnceLock で保持し使い回す。
+fn dummy_phc_hash() -> &'static str {
+    static H: OnceLock<String> = OnceLock::new();
+    H.get_or_init(|| {
+        users::hash_password("__login_timing_dummy__")
+            .expect("dummy phc hash must initialize")
+    })
+}
 
 #[derive(Debug, Clone, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -100,28 +137,8 @@ pub async fn post_register(
 
     // ── 3. cart_items / product_watches の session → user 承継 ────
     //   匿名で投入した cart / 押した watch を、ログインユーザの user_id に紐付け直す。
-    //   どちらも UX 的に「ログインしたら自分の状態が引き継がれる」期待を満たすため。
-    //   失敗しても warn ログだけで 200 を返す (= 注文 / 認可は通っているのでクリティカルでない)。
-    if let Err(e) =
-        cart_items::promote_session_to_user(state.db(), session_id.0, new_user_id).await
-    {
-        tracing::warn!(
-            "post_register: cart promote failed for session={} user={}: {}",
-            session_id.0,
-            new_user_id,
-            e
-        );
-    }
-    if let Err(e) =
-        product_watches::promote_session_to_user(state.db(), session_id.0, new_user_id).await
-    {
-        tracing::warn!(
-            "post_register: watch promote failed for session={} user={}: {}",
-            session_id.0,
-            new_user_id,
-            e
-        );
-    }
+    //   失敗しても warn ログだけで 200 を返す (= review fix: minor, 共通 helper に集約)。
+    promote_session_to_user(state.db(), session_id.0, new_user_id).await;
 
     Ok(Json(RegisterResponse {
         user_id: new_user_id.to_string(),
@@ -149,7 +166,11 @@ pub struct LoginResponse {
     pub user_id: String,
     pub public_id: String,
     pub name: String,
-    pub email: String,
+    /// users.email は NULL を許容する (= seed user / OAuth-only 等)。
+    /// review fix (nit): `Option` のまま返し、空文字 ("") と「未設定」を client が区別できる。
+    /// JSON では None → null。
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub email: Option<String>,
     pub role: String,
 }
 
@@ -169,57 +190,47 @@ pub async fn post_login(
         .await
         .map_err(|e| AppError::BadRequest(format!("login lookup: {e}")))?;
 
-    // **account enumeration 対策**: email 未登録 / password 未設定 / password 不一致を
-    // すべて同じ 401 で返す (= "そのメールは存在しない" を漏らさない)。
-    let (user, password_hash) = match found {
-        Some((u, Some(h))) => (u, h),
-        _ => return Err(AppError::Unauthorized),
+    // **account enumeration 対策** (review fix: major)。HTTP ステータスを揃えるだけでなく
+    // 応答時間も平均化する。旧実装は未存在経路で verify_password を呼ばず即 return
+    // していたため、Argon2 verify (~50–100ms) の有無で email 存在を timing oracle 判別
+    // できた (CWE-208)。本実装では:
+    //   - 存在 + hash あり → 真の hash で verify
+    //   - 存在 + hash なし / 未存在 → dummy phc で verify
+    //  どの経路でも Argon2 を 1 回必ず実行してから 401 を返す。
+    let (user_opt, password_hash) = match found {
+        Some((u, Some(h))) => (Some(u), h),
+        Some((_, None)) | None => (None, dummy_phc_hash().to_string()),
     };
 
-    // ── 2. password を Argon2 で検証 ─────────────────────────────
-    let ok = users::verify_password(&password_hash, &req.password)
+    // ── 2. password を Argon2 で検証 (= 必ず実行) ────────────────
+    let verified = users::verify_password(&password_hash, &req.password)
         .map_err(|_| AppError::Unauthorized)?;
-    if !ok {
+
+    let Some(user) = user_opt else {
+        return Err(AppError::Unauthorized);
+    };
+    if !verified {
         return Err(AppError::Unauthorized);
     }
 
     // ── 3. session に user を attach ────────────────────────────
     if let Err(e) = user_sessions::attach_user(state.db(), session_id.0, user.id).await {
         tracing::warn!(
-            "post_login: attach_user failed for session={} user={}: {}",
-            session_id.0,
-            user.id,
+            session = %session_id.0,
+            user = %user.id,
+            "post_login: attach_user failed: {}",
             e
         );
     }
 
     // ── 4. cart_items / product_watches の session → user 承継 ───
-    if let Err(e) =
-        cart_items::promote_session_to_user(state.db(), session_id.0, user.id).await
-    {
-        tracing::warn!(
-            "post_login: cart promote failed for session={} user={}: {}",
-            session_id.0,
-            user.id,
-            e
-        );
-    }
-    if let Err(e) =
-        product_watches::promote_session_to_user(state.db(), session_id.0, user.id).await
-    {
-        tracing::warn!(
-            "post_login: watch promote failed for session={} user={}: {}",
-            session_id.0,
-            user.id,
-            e
-        );
-    }
+    promote_session_to_user(state.db(), session_id.0, user.id).await;
 
     Ok(Json(LoginResponse {
         user_id: user.id.to_string(),
         public_id: user.public_id,
         name: user.name,
-        email: user.email.unwrap_or_default(),
+        email: user.email,
         role: user.role,
     }))
 }
@@ -233,6 +244,13 @@ pub async fn post_login(
 /// session 行は削除せず cart 等の session-scoped state は保つ。
 /// 行が存在しない (= cookie はあるが DB に未登録 / 既に detach 済) 場合も 204 を返す
 /// (= idempotent / クライアント側で「ログアウト処理」を 2 度叩いても安全)。
+///
+/// **エラー方針** (review fix: major):
+///   - `NotFound` は idempotent な 204 として吸収する (= 連打耐性)
+///   - DB error 等の internal error は **5xx に乗せる**。旧実装のように 204 で握り潰すと
+///     client は「ログアウト成功」と思い込むが server は session 残存のまま、という
+///     observability ゼロの不整合が起こる。alert / re-try ロジックが効くよう
+///     `AppError::Internal` で返す。
 pub async fn post_logout(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
@@ -241,9 +259,14 @@ pub async fn post_logout(
         Ok(()) => Ok(StatusCode::NO_CONTENT),
         Err(user_sessions::UserSessionRepoError::NotFound(_)) => Ok(StatusCode::NO_CONTENT),
         Err(e) => {
-            tracing::warn!("post_logout: detach_user error: {e}");
-            // 内部エラーでも client 側は再ログインで復帰できるので 204 で吸収する。
-            Ok(StatusCode::NO_CONTENT)
+            tracing::error!(
+                error = ?e,
+                session = %session_id.0,
+                "post_logout: detach_user failed"
+            );
+            Err(AppError::Internal(anyhow::anyhow!(
+                "logout failed: {e}"
+            )))
         }
     }
 }

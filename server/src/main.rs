@@ -4,13 +4,20 @@ use axum::{Router, routing::get};
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
-use insect_app_server::{db, handlers, repos, routes, state::AppState};
+use insect_app_server::{
+    db, ensure_production_env_or_panic, handlers, repos, routes, state::AppState,
+};
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
     // .env を読み込む (本番では AWS Secrets Manager 等で env を直接注入する想定)。
     // ファイル不在は無視 (= production の env-only 起動を許す)。
     let _ = dotenvy::dotenv();
+
+    // production 必須 env (HMAC secret / CSRF allowed origins / Cookie Secure 属性) が
+    // 揃っていることを起動時に検証する (review fix: blocker)。
+    // dev / test (= KOCHU_ENV != "production") では何もしない。
+    ensure_production_env_or_panic();
 
     init_tracing();
 

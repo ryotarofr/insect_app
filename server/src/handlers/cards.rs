@@ -1237,7 +1237,7 @@ fn all_mock_cards() -> Vec<CardBlock> {
 // ── 生体カード (sci 名 + 累代 + 羽化予測あり) ────────────────────────
 
 /// 生体用の共通ビルダ。
-/// docs/sdui-three-layer-model-v5.md §5.4 のレシピに沿って 5 region を全部埋める。
+/// docs/sdui-three-layer-model-v6.md §5.4 のレシピに沿って 5 region を全部埋める。
 #[allow(clippy::too_many_arguments)]
 fn build_specimen_card(
     id: &str,
@@ -1484,7 +1484,7 @@ fn mat_supply_card() -> CardBlock {
 // ──────────────────────────────────────────────────────────────────────
 // product_detail mock (Phase 2 / MVP + UX 強化)
 //
-// **MVP スコープ** (docs/sdui-three-layer-model-v5.md §5.5):
+// **MVP スコープ** (docs/sdui-three-layer-model-v6.md §5.5):
 //   - gallery: Media 複数枚 (1 枚目を hero / 2〜4 枚目をサムネ表示)。動画は将来。
 //   - hero   : 店舗 byline (MetaLine) + タイトル/学名 (Text x2) + chip 群 (Badge x2-4)
 //   - spec   : 個体スペック (MetricList)。生体は 6 行、用品は 1-2 行。

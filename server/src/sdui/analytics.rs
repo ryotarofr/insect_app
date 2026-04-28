@@ -1,6 +1,6 @@
 //! SDUI Analytics 計装の型定義 (Phase 3)。
 //!
-//! 詳細: docs/sdui-three-layer-model-v5.md §16 (Analytics 契約)
+//! 詳細: docs/sdui-three-layer-model-v6.md §16 (Analytics 契約)
 //!
 //! クライアントは各 Block の `analyticsId` を観測し、`impression` (画面に映った)
 //! と `click` (ユーザが触った) を区別したイベントを batch で送る。サーバ側は

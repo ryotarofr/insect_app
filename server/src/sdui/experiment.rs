@@ -7,7 +7,7 @@
 //! 同じ正規表現で弾く。
 //!
 //! `CardBlock.variant` (マーチャンダイジング) とは独立した概念。
-//! 詳細は `docs/sdui-three-layer-model-v5.md` §4.4 / §11.3 を参照。
+//! 詳細は `docs/sdui-three-layer-model-v6.md` §4.4 / §11.3 を参照。
 
 use once_cell::sync::Lazy;
 use regex::Regex;

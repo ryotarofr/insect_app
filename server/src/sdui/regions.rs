@@ -8,7 +8,7 @@
 //! `skip_serializing_if = "Vec::is_empty"` を付けると JSON で undefined になり、
 //! TS 型 `Block[]` との不整合 (`undefined.length` でクラッシュ) を起こすため避ける。
 //!
-//! 詳細: `docs/sdui-three-layer-model-v5.md` §5.1 / §7.3
+//! 詳細: `docs/sdui-three-layer-model-v6.md` §5.1 / §7.3
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

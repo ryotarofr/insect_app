@@ -224,7 +224,20 @@ pub async fn post_stripe_webhook(
             }
             Err(e) => {
                 tracing::error!("stripe webhook lookup error: {}", e);
-                return Err(AppError::BadRequest(format!("lookup error: {e}")));
+                // review fix (major): idempotency マーカーを取り消して retry を許す
+                // (この event は side effect を 1 つも起こしていないため安全)。
+                if let Err(rollback_err) =
+                    crate::repos::stripe_webhook_events::delete_by_id(state.db(), &event.id).await
+                {
+                    tracing::warn!(
+                        "stripe webhook: idempotency rollback failed for event {}: {}",
+                        event.id,
+                        rollback_err
+                    );
+                }
+                return Err(AppError::Internal(anyhow::anyhow!(
+                    "lookup error: {e}"
+                )));
             }
         }
     } else {
@@ -242,14 +255,37 @@ pub async fn post_stripe_webhook(
     };
 
     // ── status 更新 ──────────────────────────────────────────────
+    //
+    // review fix (major): record_if_new と update_status は別経路で実行されるため、
+    // ここで失敗したまま 5xx を返すと、idempotency マーカーは残っているのに
+    // status は古いまま、という stuck 状態になる。Stripe の retry はマーカーで
+    // 弾かれて永久に paid に遷移しなくなる。
+    //
+    // 真のトランザクション境界は repo の TX 化が必要 (= 別 PR)。
+    // ここでは best-effort で idempotency レコードを取り消し、Stripe retry が
+    // 再処理できるようにする。delete_by_id 失敗は warn だけで握りつぶす
+    // (= 元の update_status エラーを優先して 5xx で返す)。
     let pi = event.data.object.payment_intent.as_deref();
     if let Err(e) = orders::update_status(state.db(), order_id, new_status, pi).await {
         tracing::error!(
-            "stripe webhook: update_status failed for order {}: {}",
+            "stripe webhook: update_status failed for order {} (event {}): {}",
             order_id,
+            event.id,
             e
         );
-        return Err(AppError::BadRequest(format!("update_status: {e}")));
+        if let Err(rollback_err) =
+            crate::repos::stripe_webhook_events::delete_by_id(state.db(), &event.id).await
+        {
+            tracing::warn!(
+                "stripe webhook: idempotency rollback failed for event {}: {} (order {} may be stuck)",
+                event.id,
+                rollback_err,
+                order_id
+            );
+        }
+        return Err(AppError::Internal(anyhow::anyhow!(
+            "update_status failed: {e}"
+        )));
     }
 
     tracing::info!(

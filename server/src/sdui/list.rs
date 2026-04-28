@@ -1,6 +1,6 @@
 //! 商品一覧ページの response shell (Phase 4 + Phase 5 + Phase 6 — Search / Filter / Sort / Pagination)。
 //!
-//! 詳細: docs/sdui-three-layer-model-v5.md §5.6 (List shell + Filter + Sort + Pagination)
+//! 詳細: docs/sdui-three-layer-model-v6.md §5.6 (List shell + Filter + Sort + Pagination)
 //!
 //! **なぜ Card 型に乗せないのか**:
 //!   `CardBlock` は「商品 1 件」を表すテンプレート単位。一覧ページ全体のレイアウト

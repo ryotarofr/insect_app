@@ -1,6 +1,6 @@
 //! Server-Driven UI (SDUI) スキーマの Source of Truth。
 //!
-//! 設計方針: `docs/sdui-three-layer-model-v5.md`
+//! 設計方針: `docs/sdui-three-layer-model-v6.md`
 //!
 //! - **Region → Block → Role** の三層モデル
 //! - Rust 側を型の単一ソース。`ts-rs` で TypeScript 型を、

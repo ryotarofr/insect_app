@@ -53,6 +53,39 @@ pub async fn record_if_new(
     }
 }
 
+/// `record_if_new` で記録した event_id を取り消す (review fix: major)。
+///
+/// **冪等性 + 部分失敗ロールバック用途のみ**:
+///   `record_if_new` が `FirstSeen` を返した直後に、後続の side effect
+///   (orders::update_status 等) が失敗した場合、idempotency マーカーだけが
+///   残ってしまい Stripe retry でも再処理できなくなる。それを回避するため、
+///   呼び出し側で best-effort に取り消すための I/F。
+///
+/// **注意**: 真のトランザクション境界が無いので、record_if_new と本関数の間で
+/// 同じ event の retry が来ると 2 重処理になる窓が残る。完全解決には
+/// `&mut PgConnection` を取り回す TX 統一が必要 (= 別 PR で対応)。
+pub async fn delete_by_id(
+    pool: Option<&PgPool>,
+    event_id: &str,
+) -> Result<(), StripeWebhookEventRepoError> {
+    match pool {
+        Some(p) => {
+            sqlx::query("DELETE FROM stripe_webhook_events WHERE id = $1")
+                .bind(event_id)
+                .execute(p)
+                .await
+                .map_err(StripeWebhookEventRepoError::Db)?;
+            Ok(())
+        }
+        None => {
+            if let Ok(mut set) = memory_set().lock() {
+                set.remove(event_id);
+            }
+            Ok(())
+        }
+    }
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // DB 実装
 // ──────────────────────────────────────────────────────────────────────
@@ -163,5 +196,37 @@ mod tests {
             Err(StripeWebhookEventRepoError::Invalid(_)) => {}
             other => panic!("expected Invalid for whitespace, got {other:?}"),
         }
+    }
+
+    /// review fix (major): 部分失敗ロールバックで idempotency マーカーを取り消したら、
+    /// 同じ event_id を再度 record_if_new した時に FirstSeen に戻ること。
+    #[tokio::test]
+    async fn delete_by_id_allows_replay_for_same_event() {
+        let _g = memory_guard();
+        reset_memory_for_test();
+        let payload = json!({"type":"checkout.session.completed"});
+
+        let r1 = record_if_new(None, "evt_replay", "any", &payload).await.unwrap();
+        assert_eq!(r1, RecordOutcome::FirstSeen);
+
+        let r2 = record_if_new(None, "evt_replay", "any", &payload).await.unwrap();
+        assert_eq!(r2, RecordOutcome::AlreadySeen);
+
+        delete_by_id(None, "evt_replay").await.unwrap();
+
+        let r3 = record_if_new(None, "evt_replay", "any", &payload).await.unwrap();
+        assert_eq!(
+            r3,
+            RecordOutcome::FirstSeen,
+            "delete_by_id 後は同じ event_id を replay 可能"
+        );
+    }
+
+    /// 取り消す event_id が存在しなくてもエラーにしない (= idempotent な best-effort)。
+    #[tokio::test]
+    async fn delete_by_id_is_noop_for_unknown_id() {
+        let _g = memory_guard();
+        reset_memory_for_test();
+        delete_by_id(None, "evt_does_not_exist").await.unwrap();
     }
 }

@@ -531,6 +531,40 @@ fn analytics_batch_roundtrip_with_skip_deserializing() {
     assert_eq!(parsed.events[0].server_received_at_ms, None);
 }
 
+// review fix (major): SDUI v6 §10.1。Block enum の deny_unknown_fields が effective に
+// 効いていることを最低 1 件確認する。生成パイプライン (ts-rs) のドリフトで
+// `tag = "type"` を伴う enum で属性が落ちると、未知フィールドが silent に通って
+// 型契約が壊れるため、この regression は専用 test で固める。
+#[test]
+fn block_rejects_unknown_field_at_top_level() {
+    let json = r#"{
+        "type": "divider",
+        "key": "div-1",
+        "rogueField": 42
+    }"#;
+    let result: Result<Block, _> = serde_json::from_str(json);
+    assert!(
+        result.is_err(),
+        "Block must reject unknown fields (deny_unknown_fields)"
+    );
+}
+
+#[test]
+fn block_text_rejects_unknown_field_in_variant() {
+    let json = r#"{
+        "type": "text",
+        "key": "t-1",
+        "role": "headline",
+        "content": { "source": "raw", "text": "hello" },
+        "extraField": "should be rejected"
+    }"#;
+    let result: Result<Block, _> = serde_json::from_str(json);
+    assert!(
+        result.is_err(),
+        "Block::Text must reject unknown fields (deny_unknown_fields)"
+    );
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // 未使用 import 警告抑制 (将来 strategy 拡張時に活きる)
 // ──────────────────────────────────────────────────────────────────────
