@@ -43,6 +43,16 @@ fn buffer() -> &'static Mutex<VecDeque<AnalyticsEvent>> {
 /// - 1 件でも `analyticsId` が空なら 400 で **全件** リジェクト。
 /// - 受理時は 202 Accepted (= 受け取ったが処理を保証しない、という意味で暗に
 ///   集計は別経路という設計を表現)。
+#[utoipa::path(
+    post,
+    path = "/events",
+    tag = "events",
+    request_body = AnalyticsEventBatch,
+    responses(
+        (status = 202, description = "受理 (= ring buffer に積む / 集計は別経路)"),
+        (status = 400, description = "1 件でも analyticsId 空 → batch 全件リジェクト", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn post_events(Json(req): Json<AnalyticsEventBatch>) -> Result<StatusCode, AppError> {
     if req.events.is_empty() {
         return Ok(StatusCode::ACCEPTED);
@@ -76,7 +86,7 @@ pub async fn post_events(Json(req): Json<AnalyticsEventBatch>) -> Result<StatusC
 // ──────────────────────────────────────────────────────────────────────
 
 /// `GET /api/v1/events?limit=N` のクエリ。
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct ListQuery {
     /// 取得件数。`RING_CAP` を超える指定は `RING_CAP` に丸める。
     #[serde(default = "default_limit")]
@@ -90,6 +100,15 @@ fn default_limit() -> usize {
 /// `GET /api/v1/events?limit=N` — 直近 N 件 (新しい順) を返す debug エンドポイント。
 ///
 /// 認証なし。本番では reverse proxy で塞ぐ想定。
+#[utoipa::path(
+    get,
+    path = "/events",
+    tag = "events",
+    params(ListQuery),
+    responses(
+        (status = 200, description = "直近 N 件 (新しい順) の analytics 生データ", body = Vec<AnalyticsEvent>),
+    ),
+)]
 pub async fn list_events(Query(q): Query<ListQuery>) -> Json<Vec<AnalyticsEvent>> {
     let cap = q.limit.min(RING_CAP);
     let buf = buffer().lock().expect("events buffer mutex poisoned");

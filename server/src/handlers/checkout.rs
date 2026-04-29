@@ -108,7 +108,7 @@ fn is_known_shipping_method_id(id: &str) -> bool {
 // リクエスト / レスポンス DTO
 // ──────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PatchShippingFieldRequest {
     /// この field の新しい値。空文字 ("") も許容 (= 「クリア」操作)。
@@ -116,21 +116,21 @@ pub struct PatchShippingFieldRequest {
     pub value: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PatchShippingFieldResponse {
     /// 設定後の value (= echo back)。サーバ側 trim 等を将来掛ける時の正規化結果が見えるよう。
     pub value: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PatchShippingMethodRequest {
     /// SHIPPING_METHODS の id のいずれか (= "cold" / "normal")。未知 id は 400。
     pub id: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PatchShippingMethodResponse {
     pub id: String,
@@ -144,6 +144,19 @@ pub struct PatchShippingMethodResponse {
 const MAX_FIELD_LEN: usize = 200;
 
 /// `PATCH /api/v1/checkout/shipping_field/{name}` — 配送先 1 フィールドを更新。
+#[utoipa::path(
+    patch,
+    path = "/checkout/shipping_field/{name}",
+    tag = "checkout",
+    params(
+        ("name" = String, Path, description = "更新する field 名 (allowlist: addressName / addressTel / addressZip / addressPref / addressAddr)"),
+    ),
+    request_body = PatchShippingFieldRequest,
+    responses(
+        (status = 200, description = "field 更新成功 (= 設定後 value を echo back)", body = PatchShippingFieldResponse),
+        (status = 400, description = "未知 field / value 過長 (= 200 文字超)", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn patch_shipping_field(
     Path(name): Path<String>,
     Json(req): Json<PatchShippingFieldRequest>,
@@ -175,6 +188,16 @@ pub async fn patch_shipping_field(
 }
 
 /// `PATCH /api/v1/checkout/shipping_method` — 配送方法を切り替え。
+#[utoipa::path(
+    patch,
+    path = "/checkout/shipping_method",
+    tag = "checkout",
+    request_body = PatchShippingMethodRequest,
+    responses(
+        (status = 200, description = "切替成功 (= 設定後 id を echo back)", body = PatchShippingMethodResponse),
+        (status = 400, description = "未知 shipping_method_id", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn patch_shipping_method(
     Json(req): Json<PatchShippingMethodRequest>,
 ) -> Result<Json<PatchShippingMethodResponse>, AppError> {
@@ -195,7 +218,7 @@ pub async fn patch_shipping_method(
 
 /// 任意で全 state を確認したい時の GET (Phase 8: テスト + デバッグ用)。
 /// SDUI 契約上は cart card の中で配送先も返るのでクライアントは普通使わない。
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CheckoutSnapshotResponse {
     pub address_name: String,
@@ -206,6 +229,14 @@ pub struct CheckoutSnapshotResponse {
     pub shipping_method_id: String,
 }
 
+#[utoipa::path(
+    get,
+    path = "/checkout",
+    tag = "checkout",
+    responses(
+        (status = 200, description = "checkout state スナップショット (= debug / テスト用途)", body = CheckoutSnapshotResponse),
+    ),
+)]
 pub async fn get_checkout_snapshot() -> Result<Json<CheckoutSnapshotResponse>, AppError> {
     let snap = snapshot_checkout();
     Ok(Json(CheckoutSnapshotResponse {
@@ -232,7 +263,7 @@ pub async fn get_checkout_snapshot() -> Result<Json<CheckoutSnapshotResponse>, A
 // `window.location.href = sessionUrl` で遷移する前提。
 // ──────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CheckoutSubmitResponse {
     pub order_id: String,
@@ -252,6 +283,15 @@ pub struct CheckoutSubmitResponse {
 ///   `orders.session_id` (= TEXT) と Stripe Session の reference に詰める。
 ///   未ログイン (= anonymous) でも cookie で安定した UUID を持つので、同一ユーザの
 ///   複数 cart → 注文の追跡が可能になる。
+#[utoipa::path(
+    post,
+    path = "/checkout/submit",
+    tag = "checkout",
+    responses(
+        (status = 200, description = "注文確定 + Stripe Checkout Session URL を返す", body = CheckoutSubmitResponse),
+        (status = 400, description = "cart 空 / shipping 未入力 / 商品不正 / Stripe session 失敗", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn post_checkout_submit(
     axum::extract::State(state): axum::extract::State<crate::state::AppState>,
     axum::Extension(session_id): axum::Extension<crate::session::SessionId>,

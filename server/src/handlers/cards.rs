@@ -36,6 +36,19 @@ use crate::sdui::{
 // ──────────────────────────────────────────────────────────────────────
 
 /// `GET /api/v1/cards/products/{id}` ハンドラ。
+#[utoipa::path(
+    get,
+    path = "/cards/products/{id}",
+    tag = "cards",
+    params(
+        ("id" = String, Path, description = "商品の public_id (例: `p-hh-m-142`)"),
+    ),
+    responses(
+        (status = 200, description = "1 商品の SDUI `CardBlock` (= 構造は ts-rs 経由型 [client_solid/src/sdui](client_solid/src/sdui) を参照)。OpenAPI 上は opaque object 扱い", body = serde_json::Value),
+        (status = 400, description = "key uniqueness / a11y validation 失敗", body = crate::openapi::ErrorResponse),
+        (status = 404, description = "未知 id", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn get_product_card(Path(id): Path<String>) -> Result<Json<CardBlock>, AppError> {
     let card = mock_store()
         .get(id.as_str())
@@ -56,6 +69,19 @@ pub async fn get_product_card(Path(id): Path<String>) -> Result<Json<CardBlock>,
 /// 一覧用 (`product_feature`) とは別の `product_detail` テンプレートを返す。
 /// 詳細ページは region 構成 (gallery / hero / spec / pricing / cta) が違うため、
 /// 同 id でも別エンドポイントに分離している (§5: テンプレート毎にレスポンスを分ける)。
+#[utoipa::path(
+    get,
+    path = "/cards/products/{id}/detail",
+    tag = "cards",
+    params(
+        ("id" = String, Path, description = "商品の public_id (例: `p-hh-m-142`)"),
+    ),
+    responses(
+        (status = 200, description = "詳細用 `product_detail` テンプレートの SDUI `CardBlock`。OpenAPI 上は opaque object", body = serde_json::Value),
+        (status = 400, description = "key uniqueness / a11y validation 失敗", body = crate::openapi::ErrorResponse),
+        (status = 404, description = "未知 id", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn get_product_detail_card(Path(id): Path<String>) -> Result<Json<CardBlock>, AppError> {
     let card = detail_mock_store()
         .get(id.as_str())
@@ -89,6 +115,15 @@ pub async fn get_product_detail_card(Path(id): Path<String>) -> Result<Json<Card
 ///   - 在庫切れ商品にバッジを付ける
 ///   - 配送料計算 (今は固定で `None` = 行を出さない)
 ///   - 消費税内訳の表示
+#[utoipa::path(
+    get,
+    path = "/cards/cart",
+    tag = "cards",
+    responses(
+        (status = 200, description = "session の cart snapshot から構築した SDUI `CardBlock::Cart`。OpenAPI 上は opaque object", body = serde_json::Value),
+        (status = 400, description = "key uniqueness / a11y validation 失敗 / cart fetch error", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn get_cart_card(
     axum::extract::State(state): axum::extract::State<crate::state::AppState>,
     axum::Extension(session_id): axum::Extension<crate::session::SessionId>,
@@ -685,6 +720,23 @@ fn sort_cmp(
 ///   - faceted count は filter のみ適用後で計算 → search/sort/paginate に揺らがない
 ///   - pagination の totalCount は filter+search 適用後 → 検索でヒット数が変わって見える
 ///   - sort と pagination は表示順制御だけで count に影響しない
+#[utoipa::path(
+    get,
+    path = "/cards/products",
+    tag = "cards",
+    params(
+        ("category" = Option<String>, Query, description = "商品カテゴリの 1 値フィルタ (例: live)"),
+        ("difficulty" = Option<String>, Query, description = "飼育難易度の 1 値フィルタ (例: hard)"),
+        ("sort" = Option<String>, Query, description = "並び順 (`name` / `price_asc` / `price_desc` / `new`)。未指定 / 不正値は default"),
+        ("q" = Option<String>, Query, description = "検索キーワード (substring, case-insensitive)。trim 後空なら検索なし"),
+        ("page" = Option<u32>, Query, description = "ページ番号 (1 始まり)。1 未満は 1 ページ目"),
+        ("perPage" = Option<u32>, Query, description = "1 ページあたり件数。`MAX_PER_PAGE` でキャップ"),
+    ),
+    responses(
+        (status = 200, description = "filter / search / sort / pagination 適用後の SDUI `ProductListResponse` (= filterBar + sortBar + searchBox + pagination + cards)。OpenAPI 上は opaque object", body = serde_json::Value),
+        (status = 400, description = "internal validation 失敗", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn list_product_cards(
     Query(query): Query<ListQuery>,
 ) -> Result<Json<ProductListResponse>, AppError> {

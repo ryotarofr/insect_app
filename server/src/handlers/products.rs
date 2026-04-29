@@ -25,7 +25,7 @@ use crate::error::AppError;
 use crate::repos::products;
 use crate::state::AppState;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct ProductsQuery {
     /// 取得する翻訳の locale。未指定なら `ja`。
     #[serde(default = "default_locale")]
@@ -36,7 +36,7 @@ fn default_locale() -> String {
     "ja".to_string()
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ProductResponse {
     /// public_id 文字列。例: `p-hh-m-142`
@@ -62,6 +62,15 @@ pub struct ProductResponse {
 }
 
 /// `GET /api/v1/products?locale=ja` — 全 active 商品を id 昇順で返す。
+#[utoipa::path(
+    get,
+    path = "/products",
+    tag = "products",
+    params(ProductsQuery),
+    responses(
+        (status = 200, description = "全 active 商品を id 昇順で返す", body = Vec<ProductResponse>),
+    ),
+)]
 pub async fn list_products(
     State(state): State<AppState>,
     Query(q): Query<ProductsQuery>,

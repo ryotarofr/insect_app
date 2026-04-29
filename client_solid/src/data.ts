@@ -36,8 +36,11 @@ export type RouteKey =
   | "not-found";
 
 /** P4-2: 個体のライフ状態。生存 / 故個体 / 譲渡済 / 脱走 の 4 値。
- *  旧 `status: "alive"` より意味が厳密で、StageBar 横の終了バッジに直接使える。 */
-export type LifeStatus = "active" | "deceased" | "transferred" | "escaped";
+ *  旧 `status: "alive"` より意味が厳密で、StageBar 横の終了バッジに直接使える。
+ *  本 union の真実値は server (= 0003_specimens_life_status.sql の CHECK) に依存するため
+ *  [generated/api-types](./generated/api-types) を 1 箇所の source として re-export する。 */
+import type { LifeStatus } from "./generated/api-types";
+export type { LifeStatus };
 
 /** P4-2: 終了理由のメタ情報 (lifeStatus !== "active" のときに表示) */
 export interface LifeStatusDetail {
@@ -86,7 +89,10 @@ export interface Product {
   phLabel: string;
 }
 
-export type LogType = "weight" | "feed" | "mat" | "molt" | "observation";
+/** 飼育ログの種別。本 union の真実値は server `SpecimenLogType` (= [generated/api-types](./generated/api-types)) と
+ *  完全一致するので、二重定義を避けて re-export する。 */
+import type { SpecimenLogType as LogType } from "./generated/api-types";
+export type { LogType };
 
 export interface LogEntry {
   date: string;

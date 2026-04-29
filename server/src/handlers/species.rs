@@ -19,7 +19,7 @@ use crate::error::AppError;
 use crate::repos::species;
 use crate::state::AppState;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::IntoParams)]
 pub struct SpeciesQuery {
     /// 取得する翻訳の locale。未指定なら `ja`。
     #[serde(default = "default_locale")]
@@ -30,7 +30,7 @@ fn default_locale() -> String {
     "ja".to_string()
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SpeciesResponse {
     /// 短い slug。例: `dhh`
@@ -44,6 +44,15 @@ pub struct SpeciesResponse {
 }
 
 /// `GET /api/v1/species?locale=ja` — 全 species を id 昇順で返す。
+#[utoipa::path(
+    get,
+    path = "/species",
+    tag = "species",
+    params(SpeciesQuery),
+    responses(
+        (status = 200, description = "全 species を id 昇順で返す", body = Vec<SpeciesResponse>),
+    ),
+)]
 pub async fn list_species(
     State(state): State<AppState>,
     Query(q): Query<SpeciesQuery>,

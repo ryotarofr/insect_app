@@ -28,7 +28,7 @@ use ts_rs::TS;
 /// silently 受け入れると後段集計でゴミが混入するため `deny_unknown_fields` を強制する。
 /// 自由記述コンテキストは `context: BTreeMap` に閉じ込める設計で、トップレベルの
 /// 拡張は contract 変更扱いで明示的に追加する。
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, utoipa::ToSchema, PartialEq, Eq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 #[ts(export)]
 pub struct AnalyticsEvent {
@@ -81,7 +81,7 @@ where
 ///
 /// `impression` と `click` のみ。snake_case enum で固定する (camelCase でも文字列
 /// 一致するが、将来の `dwell_time` 等が来た時に明確に snake_case で受ける意図)。
-#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, TS, utoipa::ToSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 #[ts(export)]
 pub enum AnalyticsEventType {
@@ -92,7 +92,7 @@ pub enum AnalyticsEventType {
 /// `POST /api/v1/events` で送られる batch payload。
 ///
 /// review fix (major): SDUI v6 §10.1 — batch 包み構造側でも未知 field を弾く。
-#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, utoipa::ToSchema, PartialEq, Eq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
 #[ts(export)]
 pub struct AnalyticsEventBatch {

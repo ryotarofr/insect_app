@@ -45,7 +45,7 @@ async fn require_user_id(
 // DTO
 // ──────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SpecimenView {
     pub id: String,
@@ -92,7 +92,7 @@ impl From<specimens::SpecimenRow> for SpecimenView {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CreateSpecimenRequest {
     pub public_id: String,                              // "#DHH-0271"
@@ -110,7 +110,7 @@ pub struct CreateSpecimenRequest {
     pub notes: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateSpecimenResponse {
     pub id: String,
@@ -122,6 +122,15 @@ pub struct CreateSpecimenResponse {
 // ──────────────────────────────────────────────────────────────────────
 
 /// `GET /api/v1/specimens/me` — 現在 login 中の user の specimens を返す。archived は除外。
+#[utoipa::path(
+    get,
+    path = "/specimens/me",
+    tag = "specimens",
+    responses(
+        (status = 200, description = "current user の active specimens", body = Vec<SpecimenView>),
+        (status = 401, description = "未ログイン", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn list_my_specimens(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
@@ -138,6 +147,17 @@ pub async fn list_my_specimens(
 /// **PR N-4**: req.eclosion_eta が None かつ birth_date が Some なら、`species_stats` から
 /// 自動計算して埋める (= birth_date + larva_days + pupa_days)。stats が見つからなければ None
 /// のままで OK (= UI 側で「未登録」表示)。
+#[utoipa::path(
+    post,
+    path = "/specimens",
+    tag = "specimens",
+    request_body = CreateSpecimenRequest,
+    responses(
+        (status = 200, description = "specimen 作成成功", body = CreateSpecimenResponse),
+        (status = 400, description = "入力 invalid / public_id 重複", body = crate::openapi::ErrorResponse),
+        (status = 401, description = "未ログイン", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn create_specimen(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
@@ -212,6 +232,18 @@ pub async fn create_specimen(
 }
 
 /// `GET /api/v1/specimens/{public_id}` — public_id で 1 件取得 (= 公開閲覧 OK)。
+#[utoipa::path(
+    get,
+    path = "/specimens/{public_id}",
+    tag = "specimens",
+    params(
+        ("public_id" = String, Path, description = "specimen の public_id (= URL slug, 例 #DHH-0271)"),
+    ),
+    responses(
+        (status = 200, description = "specimen 詳細", body = SpecimenView),
+        (status = 404, description = "specimen 不存在 / archived (= 削除扱い)", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn get_specimen(
     State(state): State<AppState>,
     Path(public_id): Path<String>,
@@ -231,7 +263,7 @@ pub async fn get_specimen(
 // life_status 遷移 + 履歴 (Phase 9.D / Medium #3)
 // ──────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ChangeLifeStatusRequest {
     /// "active" / "deceased" / "transferred" / "escaped"
@@ -242,7 +274,7 @@ pub struct ChangeLifeStatusRequest {
     pub note: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct StatusHistoryView {
     pub id: String,
@@ -273,6 +305,21 @@ impl From<crate::repos::specimen_status_history::StatusHistoryRow> for StatusHis
 /// **Medium #3**: specimens.life_status の更新時は必ず本 endpoint 経由で
 /// `repos::specimens::update_life_status` を呼び、specimen_status_history への履歴
 /// INSERT が原子的に走る規律にしている。直接 UPDATE する経路は作らない。
+#[utoipa::path(
+    post,
+    path = "/specimens/{id}/life_status",
+    tag = "specimens",
+    params(
+        ("id" = String, Path, description = "specimen の internal UUID (= specimens.id)"),
+    ),
+    request_body = ChangeLifeStatusRequest,
+    responses(
+        (status = 204, description = "遷移成功 (= specimens 更新 + history INSERT)"),
+        (status = 400, description = "status 値域外", body = crate::openapi::ErrorResponse),
+        (status = 401, description = "未ログイン", body = crate::openapi::ErrorResponse),
+        (status = 404, description = "specimen 不存在 / 所有者でない", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn change_life_status(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
@@ -309,6 +356,18 @@ pub async fn change_life_status(
 }
 
 /// `GET /api/v1/specimens/{id}/status_history` — life_status の遷移履歴を返す (= public 閲覧 OK)。
+#[utoipa::path(
+    get,
+    path = "/specimens/{id}/status_history",
+    tag = "specimens",
+    params(
+        ("id" = String, Path, description = "specimen の internal UUID (= specimens.id)"),
+    ),
+    responses(
+        (status = 200, description = "changed_at 降順の履歴", body = Vec<StatusHistoryView>),
+        (status = 404, description = "specimen 不存在 / archived", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn list_status_history(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -333,13 +392,28 @@ pub async fn list_status_history(
 /// `PATCH /api/v1/specimens/{id}/notes` — 個体メモ更新 (= 自由テキスト)。
 /// PR #5b で localStorage 永続化を廃止して server 化。空文字列は「メモ削除」として許容。
 /// 他人の specimen は 404 (= 存在隠し)。
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UpdateNotesRequest {
     /// `null` または "" を渡すと notes を NULL に戻す (= 「メモを消す」)。
     pub notes: Option<String>,
 }
 
+#[utoipa::path(
+    patch,
+    path = "/specimens/{id}/notes",
+    tag = "specimens",
+    params(
+        ("id" = String, Path, description = "specimen の internal UUID (= specimens.id)"),
+    ),
+    request_body = UpdateNotesRequest,
+    responses(
+        (status = 204, description = "メモ更新成功 (= notes=null/空文字 で削除)"),
+        (status = 400, description = "更新 invalid", body = crate::openapi::ErrorResponse),
+        (status = 401, description = "未ログイン", body = crate::openapi::ErrorResponse),
+        (status = 404, description = "specimen 不存在 / 所有者でない", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn patch_specimen_notes(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
@@ -363,6 +437,19 @@ pub async fn patch_specimen_notes(
 
 /// `POST /api/v1/specimens/{id}/archive` — 自分の specimen を archive する。
 /// 他人の specimen を archive しようとすると 403 (= ここでは 404 で吸収)。
+#[utoipa::path(
+    post,
+    path = "/specimens/{id}/archive",
+    tag = "specimens",
+    params(
+        ("id" = String, Path, description = "specimen の internal UUID (= specimens.id)"),
+    ),
+    responses(
+        (status = 204, description = "archive 成功 (= 論理削除)"),
+        (status = 401, description = "未ログイン", body = crate::openapi::ErrorResponse),
+        (status = 404, description = "specimen 不存在 / 所有者でない (= 情報漏れ防止で 404)", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn archive_specimen(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,

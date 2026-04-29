@@ -4,6 +4,27 @@
  */
 
 export interface paths {
+    "/assets/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /api/v1/assets/{id}` — public 取得 (= image src で参照される)。
+         * @description 認証なし (= MVP では公開固定)。production では署名済 URL に切替予定。
+         *     status='uploaded' な asset のみ返す。pending は 404 で隠す。
+         */
+        get: operations["get_asset"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/login": {
         parameters: {
             query?: never;
@@ -134,10 +155,942 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cards/cart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /api/v1/cards/cart` ハンドラ (Phase 7)。
+         * @description プロセス内 cart store のスナップショットを `CardBlock::Cart` に組み直して返す。
+         *
+         *     **設計**:
+         *       - 1 token = 1 LineItem block。商品マスタ (`product_filter_meta`) から title /
+         *         unit_price を join して埋める (= 価格をクライアントに信用させない)。
+         *       - サーバが落ちても表示金額が「クライアント計算」と「サーバ計算」でずれないよう、
+         *         subtotal_amount / OrderSummary.total_amount はサーバ側で確定して返す。
+         *       - 空カート時は `items` / `summary` を `[]` にし、`cta` には「買い物を続ける」だけ。
+         *         client renderer 側 `<Show when={items.length > 0}>` で empty state に切り替える。
+         *       - 商品マスタに無い token (= 出品取り下げ後にカートに残ったゴミ) はスキップしつつ
+         *         500 にしない (= ユーザの「他の商品はカートにある」体験を壊さない)。
+         *       - decrement_action は `qty == 1` の時のみ `None` (UI で disabled に)。
+         *
+         *     **将来 (Phase 7+)**:
+         *       - 在庫切れ商品にバッジを付ける
+         *       - 配送料計算 (今は固定で `None` = 行を出さない)
+         *       - 消費税内訳の表示
+         */
+        get: operations["get_cart_card"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cards/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /api/v1/cards/products?...` ハンドラ — フィルタ + 検索 + 並び替え + ページング 対応の商品一覧。
+         * @description **挙動 (Phase 6)**:
+         *       1. `query.sort` / `q` / `page` / `perPage` を有効値に正規化
+         *       2. `query` の filter 条件で全商品を絞る (= filter set, faceted count はここの母集団)
+         *       3. **filter set に対して** q substring で絞る (= search set)
+         *       4. search set を `sort_cmp` で並べる
+         *       5. paginate: `(page-1)*perPage` から `perPage` 件を切り出す
+         *       6. paginate 後のカードを `validate_keys()` で検証 (壊れていたら 500)
+         *       7. `filter_bar` (faceted count は filter set ベース) / `sort_bar` / `search_box` /
+         *          `pagination` を組み立て
+         *       8. `ProductListResponse { filter_bar, sort_bar, search_box, pagination, cards }` を返す
+         *
+         *     **不変条件**: filter_bar / sort_bar / search_box / pagination は **常に Some で返す**。
+         *       フロントが空配列を踏まなくても shape を信用できる。
+         *
+         *     **filter chain の順序が重要**:
+         *       - faceted count は filter のみ適用後で計算 → search/sort/paginate に揺らがない
+         *       - pagination の totalCount は filter+search 適用後 → 検索でヒット数が変わって見える
+         *       - sort と pagination は表示順制御だけで count に影響しない
+         */
+        get: operations["list_product_cards"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cards/products/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/cards/products/{id}` ハンドラ。 */
+        get: operations["get_product_card"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cards/products/{id}/detail": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /api/v1/cards/products/{id}/detail` ハンドラ。
+         * @description 一覧用 (`product_feature`) とは別の `product_detail` テンプレートを返す。
+         *     詳細ページは region 構成 (gallery / hero / spec / pricing / cta) が違うため、
+         *     同 id でも別エンドポイントに分離している (§5: テンプレート毎にレスポンスを分ける)。
+         */
+        get: operations["get_product_detail_card"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cart": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** `POST /api/v1/cart` — カートに商品を追加し、Undo 用トークンを返す。 */
+        post: operations["add_to_cart"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cart/items/{token}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        /**
+         * `DELETE /api/v1/cart/items/{token}` — Undo (= 該当 token の cart_items 行を物理削除)。
+         * @description 既に消えていれば 404。冪等にしないのは「Undo は 1 回しかできない」UX
+         *     にするため (2 度 Undo で復活してしまうと驚き)。
+         */
+        delete: operations["delete_cart_item"];
+        options?: never;
+        head?: never;
+        /**
+         * `PATCH /api/v1/cart/items/{token}` — このトークンの qty を直接書き換える。
+         * @description **設計**:
+         *       - 該当 token が無ければ 404 (= add 経由でしか line は生まれない)
+         *       - `qty == 0` は 400 (= 削除は DELETE。意味の混線を避ける)
+         *       - 上限 99 を超えたら 400 (= cart_items DB CHECK と同値)
+         *
+         *     **冪等性**: 同じ qty を 2 回投げても結果は同じ (= PATCH の RFC 7231 準拠)。
+         */
+        patch: operations["patch_cart_item"];
+        trace?: never;
+    };
+    "/checkout": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_checkout_snapshot"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/checkout/shipping_field/{name}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** `PATCH /api/v1/checkout/shipping_field/{name}` — 配送先 1 フィールドを更新。 */
+        patch: operations["patch_shipping_field"];
+        trace?: never;
+    };
+    "/checkout/shipping_method": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /** `PATCH /api/v1/checkout/shipping_method` — 配送方法を切り替え。 */
+        patch: operations["patch_shipping_method"];
+        trace?: never;
+    };
+    "/checkout/submit": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * `POST /api/v1/checkout/submit` — 注文を確定し Stripe Checkout Session URL を返す。
+         * @description **Phase 9.x AppState 配線**:
+         *       `axum::extract::State<AppState>` 経由で `Option<PgPool>` を受け取り、
+         *       - `repos::products::find_by_public_id(pool, ...)` で product_uuid 解決
+         *       - `repos::orders::insert_order(pool, ...)` で DB に永続化
+         *       どちらも pool 不在時は in-memory fallback。
+         *
+         *     **Session 配線** (= Cookie middleware 導入後):
+         *       `axum::Extension<SessionId>` 経由で cookie 由来の UUID を受け取り、
+         *       `orders.session_id` (= TEXT) と Stripe Session の reference に詰める。
+         *       未ログイン (= anonymous) でも cookie で安定した UUID を持つので、同一ユーザの
+         *       複数 cart → 注文の追跡が可能になる。
+         */
+        post: operations["post_checkout_submit"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/events": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /api/v1/events?limit=N` — 直近 N 件 (新しい順) を返す debug エンドポイント。
+         * @description 認証なし。本番では reverse proxy で塞ぐ想定。
+         */
+        get: operations["list_events"];
+        put?: never;
+        /**
+         * `POST /api/v1/events` — batch でイベントを受け取る。
+         * @description - 空 batch は 202 Accepted で no-op (sendBeacon の race 対策)。
+         *     - 1 件でも `analyticsId` が空なら 400 で **全件** リジェクト。
+         *     - 受理時は 202 Accepted (= 受け取ったが処理を保証しない、という意味で暗に
+         *       集計は別経路という設計を表現)。
+         */
+        post: operations["post_events"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/listings": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /api/v1/listings` — active な出品の公開一覧。
+         * @description PR-7 (フロント listings adapter DB 化) で `seller_name` / `bid_count` /
+         *     `watcher_count` を含む `ListingViewWithCounts` 形式に拡張。Market.tsx の
+         *     表示要件 (出品者 / 入札数 / ウォッチ数) を 1 fetch で満たす。
+         */
+        get: operations["list_active"];
+        put?: never;
+        /** `POST /api/v1/listings` — 新規出品。seller_user_id は session の user_id に固定。 */
+        post: operations["create_listing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/listings/{id}/bids": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** `POST /api/v1/listings/{id}/bids` — auction 入札。 */
+        post: operations["place_bid"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/listings/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** `POST /api/v1/listings/{id}/cancel` — 自分の出品を canceled に倒す。 */
+        post: operations["cancel_listing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/listings/{id}/watch": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** `POST /api/v1/listings/{id}/watch` — listing watch のトグル。 */
+        post: operations["toggle_watch_listing"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/listings/{public_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/listings/{public_id}` — public_id で 1 件取得 (= 公開閲覧 OK)。 */
+        get: operations["get_listing"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mating_records": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** `POST /api/v1/mating_records` — 新規交配記録。breeder_user_id は session の user_id に固定。 */
+        post: operations["create_record"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mating_records/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/mating_records/me` — current breeder の交配記録一覧。 */
+        get: operations["list_my_records"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mating_records/{id}/egg_count": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** `POST /api/v1/mating_records/{id}/egg_count` — 採卵数を更新 (= 所有者のみ)。 */
+        post: operations["update_egg_count_handler"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/mating_records/{id}/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** `POST /api/v1/mating_records/{id}/status` — status 遷移 (= 所有者のみ)。 */
+        post: operations["update_status_handler"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/me/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /api/v1/me/logs` — login user の所有 specimens 全体のログを横断で返す。
+         *     マイページの「今月のログ」KPI / `listLogs()` 互換 (= フロント data.ts 移行)。
+         */
+        get: operations["list_my_logs"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orders/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/orders/me` — 自分の注文一覧 (= created_at 降順)。 */
+        get: operations["list_my_orders"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/orders/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /api/v1/orders/{id}` — 自分の注文 1 件 + line_items を返す。
+         * @description **Auth ポリシー**: 所有者 (= orders.user_id == current user) のみ閲覧可能。
+         *     匿名 session で発行された注文 (= user_id = NULL / session_id 文字列のみ) は、
+         *     同じ session_id を提示している場合に閲覧可能 (= "ログインしないでも自分のカートで
+         *     買った直後の確認画面" を許す)。それ以外は 404 で吸収。
+         */
+        get: operations["get_order_detail"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/products": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/products?locale=ja` — 全 active 商品を id 昇順で返す。 */
+        get: operations["list_products"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/species": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/species?locale=ja` — 全 species を id 昇順で返す。 */
+        get: operations["list_species"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/specimens": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * `POST /api/v1/specimens` — 自分の所有 specimen を新規登録。
+         * @description **PR N-4**: req.eclosion_eta が None かつ birth_date が Some なら、`species_stats` から
+         *     自動計算して埋める (= birth_date + larva_days + pupa_days)。stats が見つからなければ None
+         *     のままで OK (= UI 側で「未登録」表示)。
+         */
+        post: operations["create_specimen"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/specimens/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/specimens/me` — 現在 login 中の user の specimens を返す。archived は除外。 */
+        get: operations["list_my_specimens"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/specimens/{id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * `POST /api/v1/specimens/{id}/archive` — 自分の specimen を archive する。
+         *     他人の specimen を archive しようとすると 403 (= ここでは 404 で吸収)。
+         */
+        post: operations["archive_specimen"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/specimens/{id}/life_status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * `POST /api/v1/specimens/{id}/life_status` — life_status 遷移。所有者のみ操作可。
+         * @description **Medium #3**: specimens.life_status の更新時は必ず本 endpoint 経由で
+         *     `repos::specimens::update_life_status` を呼び、specimen_status_history への履歴
+         *     INSERT が原子的に走る規律にしている。直接 UPDATE する経路は作らない。
+         */
+        post: operations["change_life_status"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/specimens/{id}/logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/specimens/{id}/logs` — 1 specimen の log を時系列降順で返す。public 閲覧 OK。 */
+        get: operations["list_logs"];
+        put?: never;
+        /** `POST /api/v1/specimens/{id}/logs` — 自分の specimen にログ追加。login + 所有者必須。 */
+        post: operations["create_log"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/specimens/{id}/notes": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch: operations["patch_specimen_notes"];
+        trace?: never;
+    };
+    "/specimens/{id}/status_history": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/specimens/{id}/status_history` — life_status の遷移履歴を返す (= public 閲覧 OK)。 */
+        get: operations["list_status_history"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/specimens/{public_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/specimens/{public_id}` — public_id で 1 件取得 (= 公開閲覧 OK)。 */
+        get: operations["get_specimen"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/uploads/complete": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** `POST /api/v1/uploads/complete` — 完了通知。status='pending' → 'uploaded' に遷移。 */
+        post: operations["post_complete"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/uploads/local/{asset_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        /**
+         * `PUT /api/v1/uploads/local/{asset_id}` — local storage モードの body 受信。
+         * @description **dev 専用**: production の R2/S3 mode では署名 URL 経由で provider が直接受ける。
+         *
+         *     認証: login required + asset の owner と current user 一致を verify。
+         *     バリデーション: bytes 上限 (10MB) + mime_type が事前申告と一致。
+         */
+        put: operations["put_local_upload"];
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/uploads/sign": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * `POST /api/v1/uploads/sign` — login required。
+         *     asset 行を `pending` で作り、クライアントに upload URL を返す。
+         */
+        post: operations["post_sign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/watch/{product_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** `POST /api/v1/watch/{productId}` — ウォッチ状態をトグルする (= cookie session 別 / login user 優先)。 */
+        post: operations["toggle_watch"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        AddToCartRequest: {
+            productId: string;
+            /**
+             * Format: int32
+             * @description 省略時は 1。
+             */
+            qty?: number;
+        };
+        AddToCartResponse: {
+            /**
+             * Format: int32
+             * @description 追加後のカート総点数 (qty の合計)。
+             */
+            cartCount: number;
+            /** @description このアクション 1 件を取り消すためのトークン (= cart_items.id の UUID 文字列)。 */
+            undoToken: string;
+        };
+        /**
+         * @description 1 件の Analytics イベント。
+         *
+         *     review fix (major): SDUI v6 §10.1 / CODE_REVIEW_PROMPT §2.1 — `analyticsId` /
+         *     `eventType` / `timestampMs` / `context` / `serverReceivedAtMs` 以外の field を
+         *     silently 受け入れると後段集計でゴミが混入するため `deny_unknown_fields` を強制する。
+         *     自由記述コンテキストは `context: BTreeMap` に閉じ込める設計で、トップレベルの
+         *     拡張は contract 変更扱いで明示的に追加する。
+         */
+        AnalyticsEvent: {
+            /** @description 対象 Block / Card の analyticsId。空文字は不可。 */
+            analyticsId: string;
+            /**
+             * @description 自由記述コンテキスト (productId / variant / experimentKey 等)。
+             *     空 / 未指定は JSON で省略される (skip_serializing_if)。
+             *     TS 側は ts(optional) で context?: Record<string, string> として表現する。
+             *     client は context があれば Some、無ければ None で送る。
+             */
+            context?: {
+                [key: string]: string;
+            } | null;
+            /** @description `impression` (画面に映った) / `click` (ユーザ操作)。 */
+            eventType: components["schemas"]["AnalyticsEventType"];
+            /**
+             * Format: int64
+             * @description サーバ受信時刻 (ms epoch)。設計書 §11.2 の真実値。
+             *     client 送信時の値は custom deserializer (`always_none`) で読み捨てて常に `None` に
+             *     倒し、handler が stamp する経路だけが Some を作れる (= 偽装防止)。
+             *
+             *     **serde quirk**: 当初は `skip_deserializing` を使っていたが、これは「フィールドが
+             *     存在しない」扱いになる結果、`deny_unknown_fields` 側から見ると JSON に当該キーが
+             *     乗っているだけで「unknown field」エラーになるため不採用。`deserialize_with` で
+             *     「フィールドの存在は認識するが値は無視」を表現する。
+             */
+            serverReceivedAtMs?: number | null;
+            /**
+             * Format: int64
+             * @description クライアント側 Date.now 相当 (ms epoch)。サーバは値を validate しない。
+             *     設計書 §4.2.2 規約により i64 を ts-rs で number に倒す。
+             *     集計の真実値は server 受信時刻側で持つ想定 (§11.2)。
+             */
+            timestampMs: number;
+        };
+        /**
+         * @description `POST /api/v1/events` で送られる batch payload。
+         *
+         *     review fix (major): SDUI v6 §10.1 — batch 包み構造側でも未知 field を弾く。
+         */
+        AnalyticsEventBatch: {
+            events: components["schemas"]["AnalyticsEvent"][];
+        };
+        /**
+         * @description イベント種別。
+         *
+         *     `impression` と `click` のみ。snake_case enum で固定する (camelCase でも文字列
+         *     一致するが、将来の `dwell_time` 等が来た時に明確に snake_case で受ける意図)。
+         * @enum {string}
+         */
+        AnalyticsEventType: "impression" | "click";
+        ChangeLifeStatusRequest: {
+            /**
+             * Format: date
+             * @description 死着日 / 譲渡日 / 脱走日。`changed_at` カラムに記録。
+             */
+            changedAt: string;
+            /** @description 自由メモ。specimens.life_status_note と specimen_status_history.note の両方に書く。 */
+            note?: string | null;
+            /** @description "active" / "deceased" / "transferred" / "escaped" */
+            status: string;
+        };
+        /**
+         * @description 任意で全 state を確認したい時の GET (Phase 8: テスト + デバッグ用)。
+         *     SDUI 契約上は cart card の中で配送先も返るのでクライアントは普通使わない。
+         */
+        CheckoutSnapshotResponse: {
+            addressAddr: string;
+            addressName: string;
+            addressPref: string;
+            addressTel: string;
+            addressZip: string;
+            shippingMethodId: string;
+        };
+        CheckoutSubmitResponse: {
+            orderId: string;
+            sessionUrl: string;
+        };
+        CompleteRequest: {
+            assetId: string;
+        };
+        CompleteResponse: {
+            assetId: string;
+            /** @description クライアントが `<img src=...>` で表示するための URL。 */
+            publicUrl: string;
+        };
+        CreateListingRequest: {
+            description?: string | null;
+            /** Format: date-time */
+            endsAt?: string | null;
+            isAuction: boolean;
+            publicId: string;
+            specimenId?: string | null;
+            /** Format: int64 */
+            startingPriceJpy: number;
+            title: string;
+        };
+        CreateListingResponse: {
+            id: string;
+            publicId: string;
+        };
+        CreateMatingRequest: {
+            /** Format: int32 */
+            eggCount?: number | null;
+            fatherId?: string | null;
+            fatherLabel?: string | null;
+            /** Format: date */
+            matedAt: string;
+            motherId?: string | null;
+            motherLabel?: string | null;
+            notes?: string | null;
+            /** @description 省略時は "planned" (= 予定段階)。 */
+            status?: string;
+        };
+        CreateMatingResponse: {
+            id: string;
+        };
+        CreateSpecimenLogRequest: {
+            body?: string;
+            hasPhoto?: boolean;
+            logType: string;
+            /** Format: date */
+            loggedAt: string;
+            loggedAtTime?: string | null;
+            /**
+             * @description 構造化 metrics (= log_type ごとに JSONB で柔軟に持つ)。例: weight log なら `{ "weight_g": 28.4 }`。
+             *     任意 JSON object として表現するため `HashMap<String, serde_json::Value>` を value_type に指定
+             *     (= OpenAPI で `type: object, additionalProperties: ...` を emit / TS 側 `Record<string, unknown>`)。
+             */
+            metrics?: {
+                [key: string]: unknown;
+            };
+            title: string;
+        };
+        CreateSpecimenLogResponse: {
+            id: string;
+        };
+        CreateSpecimenRequest: {
+            /** Format: date */
+            birthDate?: string | null;
+            /** Format: date */
+            eclosionEta?: string | null;
+            generation?: string | null;
+            name: string;
+            notes?: string | null;
+            publicId: string;
+            /** Format: date */
+            purchasedAt?: string | null;
+            sex: string;
+            /** Format: double */
+            sizeMm?: number | null;
+            speciesId: string;
+            stage: string;
+            /** Format: double */
+            stageProgress: number;
+            /** Format: double */
+            weightG?: number | null;
+        };
+        CreateSpecimenResponse: {
+            id: string;
+            publicId: string;
+        };
         /**
          * @description 全 endpoint の共通エラーレスポンス。
          *     `AppError::IntoResponse` の出力形式 `{ "error": "<message>" }` と完全一致。
@@ -145,6 +1098,52 @@ export interface components {
         ErrorResponse: {
             /** @description エラーメッセージ (= 人間向け、英語 / 日本語混在)。 */
             error: string;
+        };
+        ListingView: {
+            /** Format: int64 */
+            currentPriceJpy?: number | null;
+            description?: string | null;
+            /** Format: date-time */
+            endsAt?: string | null;
+            id: string;
+            isAuction: boolean;
+            isVerified: boolean;
+            publicId: string;
+            sellerUserId: string;
+            specimenId?: string | null;
+            /** Format: int64 */
+            startingPriceJpy: number;
+            status: string;
+            title: string;
+        };
+        ListingViewWithCounts: {
+            /**
+             * Format: int64
+             * @description `v_listings_with_counts.bid_count`。
+             */
+            bidCount: number;
+            /** Format: int64 */
+            currentPriceJpy?: number | null;
+            description?: string | null;
+            /** Format: date-time */
+            endsAt?: string | null;
+            id: string;
+            isAuction: boolean;
+            isVerified: boolean;
+            publicId: string;
+            /** @description JOIN users.name で取得。 */
+            sellerName: string;
+            sellerUserId: string;
+            specimenId?: string | null;
+            /** Format: int64 */
+            startingPriceJpy: number;
+            status: string;
+            title: string;
+            /**
+             * Format: int64
+             * @description `v_listings_with_counts.watcher_count`。
+             */
+            watcherCount: number;
         };
         LoginRequest: {
             email: string;
@@ -162,6 +1161,20 @@ export interface components {
             role: string;
             userId: string;
         };
+        MatingRecordView: {
+            breederUserId: string;
+            /** Format: int32 */
+            eggCount?: number | null;
+            fatherId?: string | null;
+            fatherLabel?: string | null;
+            id: string;
+            /** Format: date */
+            matedAt: string;
+            motherId?: string | null;
+            motherLabel?: string | null;
+            notes?: string | null;
+            status: string;
+        };
         MeResponse: {
             avatarInitial: string;
             email?: string | null;
@@ -176,12 +1189,107 @@ export interface components {
             role: string;
             userId: string;
         };
+        OrderDetailView: components["schemas"]["OrderView"] & {
+            lineItems: components["schemas"]["OrderLineView"][];
+        };
+        OrderLineView: {
+            productId: string;
+            productUuid?: string | null;
+            /** Format: int32 */
+            qty: number;
+            /** Format: int64 */
+            subtotalJpy: number;
+            title: string;
+            /** Format: int64 */
+            unitPriceJpy: number;
+        };
+        OrderView: {
+            /** Format: int64 */
+            amountJpy: number;
+            /** Format: date-time */
+            createdAt: string;
+            id: string;
+            sessionId: string;
+            /** Format: int64 */
+            shippingJpy?: number | null;
+            status: string;
+            stripePaymentIntentId?: string | null;
+            stripeSessionId?: string | null;
+            /** Format: date-time */
+            updatedAt: string;
+        };
         PasswordResetConfirmRequest: {
             newPassword: string;
             token: string;
         };
         PasswordResetRequest: {
             email: string;
+        };
+        PatchCartItemRequest: {
+            /**
+             * Format: int32
+             * @description 新しい qty (>= 1)。0 を投げるなら DELETE を使う (= 「削除」と「数量変更」を分離)。
+             */
+            qty: number;
+        };
+        PatchCartItemResponse: {
+            /**
+             * Format: int32
+             * @description 更新後のカート総点数 (= 全エントリ qty の sum)。
+             */
+            cartCount: number;
+        };
+        PatchShippingFieldRequest: {
+            /**
+             * @description この field の新しい値。空文字 ("") も許容 (= 「クリア」操作)。
+             *     過剰に長い値は 400 (DoS 対策)。
+             */
+            value: string;
+        };
+        PatchShippingFieldResponse: {
+            /** @description 設定後の value (= echo back)。サーバ側 trim 等を将来掛ける時の正規化結果が見えるよう。 */
+            value: string;
+        };
+        PatchShippingMethodRequest: {
+            /** @description SHIPPING_METHODS の id のいずれか (= "cold" / "normal")。未知 id は 400。 */
+            id: string;
+        };
+        PatchShippingMethodResponse: {
+            id: string;
+        };
+        PlaceBidRequest: {
+            /** Format: int64 */
+            amountJpy: number;
+        };
+        PlaceBidResponse: {
+            bidId: string;
+            /** Format: int64 */
+            currentPriceJpy: number;
+        };
+        ProductResponse: {
+            /** @description 表示バッジ (= 「血統書付」「ペア割」等)。 */
+            badge?: string | null;
+            /** @description 系統。例: `CBF2`。supply は null。 */
+            generation?: string | null;
+            /** @description public_id 文字列。例: `p-hh-m-142` */
+            id: string;
+            /** @description 表示種別。`生体` / `用品` (= ja locale)。 */
+            kind: string;
+            /** @description プレースホルダ画像のラベル (= 1 文字)。 */
+            phLabel: string;
+            /**
+             * Format: int64
+             * @description 税込価格 (JPY)。
+             */
+            price: number;
+            /** @description 学名。supply は null。 */
+            sci?: string | null;
+            /** @description ショップ表示名。例: `ANCHOR BEETLE CO.` */
+            shop: string;
+            /** @description 商品タイトル (locale 翻訳済)。 */
+            title: string;
+            /** @description 配色トーン (= フロント CSS 用)。`forest` / `amber`。 */
+            tone: string;
         };
         RegisterRequest: {
             avatarInitial: string;
@@ -203,6 +1311,116 @@ export interface components {
             /** @description 新規発行された UUID (= users.id) */
             userId: string;
         };
+        SignRequest: {
+            /**
+             * Format: int64
+             * @description アップロード予定のバイトサイズ (= ヘッダ的な事前申告)。
+             */
+            bytes: number;
+            /** @description `image/jpeg` / `image/png` / `image/webp` / `image/gif` のいずれか。 */
+            mimeType: string;
+            targetId?: string | null;
+            /** @description 任意: アップロードと同時に target を指定したい場合 (= 紐付け待ちで保留も可)。 */
+            targetKind?: string | null;
+        };
+        SignResponse: {
+            /** @description 作成した asset の UUID 文字列。 */
+            assetId: string;
+            /** @description HTTP method (= "PUT")。 */
+            uploadMethod: string;
+            /** @description クライアントが PUT する宛先 URL。local mode は server 自身、r2/s3 は署名済 URL。 */
+            uploadUrl: string;
+        };
+        SpeciesResponse: {
+            /** @description 短い slug。例: `dhh` */
+            id: string;
+            /** @description locale 別の名前。例: `ヘラクレスオオカブト` */
+            name: string;
+            /** @description 生息地。例: `中南米` */
+            region: string;
+            /** @description 学名。例: `Dynastes hercules hercules` */
+            sciName: string;
+        };
+        SpecimenLogView: {
+            authorUserId: string;
+            body: string;
+            hasPhoto: boolean;
+            id: string;
+            logType: string;
+            /** Format: date */
+            loggedAt: string;
+            loggedAtTime?: string | null;
+            /**
+             * @description 構造化 metrics (= log_type ごとに JSONB で柔軟に持つ)。例: weight log なら `{ "weight_g": 28.4 }`。
+             *     任意 JSON object として表現するため `HashMap<String, serde_json::Value>` を value_type に指定
+             *     (= OpenAPI で `type: object, additionalProperties: ...` を emit / TS 側 `Record<string, unknown>`)。
+             */
+            metrics: {
+                [key: string]: unknown;
+            };
+            specimenId: string;
+            title: string;
+        };
+        SpecimenView: {
+            /** Format: date */
+            birthDate?: string | null;
+            /** Format: date */
+            eclosionEta?: string | null;
+            generation?: string | null;
+            id: string;
+            isArchived: boolean;
+            lifeStatus: string;
+            name: string;
+            /** @description 個体メモ (= 自由テキスト)。PR #5b で localStorage から server 永続化に移行。 */
+            notes?: string | null;
+            ownerUserId: string;
+            publicId: string;
+            /** Format: date */
+            purchasedAt?: string | null;
+            sex: string;
+            /** Format: double */
+            sizeMm?: number | null;
+            speciesId: string;
+            stage: string;
+            /** Format: double */
+            stageProgress: number;
+            /** Format: double */
+            weightG?: number | null;
+        };
+        StatusHistoryView: {
+            authorUserId: string;
+            /** Format: date */
+            changedAt: string;
+            /** Format: date-time */
+            createdAt: string;
+            id: string;
+            note?: string | null;
+            specimenId: string;
+            status: string;
+        };
+        ToggleWatchResponse: {
+            watching: boolean;
+        };
+        UpdateEggCountRequest: {
+            /** Format: int32 */
+            eggCount: number;
+        };
+        /**
+         * @description `PATCH /api/v1/specimens/{id}/notes` — 個体メモ更新 (= 自由テキスト)。
+         *     PR #5b で localStorage 永続化を廃止して server 化。空文字列は「メモ削除」として許容。
+         *     他人の specimen は 404 (= 存在隠し)。
+         */
+        UpdateNotesRequest: {
+            /** @description `null` または "" を渡すと notes を NULL に戻す (= 「メモを消す」)。 */
+            notes?: string | null;
+        };
+        UpdateStatusRequest: {
+            status: string;
+        };
+        WatchToggleResponse: {
+            /** @description トグル後の状態 (true = 今 watching に入った / false = 解除された)。 */
+            watching: boolean;
+        };
     };
     responses: never;
     parameters: never;
@@ -212,6 +1430,47 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    get_asset: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description asset の UUID (= /uploads/complete で uploaded になった行のみ取得可) */
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description asset の生バイト列。Content-Type は asset.mime_type、Cache-Control は public max-age=3600。 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/octet-stream": string;
+                };
+            };
+            /** @description asset 不存在 / pending / file 不在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description non-local provider 未実装 / DB error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     post_login: {
         parameters: {
             query?: never;
@@ -386,6 +1645,1547 @@ export interface operations {
                 };
             };
             /** @description 入力 invalid / public_id-email 重複 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_cart_card: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description session の cart snapshot から構築した SDUI `CardBlock::Cart`。OpenAPI 上は opaque object */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description key uniqueness / a11y validation 失敗 / cart fetch error */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_product_cards: {
+        parameters: {
+            query?: {
+                /** @description 商品カテゴリの 1 値フィルタ (例: live) */
+                category?: string;
+                /** @description 飼育難易度の 1 値フィルタ (例: hard) */
+                difficulty?: string;
+                /** @description 並び順 (`name` / `price_asc` / `price_desc` / `new`)。未指定 / 不正値は default */
+                sort?: string;
+                /** @description 検索キーワード (substring, case-insensitive)。trim 後空なら検索なし */
+                q?: string;
+                /** @description ページ番号 (1 始まり)。1 未満は 1 ページ目 */
+                page?: number;
+                /** @description 1 ページあたり件数。`MAX_PER_PAGE` でキャップ */
+                perPage?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description filter / search / sort / pagination 適用後の SDUI `ProductListResponse` (= filterBar + sortBar + searchBox + pagination + cards)。OpenAPI 上は opaque object */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description internal validation 失敗 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_product_card: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 商品の public_id (例: `p-hh-m-142`) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 1 商品の SDUI `CardBlock` (= 構造は ts-rs 経由型 [client_solid/src/sdui](client_solid/src/sdui) を参照)。OpenAPI 上は opaque object 扱い */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description key uniqueness / a11y validation 失敗 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未知 id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_product_detail_card: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 商品の public_id (例: `p-hh-m-142`) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 詳細用 `product_detail` テンプレートの SDUI `CardBlock`。OpenAPI 上は opaque object */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": unknown;
+                };
+            };
+            /** @description key uniqueness / a11y validation 失敗 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未知 id */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    add_to_cart: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AddToCartRequest"];
+            };
+        };
+        responses: {
+            /** @description 追加成功 (= cartCount + undoToken) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AddToCartResponse"];
+                };
+            };
+            /** @description productId 空 / qty 不正 / 未知 productId */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    delete_cart_item: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description add_to_cart 時に発行された undoToken (= cart_items.id の UUID 文字列) */
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 削除成功 (= 該当 cart_items 行を物理削除) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 削除中 invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description token 不正 / 該当 entry なし (= 二重 Undo は 404) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    patch_cart_item: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description add_to_cart 時に発行された undoToken (= cart_items.id の UUID 文字列) */
+                token: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchCartItemRequest"];
+            };
+        };
+        responses: {
+            /** @description qty 更新成功 (= 更新後 cartCount を返す) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PatchCartItemResponse"];
+                };
+            };
+            /** @description qty=0 / qty 上限超え / token 不正 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 該当 entry なし */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_checkout_snapshot: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description checkout state スナップショット (= debug / テスト用途) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckoutSnapshotResponse"];
+                };
+            };
+        };
+    };
+    patch_shipping_field: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 更新する field 名 (allowlist: addressName / addressTel / addressZip / addressPref / addressAddr) */
+                name: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchShippingFieldRequest"];
+            };
+        };
+        responses: {
+            /** @description field 更新成功 (= 設定後 value を echo back) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PatchShippingFieldResponse"];
+                };
+            };
+            /** @description 未知 field / value 過長 (= 200 文字超) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    patch_shipping_method: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PatchShippingMethodRequest"];
+            };
+        };
+        responses: {
+            /** @description 切替成功 (= 設定後 id を echo back) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PatchShippingMethodResponse"];
+                };
+            };
+            /** @description 未知 shipping_method_id */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    post_checkout_submit: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 注文確定 + Stripe Checkout Session URL を返す */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CheckoutSubmitResponse"];
+                };
+            };
+            /** @description cart 空 / shipping 未入力 / 商品不正 / Stripe session 失敗 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_events: {
+        parameters: {
+            query?: {
+                /** @description 取得件数。`RING_CAP` を超える指定は `RING_CAP` に丸める。 */
+                limit?: number;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 直近 N 件 (新しい順) の analytics 生データ */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["AnalyticsEvent"][];
+                };
+            };
+        };
+    };
+    post_events: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["AnalyticsEventBatch"];
+            };
+        };
+        responses: {
+            /** @description 受理 (= ring buffer に積む / 集計は別経路) */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 1 件でも analyticsId 空 → batch 全件リジェクト */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_active: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description active な listing を一覧で返す (= seller / bid_count / watcher_count 同梱) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListingViewWithCounts"][];
+                };
+            };
+        };
+    };
+    create_listing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateListingRequest"];
+            };
+        };
+        responses: {
+            /** @description 出品作成成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateListingResponse"];
+                };
+            };
+            /** @description 入力 invalid / public_id 重複 / specimenId UUID 不正 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未ログイン */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    place_bid: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description listing の internal UUID (= listings.id) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PlaceBidRequest"];
+            };
+        };
+        responses: {
+            /** @description 入札成功 (= current_price 更新含む) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PlaceBidResponse"];
+                };
+            };
+            /** @description auction でない / non-active / seller 自身 / amount 不足 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未ログイン */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description listing 不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    cancel_listing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description listing の internal UUID (= listings.id) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description cancel 成功 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description active 以外は cancel 不可 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未ログイン */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description listing 不存在 / 所有者でない (= 情報漏れ防止で 404) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    toggle_watch_listing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description listing の internal UUID (= listings.id) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description トグル後の watching 状態を返す */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ToggleWatchResponse"];
+                };
+            };
+            /** @description 未ログイン */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_listing: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description listing の public_id (= URL slug) */
+                public_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 1 listing 詳細 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListingView"];
+                };
+            };
+            /** @description listing 不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_record: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateMatingRequest"];
+            };
+        };
+        responses: {
+            /** @description 記録作成成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateMatingResponse"];
+                };
+            };
+            /** @description father/mother UUID 不正 / status 値域外 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未ログイン */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_my_records: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description current user の交配記録 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["MatingRecordView"][];
+                };
+            };
+            /** @description 未ログイン */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_egg_count_handler: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description mating_record の internal UUID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateEggCountRequest"];
+            };
+        };
+        responses: {
+            /** @description egg_count 更新成功 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description egg_count 不正 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未ログイン */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description record 不存在 / 所有者でない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    update_status_handler: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description mating_record の internal UUID */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateStatusRequest"];
+            };
+        };
+        responses: {
+            /** @description status 更新成功 */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description status 値域外 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未ログイン */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description record 不存在 / 所有者でない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_my_logs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description login user の全 specimen ログを横断で返す */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpecimenLogView"][];
+                };
+            };
+            /** @description 未ログイン */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_my_orders: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description current user の注文一覧 (= created_at 降順) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderView"][];
+                };
+            };
+            /** @description 未ログイン */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_order_detail: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description order の internal UUID (= orders.id) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 注文詳細 + line_items */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OrderDetailView"];
+                };
+            };
+            /** @description order 不存在 / 所有者でない (= 情報漏れ防止で 404) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_products: {
+        parameters: {
+            query?: {
+                /** @description 取得する翻訳の locale。未指定なら `ja`。 */
+                locale?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 全 active 商品を id 昇順で返す */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductResponse"][];
+                };
+            };
+        };
+    };
+    list_species: {
+        parameters: {
+            query?: {
+                /** @description 取得する翻訳の locale。未指定なら `ja`。 */
+                locale?: string;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 全 species を id 昇順で返す */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpeciesResponse"][];
+                };
+            };
+        };
+    };
+    create_specimen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSpecimenRequest"];
+            };
+        };
+        responses: {
+            /** @description specimen 作成成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateSpecimenResponse"];
+                };
+            };
+            /** @description 入力 invalid / public_id 重複 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未ログイン */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_my_specimens: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description current user の active specimens */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpecimenView"][];
+                };
+            };
+            /** @description 未ログイン */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    archive_specimen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description specimen の internal UUID (= specimens.id) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description archive 成功 (= 論理削除) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 未ログイン */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description specimen 不存在 / 所有者でない (= 情報漏れ防止で 404) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    change_life_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description specimen の internal UUID (= specimens.id) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ChangeLifeStatusRequest"];
+            };
+        };
+        responses: {
+            /** @description 遷移成功 (= specimens 更新 + history INSERT) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description status 値域外 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未ログイン */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description specimen 不存在 / 所有者でない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_logs: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description specimen の internal UUID (= specimens.id) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description log を logged_at 降順で返す */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpecimenLogView"][];
+                };
+            };
+            /** @description specimen 不存在 / archived */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_log: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description specimen の internal UUID (= specimens.id) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateSpecimenLogRequest"];
+            };
+        };
+        responses: {
+            /** @description ログ作成成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateSpecimenLogResponse"];
+                };
+            };
+            /** @description log_type 不正 / archived specimen */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未ログイン */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description specimen 不存在 / 所有者でない (= account enumeration 防御で 404) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    patch_specimen_notes: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description specimen の internal UUID (= specimens.id) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["UpdateNotesRequest"];
+            };
+        };
+        responses: {
+            /** @description メモ更新成功 (= notes=null/空文字 で削除) */
+            204: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description 更新 invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未ログイン */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description specimen 不存在 / 所有者でない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_status_history: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description specimen の internal UUID (= specimens.id) */
+                id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description changed_at 降順の履歴 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["StatusHistoryView"][];
+                };
+            };
+            /** @description specimen 不存在 / archived */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_specimen: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description specimen の public_id (= URL slug, 例 #DHH-0271) */
+                public_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description specimen 詳細 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SpecimenView"];
+                };
+            };
+            /** @description specimen 不存在 / archived (= 削除扱い) */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    post_complete: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CompleteRequest"];
+            };
+        };
+        responses: {
+            /** @description 完了 (= status を uploaded に遷移、`<img src=...>` 用 public_url を返す。冪等) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CompleteResponse"];
+                };
+            };
+            /** @description 未ログイン */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description asset 不存在 / 所有者でない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description DB error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    put_local_upload: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description /uploads/sign で発行された asset の UUID */
+                asset_id: string;
+            };
+            cookie?: never;
+        };
+        /** @description アップロード対象の生バイト列。Content-Type は /sign で申告した mime_type と一致必須。 */
+        requestBody: {
+            content: {
+                "application/octet-stream": string;
+            };
+        };
+        responses: {
+            /** @description 受信成功 (= local file に保存) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Content-Type 不一致 / size 超過 / asset 状態が pending でない */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未ログイン */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description asset 不存在 / 所有者でない */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description storage write error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    post_sign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignRequest"];
+            };
+        };
+        responses: {
+            /** @description asset 行を pending で作り、PUT 先 URL を返す */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignResponse"];
+                };
+            };
+            /** @description mime/bytes/target invalid / DB pool 未設定 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未ログイン */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description storage provider 未実装 / DB error */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    toggle_watch: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description 商品の public_id (例: `p-hh-m-142`) */
+                product_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description トグル後の watching 状態を返す */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["WatchToggleResponse"];
+                };
+            };
+            /** @description productId 空 / 未知 productId / DB 失敗 */
             400: {
                 headers: {
                     [name: string]: unknown;

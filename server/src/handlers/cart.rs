@@ -93,7 +93,7 @@ async fn cart_total_qty_for_session(
 // リクエスト / レスポンス DTO
 // ──────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AddToCartRequest {
     pub product_id: String,
@@ -106,7 +106,7 @@ fn default_qty() -> u32 {
     1
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AddToCartResponse {
     /// 追加後のカート総点数 (qty の合計)。
@@ -120,6 +120,16 @@ pub struct AddToCartResponse {
 // ──────────────────────────────────────────────────────────────────────
 
 /// `POST /api/v1/cart` — カートに商品を追加し、Undo 用トークンを返す。
+#[utoipa::path(
+    post,
+    path = "/cart",
+    tag = "cart",
+    request_body = AddToCartRequest,
+    responses(
+        (status = 200, description = "追加成功 (= cartCount + undoToken)", body = AddToCartResponse),
+        (status = 400, description = "productId 空 / qty 不正 / 未知 productId", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn add_to_cart(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
@@ -171,6 +181,19 @@ pub async fn add_to_cart(
 ///
 /// 既に消えていれば 404。冪等にしないのは「Undo は 1 回しかできない」UX
 /// にするため (2 度 Undo で復活してしまうと驚き)。
+#[utoipa::path(
+    delete,
+    path = "/cart/items/{token}",
+    tag = "cart",
+    params(
+        ("token" = String, Path, description = "add_to_cart 時に発行された undoToken (= cart_items.id の UUID 文字列)"),
+    ),
+    responses(
+        (status = 204, description = "削除成功 (= 該当 cart_items 行を物理削除)"),
+        (status = 400, description = "削除中 invalid", body = crate::openapi::ErrorResponse),
+        (status = 404, description = "token 不正 / 該当 entry なし (= 二重 Undo は 404)", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn delete_cart_item(
     State(state): State<AppState>,
     Path(token): Path<String>,
@@ -187,14 +210,14 @@ pub async fn delete_cart_item(
 // Phase 7: qty 直接指定 (LineItem の +/- ボタンが叩く)
 // ──────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PatchCartItemRequest {
     /// 新しい qty (>= 1)。0 を投げるなら DELETE を使う (= 「削除」と「数量変更」を分離)。
     pub qty: u32,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PatchCartItemResponse {
     /// 更新後のカート総点数 (= 全エントリ qty の sum)。
@@ -209,6 +232,20 @@ pub struct PatchCartItemResponse {
 ///   - 上限 99 を超えたら 400 (= cart_items DB CHECK と同値)
 ///
 /// **冪等性**: 同じ qty を 2 回投げても結果は同じ (= PATCH の RFC 7231 準拠)。
+#[utoipa::path(
+    patch,
+    path = "/cart/items/{token}",
+    tag = "cart",
+    params(
+        ("token" = String, Path, description = "add_to_cart 時に発行された undoToken (= cart_items.id の UUID 文字列)"),
+    ),
+    request_body = PatchCartItemRequest,
+    responses(
+        (status = 200, description = "qty 更新成功 (= 更新後 cartCount を返す)", body = PatchCartItemResponse),
+        (status = 400, description = "qty=0 / qty 上限超え / token 不正", body = crate::openapi::ErrorResponse),
+        (status = 404, description = "該当 entry なし", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn patch_cart_item(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,

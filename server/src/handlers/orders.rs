@@ -26,7 +26,7 @@ async fn require_user_id(state: &AppState, session_id: Uuid) -> Result<Uuid, App
     session.user_id.ok_or(AppError::Unauthorized)
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct OrderView {
     pub id: String,
@@ -57,6 +57,15 @@ impl From<orders::OrderRecord> for OrderView {
 }
 
 /// `GET /api/v1/orders/me` — 自分の注文一覧 (= created_at 降順)。
+#[utoipa::path(
+    get,
+    path = "/orders/me",
+    tag = "orders",
+    responses(
+        (status = 200, description = "current user の注文一覧 (= created_at 降順)", body = Vec<OrderView>),
+        (status = 401, description = "未ログイン", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn list_my_orders(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
@@ -68,7 +77,7 @@ pub async fn list_my_orders(
     Ok(Json(rows.into_iter().map(OrderView::from).collect()))
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct OrderLineView {
     pub product_id: String,
@@ -92,7 +101,7 @@ impl From<orders::OrderLineRow> for OrderLineView {
     }
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct OrderDetailView {
     #[serde(flatten)]
@@ -106,6 +115,18 @@ pub struct OrderDetailView {
 /// 匿名 session で発行された注文 (= user_id = NULL / session_id 文字列のみ) は、
 /// 同じ session_id を提示している場合に閲覧可能 (= "ログインしないでも自分のカートで
 /// 買った直後の確認画面" を許す)。それ以外は 404 で吸収。
+#[utoipa::path(
+    get,
+    path = "/orders/{id}",
+    tag = "orders",
+    params(
+        ("id" = String, Path, description = "order の internal UUID (= orders.id)"),
+    ),
+    responses(
+        (status = 200, description = "注文詳細 + line_items", body = OrderDetailView),
+        (status = 404, description = "order 不存在 / 所有者でない (= 情報漏れ防止で 404)", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn get_order_detail(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,

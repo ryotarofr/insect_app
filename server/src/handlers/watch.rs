@@ -23,19 +23,31 @@ use crate::repos::{product_watches, products, user_sessions};
 use crate::session::SessionId;
 use crate::state::AppState;
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
-pub struct ToggleWatchResponse {
+pub struct WatchToggleResponse {
     /// トグル後の状態 (true = 今 watching に入った / false = 解除された)。
     pub watching: bool,
 }
 
 /// `POST /api/v1/watch/{productId}` — ウォッチ状態をトグルする (= cookie session 別 / login user 優先)。
+#[utoipa::path(
+    post,
+    path = "/watch/{product_id}",
+    tag = "products",
+    params(
+        ("product_id" = String, Path, description = "商品の public_id (例: `p-hh-m-142`)"),
+    ),
+    responses(
+        (status = 200, description = "トグル後の watching 状態を返す", body = WatchToggleResponse),
+        (status = 400, description = "productId 空 / 未知 productId / DB 失敗", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn toggle_watch(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
     Path(product_id): Path<String>,
-) -> Result<Json<ToggleWatchResponse>, AppError> {
+) -> Result<Json<WatchToggleResponse>, AppError> {
     if product_id.is_empty() {
         return Err(AppError::BadRequest("productId is empty".to_string()));
     }
@@ -64,7 +76,7 @@ pub async fn toggle_watch(
         .map_err(|e| AppError::BadRequest(format!("watch toggle: {e}")))?;
 
     let watching = matches!(outcome, product_watches::ToggleOutcome::Added);
-    Ok(Json(ToggleWatchResponse { watching }))
+    Ok(Json(WatchToggleResponse { watching }))
 }
 
 #[cfg(test)]
@@ -214,7 +226,7 @@ mod tests {
 
     #[test]
     fn response_serializes_camel_case() {
-        let res = ToggleWatchResponse { watching: true };
+        let res = WatchToggleResponse { watching: true };
         let json = serde_json::to_string(&res).unwrap();
         assert_eq!(json, r#"{"watching":true}"#);
     }

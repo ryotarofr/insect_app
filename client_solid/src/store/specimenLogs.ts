@@ -93,7 +93,7 @@ export const toLogEntry = (
   displaySpecimenId: string,
 ): LogEntry => ({
   date: v.loggedAt,
-  time: trimSeconds(v.loggedAtTime),
+  time: trimSeconds(v.loggedAtTime ?? null),
   type: toLogType(v.logType),
   title: v.title,
   body: v.body,

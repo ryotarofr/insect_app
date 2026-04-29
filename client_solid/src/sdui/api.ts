@@ -20,7 +20,76 @@
 //   ここでは「signature が branded を返す」ことで呼び出し側に強制できる。
 //   実行時 validation が必要になったら fetch 後に zod / valibot を挟む。
 
+import type {
+  AddToCartResponse,
+  ChangeLifeStatusRequest,
+  CheckoutSubmitResponse,
+  CreateListingRequest,
+  CreateMatingRequest,
+  CreateSpecimenLogRequest,
+  CreateSpecimenRequest,
+  CreateSpecimenResponse,
+  ListingView,
+  ListingViewWithCounts,
+  LoginRequest,
+  LoginResponse,
+  MatingRecordView,
+  MatingStatus,
+  MeResponse,
+  OrderDetail,
+  OrderLineSummary,
+  OrderSummary,
+  PatchCartItemResponse,
+  PatchShippingFieldResponse,
+  PatchShippingMethodResponse,
+  PlaceBidResponse,
+  ProductSummary,
+  RegisterRequest,
+  RegisterResponse,
+  SpeciesSummary,
+  SpecimenLogType,
+  SpecimenLogView,
+  SpecimenView,
+  StatusHistoryView,
+  ToggleWatchResponse,
+} from "../generated/api-types";
+
 import type { CardBlock, ProductListResponse } from "./branded";
+
+// Re-export generated alias 群を本ファイル経由でも辿れるようにする (= 既存呼び出し互換)。
+export type {
+  AddToCartResponse,
+  ChangeLifeStatusRequest,
+  CheckoutSubmitResponse,
+  CreateListingRequest,
+  CreateMatingRequest,
+  CreateSpecimenLogRequest,
+  CreateSpecimenRequest,
+  CreateSpecimenResponse,
+  ListingView,
+  ListingViewWithCounts,
+  LoginRequest,
+  LoginResponse,
+  MatingRecordView,
+  MatingStatus,
+  MeResponse,
+  OrderDetail,
+  OrderLineSummary,
+  OrderSummary,
+  PatchCartItemResponse,
+  PatchShippingFieldResponse,
+  PatchShippingMethodResponse,
+  PlaceBidResponse,
+  ProductSummary,
+  RegisterRequest,
+  RegisterResponse,
+  SpeciesSummary,
+  SpecimenLogType,
+  SpecimenLogView,
+  SpecimenView,
+  StatusHistoryView,
+  ToggleWatchResponse,
+};
 
 /** API ベース URL (dev では vite proxy 経由)。 */
 const API_BASE = "/api/v1";
@@ -199,14 +268,6 @@ export const fetchProductCardList = async (): Promise<CardBlock[]> => {
 // レスポンスは camelCase JSON。サーバ側 DTO と完全に対応している。
 // ──────────────────────────────────────────────────────────────────────
 
-/** `POST /api/v1/cart` のレスポンス。Toast の Undo に使う。 */
-export interface AddToCartResponse {
-  /** 追加後のカート総点数 (将来 cart バッジに反映予定)。 */
-  cartCount: number;
-  /** Undo に必要なトークン (`DELETE /cart/items/:token`)。 */
-  undoToken: string;
-}
-
 /** `POST /api/v1/cart` — カートに商品を追加し、Undo トークンを取得する。
  *
  *  - 失敗時は `SduiFetchError` を throw。
@@ -230,12 +291,6 @@ export const deleteCartItem = async (token: string): Promise<void> => {
   const safe = encodeURIComponent(token);
   await fetchNoContent(`/cart/items/${safe}`, { method: "DELETE" });
 };
-
-/** `POST /api/v1/watch/:productId` のレスポンス。 */
-export interface ToggleWatchResponse {
-  /** トグル後の状態 (true = 今 watching に入った / false = 解除された)。 */
-  watching: boolean;
-}
 
 /** `POST /api/v1/watch/:productId` — ウォッチ状態をトグルする。
  *
@@ -266,12 +321,6 @@ export const fetchCartCard = async (): Promise<CardBlock> => {
   return fetchJson<CardBlock>(`/cards/cart`);
 };
 
-/** `PATCH /api/v1/cart/items/:token` のレスポンス (Phase 7)。 */
-export interface PatchCartItemResponse {
-  /** 更新後のカート総点数 (= 全エントリ qty の sum)。バッジに反映予定。 */
-  cartCount: number;
-}
-
 /** `PATCH /api/v1/cart/items/:token` — qty を直接書き換える (Phase 7)。
  *
  *  - LineItem の +/- ボタン (LineItemAction::SetQty) が叩く。
@@ -289,12 +338,6 @@ export const patchCartItemQty = async (
     body: JSON.stringify({ qty }),
   });
 };
-
-/** `PATCH /api/v1/checkout/shipping_field/:name` のレスポンス (Phase 8)。 */
-export interface PatchShippingFieldResponse {
-  /** 設定後の value (= echo back)。trim 等のサーバ側正規化結果。 */
-  value: string;
-}
 
 /** `PATCH /api/v1/checkout/shipping_field/:name` — 配送先 1 フィールドを更新 (Phase 8)。
  *
@@ -318,12 +361,6 @@ export const patchCheckoutShippingField = async (
   );
 };
 
-/** `PATCH /api/v1/checkout/shipping_method` のレスポンス (Phase 8)。 */
-export interface PatchShippingMethodResponse {
-  /** 設定後の shipping method id (= echo back)。 */
-  id: string;
-}
-
 /** `PATCH /api/v1/checkout/shipping_method` — 配送方法を切り替え (Phase 8)。
  *
  *  - ShippingMethodPicker (CheckoutMethodAction::PatchMethod) が叩く。
@@ -339,17 +376,11 @@ export const patchCheckoutShippingMethod = async (
   });
 };
 
-/** `POST /api/v1/checkout/submit` のレスポンス (Phase 9.1)。
+/** `POST /api/v1/checkout/submit` — Stripe Checkout Session を作成する (Phase 9.1)。
  *
  *  クライアントは `window.location.href = sessionUrl` で Stripe Hosted Checkout
  *  (もしくは mock landing) に遷移する。orderId は orders テーブルの UUID で、
- *  Webhook 後の order tracking / debug に使う。 */
-export interface CheckoutSubmitResponse {
-  orderId: string;
-  sessionUrl: string;
-}
-
-/** `POST /api/v1/checkout/submit` — Stripe Checkout Session を作成する (Phase 9.1)。
+ *  Webhook 後の order tracking / debug に使う。
  *
  *  - 空カート / 配送先不完全は 400 を投げる (= toast でユーザに通知)
  *  - body は不要 (= server 側 cart_store + checkout_store の snapshot を参照)
@@ -367,50 +398,47 @@ export const postCheckoutSubmit = async (): Promise<CheckoutSubmitResponse> => {
 // Phase 9.G: 認証 (= /api/v1/auth/*)
 // ──────────────────────────────────────────────────────────────────────
 
-/** auth handler の register / login / me レスポンスで共通な user view。 */
+/** auth handler の register / login / me レスポンスを抱える signal の compat surface。
+ *
+ *  **設計**: server 側 3 type (`RegisterResponse` / `LoginResponse` / `MeResponse`) は
+ *  `email` の null 許容や `avatarInitial` / `joinedAt` の有無で shape が異なるため、
+ *  単一 alias に潰せない。本 interface はそれら 3 type の **structural superset** として
+ *  hand-rolled で維持し、各 fetch 関数 (`postAuthRegister` / `postAuthLogin` / `fetchAuthMe`)
+ *  は per-call-site の generated strict 型を返す → 戻り値が `AuthUser | null` 型 signal に
+ *  代入される時に structural assignability で吸収される。
+ *
+ *  - `email`: server `Option<String>` を扱うため `string | null` (= 未設定 user 対応)
+ *  - `avatarInitial` / `joinedAt`: MeResponse のみ。register / login 経路では undefined */
 export interface AuthUser {
   userId: string;
   publicId: string;
   name: string;
-  email?: string;
+  email?: string | null;
   role: string;
-  /** /me 専用に avatarInitial が乗る (register / login レスポンスは含まない場合あり)。 */
+  /** /me 専用に avatarInitial が乗る (register / login レスポンスは含まない)。 */
   avatarInitial?: string;
   /** /me 専用。アカウント開設日時 (ISO 8601)。client は YYYY.MM 形式に整形して
    *  「登録 2024.03 より」のような表示に使う。 */
   joinedAt?: string;
 }
 
-export interface RegisterRequest {
-  publicId: string;
-  name: string;
-  email: string;
-  password: string;
-  avatarInitial: string;
-  /** 省略時は server 側で "breeder" がデフォルト。 */
-  role?: string;
-}
-
 /** `POST /api/v1/auth/register` — 新規登録。同 cookie session を user に紐付ける。 */
 export const postAuthRegister = async (
   req: RegisterRequest,
-): Promise<AuthUser> => {
-  return fetchJson<AuthUser>(`/auth/register`, {
+): Promise<RegisterResponse> => {
+  return fetchJson<RegisterResponse>(`/auth/register`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
   });
 };
 
-export interface LoginRequest {
-  email: string;
-  password: string;
-}
-
 /** `POST /api/v1/auth/login` — email + password 検証 → session 昇格。
  *  失敗 (= 401) は account enumeration を防ぐため email 不在 / password 不一致を区別しない。 */
-export const postAuthLogin = async (req: LoginRequest): Promise<AuthUser> => {
-  return fetchJson<AuthUser>(`/auth/login`, {
+export const postAuthLogin = async (
+  req: LoginRequest,
+): Promise<LoginResponse> => {
+  return fetchJson<LoginResponse>(`/auth/login`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(req),
@@ -427,28 +455,13 @@ export const postAuthLogout = async (): Promise<void> => {
 };
 
 /** `GET /api/v1/auth/me` — 現在 login 中の user 情報。anonymous は 401。 */
-export const fetchAuthMe = async (): Promise<AuthUser> => {
-  return fetchJson<AuthUser>(`/auth/me`);
+export const fetchAuthMe = async (): Promise<MeResponse> => {
+  return fetchJson<MeResponse>(`/auth/me`);
 };
 
 // ──────────────────────────────────────────────────────────────────────
 // 商品マスタ (= /api/v1/products) — フロント data.ts 移行
 // ──────────────────────────────────────────────────────────────────────
-
-/** server `GET /api/v1/products` のレスポンス 1 行。
- *  data.ts の `interface Product` と同じ shape (= server 側で kind / badge を ja に整形済)。 */
-export interface ProductSummary {
-  id: string;
-  kind: string;             // "生体" / "用品"
-  title: string;
-  sci?: string;
-  price: number;
-  badge?: string;
-  generation?: string;
-  shop: string;
-  tone: string;             // "forest" / "amber"
-  phLabel: string;
-}
 
 /** `GET /api/v1/products?locale=ja` — 全 active 商品を id 昇順で返す。 */
 export const fetchProducts = async (
@@ -461,15 +474,6 @@ export const fetchProducts = async (
 // 種マスタ (= /api/v1/species) — フロント data.ts 移行
 // ──────────────────────────────────────────────────────────────────────
 
-/** server `GET /api/v1/species` のレスポンス 1 行。
- *  legacy `interface Species` と完全 1:1 ではなく、`name` / `sciName` の camelCase 形式。 */
-export interface SpeciesSummary {
-  id: string;
-  name: string;          // locale 別の和名
-  sciName: string;       // 学名
-  region: string;        // 生息地
-}
-
 /** `GET /api/v1/species?locale=ja` — 全種を id 昇順で返す。 */
 export const fetchSpecies = async (locale = "ja"): Promise<SpeciesSummary[]> => {
   return fetchJson<SpeciesSummary[]>(`/species?locale=${encodeURIComponent(locale)}`);
@@ -478,35 +482,6 @@ export const fetchSpecies = async (locale = "ja"): Promise<SpeciesSummary[]> => 
 // ──────────────────────────────────────────────────────────────────────
 // Phase 9.G: 注文履歴 (= /api/v1/orders/*)
 // ──────────────────────────────────────────────────────────────────────
-
-export interface OrderSummary {
-  id: string;
-  sessionId: string;
-  status: string;                    // "pending" / "paid" / "failed" / "canceled"
-  amountJpy: number;
-  shippingJpy: number | null;
-  stripeSessionId: string | null;
-  stripePaymentIntentId: string | null;
-  /** ISO8601 文字列 (= chrono::DateTime<Utc>) */
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface OrderLineSummary {
-  productId: string;
-  productUuid: string | null;
-  title: string;
-  unitPriceJpy: number;
-  qty: number;
-  subtotalJpy: number;
-}
-
-/** `GET /api/v1/orders/{id}` の戻り値。orders + line_items を 1 枚にまとめる。
- *  サーバ側は `#[serde(flatten)]` で order を埋め込んで返すため、
- *  client では `OrderSummary` のフィールド + `lineItems` で一段に展開される。 */
-export type OrderDetail = OrderSummary & {
-  lineItems: OrderLineSummary[];
-};
 
 /** `GET /api/v1/orders/me` — login user の注文履歴 (= 新しい順)。 */
 export const fetchMyOrders = async (): Promise<OrderSummary[]> => {
@@ -522,48 +497,6 @@ export const fetchOrderDetail = async (id: string): Promise<OrderDetail> => {
 // ──────────────────────────────────────────────────────────────────────
 // Phase 9.D: 個体カルテ (= /api/v1/specimens/*)
 // ──────────────────────────────────────────────────────────────────────
-
-export interface SpecimenView {
-  id: string;
-  publicId: string;                                    // "#DHH-0271"
-  ownerUserId: string;
-  speciesId: string;
-  name: string;
-  sex: string;                                         // "male" / "female" / "unknown"
-  stage: string;
-  stageProgress: number;
-  sizeMm: number | null;
-  weightG: number | null;
-  birthDate: string | null;                            // "2024-08-12" (= NaiveDate)
-  purchasedAt: string | null;
-  generation: string | null;
-  eclosionEta: string | null;
-  lifeStatus: string;                                  // "active" / "deceased" / "transferred" / "escaped"
-  isArchived: boolean;
-  /** 個体メモ。PR #5b で server 永続化 (= 旧 localStorage memo)。 */
-  notes: string | null;
-}
-
-export interface CreateSpecimenRequest {
-  publicId: string;
-  speciesId: string;
-  name: string;
-  sex: string;
-  stage: string;
-  stageProgress: number;
-  sizeMm?: number | null;
-  weightG?: number | null;
-  birthDate?: string | null;
-  purchasedAt?: string | null;
-  generation?: string | null;
-  eclosionEta?: string | null;
-  notes?: string | null;
-}
-
-export interface CreateSpecimenResponse {
-  id: string;
-  publicId: string;
-}
 
 /** `GET /api/v1/specimens/me` — login user の active な individuals。 */
 export const fetchMySpecimens = async (): Promise<SpecimenView[]> => {
@@ -595,12 +528,6 @@ export const postSpecimenArchive = async (id: string): Promise<void> => {
   });
 };
 
-export interface ChangeLifeStatusRequest {
-  status: string;                                      // "active" / "deceased" / "transferred" / "escaped"
-  changedAt: string;                                   // YYYY-MM-DD
-  note?: string | null;
-}
-
 /** `POST /api/v1/specimens/{id}/life_status` — life_status 遷移 + 履歴 INSERT (= 204)。 */
 export const postSpecimenLifeStatus = async (
   id: string,
@@ -626,16 +553,6 @@ export const patchSpecimenNotes = async (
   });
 };
 
-export interface StatusHistoryView {
-  id: string;
-  specimenId: string;
-  status: string;
-  changedAt: string;
-  note: string | null;
-  authorUserId: string;
-  createdAt: string;
-}
-
 /** `GET /api/v1/specimens/{id}/status_history` — life_status 遷移履歴 (= changed_at 降順)。 */
 export const fetchSpecimenStatusHistory = async (
   id: string,
@@ -645,31 +562,7 @@ export const fetchSpecimenStatusHistory = async (
   );
 };
 
-// 飼育ログ
-export type SpecimenLogType = "weight" | "feed" | "mat" | "molt" | "observation";
-
-export interface SpecimenLogView {
-  id: string;
-  specimenId: string;
-  authorUserId: string;
-  logType: SpecimenLogType;
-  loggedAt: string;
-  loggedAtTime: string | null;                         // "HH:MM:SS"
-  title: string;
-  body: string;
-  hasPhoto: boolean;
-  metrics: Record<string, unknown>;                    // JSONB / 自由構造
-}
-
-export interface CreateSpecimenLogRequest {
-  logType: SpecimenLogType;
-  loggedAt: string;
-  loggedAtTime?: string | null;
-  title: string;
-  body?: string;
-  hasPhoto?: boolean;
-  metrics?: Record<string, unknown>;
-}
+// 飼育ログ — 型定義は `../generated/api-types` (server `SpecimenLogView` / `CreateSpecimenLogRequest` の alias) を参照。
 
 /** `GET /api/v1/specimens/{id}/logs` — 飼育ログを時系列降順で返す (= public 閲覧 OK)。 */
 export const fetchSpecimenLogs = async (id: string): Promise<SpecimenLogView[]> => {
@@ -700,32 +593,6 @@ export const postSpecimenLog = async (
 // ──────────────────────────────────────────────────────────────────────
 // Phase 9.D: 交配記録 (= /api/v1/mating_records/*)
 // ──────────────────────────────────────────────────────────────────────
-
-export type MatingStatus = "planned" | "mated" | "eggs_laid" | "hatched" | "failed";
-
-export interface MatingRecordView {
-  id: string;
-  breederUserId: string;
-  fatherId: string | null;
-  motherId: string | null;
-  fatherLabel: string | null;
-  motherLabel: string | null;
-  matedAt: string;
-  eggCount: number | null;
-  status: MatingStatus;
-  notes: string | null;
-}
-
-export interface CreateMatingRequest {
-  fatherId?: string | null;
-  motherId?: string | null;
-  fatherLabel?: string | null;
-  motherLabel?: string | null;
-  matedAt: string;
-  eggCount?: number | null;
-  status?: MatingStatus;                               // 省略時 server 側 default "planned"
-  notes?: string | null;
-}
 
 /** `POST /api/v1/mating_records` — 新規記録 (= login 必須)。 */
 export const postMatingRecord = async (
@@ -771,39 +638,6 @@ export const postMatingEggCount = async (
 // Phase 9.E: C2C marketplace (= /api/v1/listings/*)
 // ──────────────────────────────────────────────────────────────────────
 
-export interface ListingView {
-  id: string;
-  publicId: string;                                    // "L-0421"
-  sellerUserId: string;
-  specimenId: string | null;
-  title: string;
-  description: string | null;
-  isAuction: boolean;
-  startingPriceJpy: number;
-  currentPriceJpy: number | null;
-  endsAt: string | null;
-  status: string;                                      // "active" / "sold" / "canceled" / "expired"
-  isVerified: boolean;
-}
-
-/** `GET /api/v1/listings` のレスポンス。`ListingView` + sellerName / 入札数 /
- *  ウォッチ数を含む (= PR-7 でフロント mock 廃止のために server 側で集約)。 */
-export interface ListingViewWithCounts extends ListingView {
-  sellerName: string;
-  bidCount: number;
-  watcherCount: number;
-}
-
-export interface CreateListingRequest {
-  publicId: string;
-  specimenId?: string | null;
-  title: string;
-  description?: string | null;
-  isAuction: boolean;
-  startingPriceJpy: number;
-  endsAt?: string | null;
-}
-
 /** `GET /api/v1/listings` — active な出品一覧 (= public 閲覧 OK)。
  *  PR-7: レスポンスに sellerName / bidCount / watcherCount を含む形に拡張。 */
 export const fetchListings = async (): Promise<ListingViewWithCounts[]> => {
@@ -834,11 +668,6 @@ export const postListingCancel = async (id: string): Promise<void> => {
     body: "{}",
   });
 };
-
-export interface PlaceBidResponse {
-  bidId: string;
-  currentPriceJpy: number;
-}
 
 /** `POST /api/v1/listings/{id}/bids` — auction 入札。
  *  amount は現在値より厳格に大きい必要があり、seller の自分入札は不可。 */

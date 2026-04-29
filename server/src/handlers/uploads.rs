@@ -91,7 +91,7 @@ fn public_base_url() -> String {
 // POST /api/v1/uploads/sign
 // ──────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SignRequest {
     /// `image/jpeg` / `image/png` / `image/webp` / `image/gif` のいずれか。
@@ -105,7 +105,7 @@ pub struct SignRequest {
     pub target_id: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SignResponse {
     /// 作成した asset の UUID 文字列。
@@ -118,6 +118,18 @@ pub struct SignResponse {
 
 /// `POST /api/v1/uploads/sign` — login required。
 /// asset 行を `pending` で作り、クライアントに upload URL を返す。
+#[utoipa::path(
+    post,
+    path = "/uploads/sign",
+    tag = "uploads",
+    request_body = SignRequest,
+    responses(
+        (status = 200, description = "asset 行を pending で作り、PUT 先 URL を返す", body = SignResponse),
+        (status = 400, description = "mime/bytes/target invalid / DB pool 未設定", body = crate::openapi::ErrorResponse),
+        (status = 401, description = "未ログイン", body = crate::openapi::ErrorResponse),
+        (status = 500, description = "storage provider 未実装 / DB error", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn post_sign(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
@@ -202,6 +214,26 @@ pub async fn post_sign(
 ///
 /// 認証: login required + asset の owner と current user 一致を verify。
 /// バリデーション: bytes 上限 (10MB) + mime_type が事前申告と一致。
+#[utoipa::path(
+    put,
+    path = "/uploads/local/{asset_id}",
+    tag = "uploads",
+    params(
+        ("asset_id" = String, Path, description = "/uploads/sign で発行された asset の UUID"),
+    ),
+    request_body(
+        description = "アップロード対象の生バイト列。Content-Type は /sign で申告した mime_type と一致必須。",
+        content = String,
+        content_type = "application/octet-stream",
+    ),
+    responses(
+        (status = 200, description = "受信成功 (= local file に保存)"),
+        (status = 400, description = "Content-Type 不一致 / size 超過 / asset 状態が pending でない", body = crate::openapi::ErrorResponse),
+        (status = 401, description = "未ログイン", body = crate::openapi::ErrorResponse),
+        (status = 404, description = "asset 不存在 / 所有者でない", body = crate::openapi::ErrorResponse),
+        (status = 500, description = "storage write error", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn put_local_upload(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
@@ -273,13 +305,13 @@ pub async fn put_local_upload(
 // POST /api/v1/uploads/complete
 // ──────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CompleteRequest {
     pub asset_id: String,
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CompleteResponse {
     pub asset_id: String,
@@ -288,6 +320,18 @@ pub struct CompleteResponse {
 }
 
 /// `POST /api/v1/uploads/complete` — 完了通知。status='pending' → 'uploaded' に遷移。
+#[utoipa::path(
+    post,
+    path = "/uploads/complete",
+    tag = "uploads",
+    request_body = CompleteRequest,
+    responses(
+        (status = 200, description = "完了 (= status を uploaded に遷移、`<img src=...>` 用 public_url を返す。冪等)", body = CompleteResponse),
+        (status = 401, description = "未ログイン", body = crate::openapi::ErrorResponse),
+        (status = 404, description = "asset 不存在 / 所有者でない", body = crate::openapi::ErrorResponse),
+        (status = 500, description = "DB error", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn post_complete(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
@@ -338,6 +382,22 @@ pub async fn post_complete(
 ///
 /// 認証なし (= MVP では公開固定)。production では署名済 URL に切替予定。
 /// status='uploaded' な asset のみ返す。pending は 404 で隠す。
+#[utoipa::path(
+    get,
+    path = "/assets/{asset_id}",
+    tag = "uploads",
+    params(
+        ("asset_id" = String, Path, description = "asset の UUID (= /uploads/complete で uploaded になった行のみ取得可)"),
+    ),
+    responses(
+        (status = 200, description = "asset の生バイト列。Content-Type は asset.mime_type、Cache-Control は public max-age=3600。",
+            body = String,
+            content_type = "application/octet-stream",
+        ),
+        (status = 404, description = "asset 不存在 / pending / file 不在", body = crate::openapi::ErrorResponse),
+        (status = 500, description = "non-local provider 未実装 / DB error", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn get_asset(
     State(state): State<AppState>,
     Path(asset_id_str): Path<String>,

@@ -37,7 +37,7 @@ async fn require_user_id(state: &AppState, session_id: Uuid) -> Result<Uuid, App
 // DTO
 // ──────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ListingView {
     pub id: String,
@@ -73,7 +73,7 @@ impl From<listings::ListingRow> for ListingView {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CreateListingRequest {
     pub public_id: String,
@@ -85,27 +85,27 @@ pub struct CreateListingRequest {
     pub ends_at: Option<DateTime<Utc>>,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateListingResponse {
     pub id: String,
     pub public_id: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PlaceBidRequest {
     pub amount_jpy: i64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PlaceBidResponse {
     pub bid_id: String,
     pub current_price_jpy: i64,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ToggleWatchResponse {
     pub watching: bool,
@@ -120,6 +120,14 @@ pub struct ToggleWatchResponse {
 /// PR-7 (フロント listings adapter DB 化) で `seller_name` / `bid_count` /
 /// `watcher_count` を含む `ListingViewWithCounts` 形式に拡張。Market.tsx の
 /// 表示要件 (出品者 / 入札数 / ウォッチ数) を 1 fetch で満たす。
+#[utoipa::path(
+    get,
+    path = "/listings",
+    tag = "listings",
+    responses(
+        (status = 200, description = "active な listing を一覧で返す (= seller / bid_count / watcher_count 同梱)", body = Vec<ListingViewWithCounts>),
+    ),
+)]
 pub async fn list_active(
     State(state): State<AppState>,
 ) -> Result<Json<Vec<ListingViewWithCounts>>, AppError> {
@@ -129,7 +137,7 @@ pub async fn list_active(
     Ok(Json(rows.into_iter().map(ListingViewWithCounts::from).collect()))
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ListingViewWithCounts {
     pub id: String,
@@ -175,6 +183,17 @@ impl From<listings::ListingWithCounts> for ListingViewWithCounts {
 }
 
 /// `POST /api/v1/listings` — 新規出品。seller_user_id は session の user_id に固定。
+#[utoipa::path(
+    post,
+    path = "/listings",
+    tag = "listings",
+    request_body = CreateListingRequest,
+    responses(
+        (status = 200, description = "出品作成成功", body = CreateListingResponse),
+        (status = 400, description = "入力 invalid / public_id 重複 / specimenId UUID 不正", body = crate::openapi::ErrorResponse),
+        (status = 401, description = "未ログイン", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn create_listing(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
@@ -218,6 +237,18 @@ pub async fn create_listing(
 }
 
 /// `GET /api/v1/listings/{public_id}` — public_id で 1 件取得 (= 公開閲覧 OK)。
+#[utoipa::path(
+    get,
+    path = "/listings/{public_id}",
+    tag = "listings",
+    params(
+        ("public_id" = String, Path, description = "listing の public_id (= URL slug)"),
+    ),
+    responses(
+        (status = 200, description = "1 listing 詳細", body = ListingView),
+        (status = 404, description = "listing 不存在", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn get_listing(
     State(state): State<AppState>,
     Path(public_id): Path<String>,
@@ -230,6 +261,20 @@ pub async fn get_listing(
 }
 
 /// `POST /api/v1/listings/{id}/cancel` — 自分の出品を canceled に倒す。
+#[utoipa::path(
+    post,
+    path = "/listings/{id}/cancel",
+    tag = "listings",
+    params(
+        ("id" = String, Path, description = "listing の internal UUID (= listings.id)"),
+    ),
+    responses(
+        (status = 204, description = "cancel 成功"),
+        (status = 400, description = "active 以外は cancel 不可", body = crate::openapi::ErrorResponse),
+        (status = 401, description = "未ログイン", body = crate::openapi::ErrorResponse),
+        (status = 404, description = "listing 不存在 / 所有者でない (= 情報漏れ防止で 404)", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn cancel_listing(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
@@ -263,6 +308,21 @@ pub async fn cancel_listing(
 }
 
 /// `POST /api/v1/listings/{id}/bids` — auction 入札。
+#[utoipa::path(
+    post,
+    path = "/listings/{id}/bids",
+    tag = "listings",
+    params(
+        ("id" = String, Path, description = "listing の internal UUID (= listings.id)"),
+    ),
+    request_body = PlaceBidRequest,
+    responses(
+        (status = 200, description = "入札成功 (= current_price 更新含む)", body = PlaceBidResponse),
+        (status = 400, description = "auction でない / non-active / seller 自身 / amount 不足", body = crate::openapi::ErrorResponse),
+        (status = 401, description = "未ログイン", body = crate::openapi::ErrorResponse),
+        (status = 404, description = "listing 不存在", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn place_bid(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
@@ -341,6 +401,18 @@ pub async fn place_bid(
 }
 
 /// `POST /api/v1/listings/{id}/watch` — listing watch のトグル。
+#[utoipa::path(
+    post,
+    path = "/listings/{id}/watch",
+    tag = "listings",
+    params(
+        ("id" = String, Path, description = "listing の internal UUID (= listings.id)"),
+    ),
+    responses(
+        (status = 200, description = "トグル後の watching 状態を返す", body = ToggleWatchResponse),
+        (status = 401, description = "未ログイン", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn toggle_watch_listing(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,

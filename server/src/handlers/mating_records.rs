@@ -27,7 +27,7 @@ async fn require_user_id(state: &AppState, session_id: Uuid) -> Result<Uuid, App
     session.user_id.ok_or(AppError::Unauthorized)
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MatingRecordView {
     pub id: String,
@@ -59,7 +59,7 @@ impl From<mating_records::MatingRecordRow> for MatingRecordView {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CreateMatingRequest {
     pub father_id: Option<String>,                      // UUID 文字列 / NULL
@@ -78,19 +78,19 @@ fn default_status() -> String {
     "planned".to_string()
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateMatingResponse {
     pub id: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UpdateStatusRequest {
     pub status: String,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct UpdateEggCountRequest {
     pub egg_count: i32,
@@ -109,6 +109,18 @@ fn parse_optional_uuid(s: &Option<String>, field: &str) -> Result<Option<Uuid>, 
 // handlers
 // ──────────────────────────────────────────────────────────────────────
 
+/// `POST /api/v1/mating_records` — 新規交配記録。breeder_user_id は session の user_id に固定。
+#[utoipa::path(
+    post,
+    path = "/mating_records",
+    tag = "mating",
+    request_body = CreateMatingRequest,
+    responses(
+        (status = 200, description = "記録作成成功", body = CreateMatingResponse),
+        (status = 400, description = "father/mother UUID 不正 / status 値域外", body = crate::openapi::ErrorResponse),
+        (status = 401, description = "未ログイン", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn create_record(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
@@ -145,6 +157,16 @@ pub async fn create_record(
     }))
 }
 
+/// `GET /api/v1/mating_records/me` — current breeder の交配記録一覧。
+#[utoipa::path(
+    get,
+    path = "/mating_records/me",
+    tag = "mating",
+    responses(
+        (status = 200, description = "current user の交配記録", body = Vec<MatingRecordView>),
+        (status = 401, description = "未ログイン", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn list_my_records(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
@@ -156,6 +178,22 @@ pub async fn list_my_records(
     Ok(Json(rows.into_iter().map(MatingRecordView::from).collect()))
 }
 
+/// `POST /api/v1/mating_records/{id}/status` — status 遷移 (= 所有者のみ)。
+#[utoipa::path(
+    post,
+    path = "/mating_records/{id}/status",
+    tag = "mating",
+    params(
+        ("id" = String, Path, description = "mating_record の internal UUID"),
+    ),
+    request_body = UpdateStatusRequest,
+    responses(
+        (status = 204, description = "status 更新成功"),
+        (status = 400, description = "status 値域外", body = crate::openapi::ErrorResponse),
+        (status = 401, description = "未ログイン", body = crate::openapi::ErrorResponse),
+        (status = 404, description = "record 不存在 / 所有者でない", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn update_status_handler(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
@@ -186,6 +224,22 @@ pub async fn update_status_handler(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// `POST /api/v1/mating_records/{id}/egg_count` — 採卵数を更新 (= 所有者のみ)。
+#[utoipa::path(
+    post,
+    path = "/mating_records/{id}/egg_count",
+    tag = "mating",
+    params(
+        ("id" = String, Path, description = "mating_record の internal UUID"),
+    ),
+    request_body = UpdateEggCountRequest,
+    responses(
+        (status = 204, description = "egg_count 更新成功"),
+        (status = 400, description = "egg_count 不正", body = crate::openapi::ErrorResponse),
+        (status = 401, description = "未ログイン", body = crate::openapi::ErrorResponse),
+        (status = 404, description = "record 不存在 / 所有者でない", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn update_egg_count_handler(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,

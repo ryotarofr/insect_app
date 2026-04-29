@@ -45,7 +45,7 @@ const normalize = (v: ListingViewWithCounts): Listing => ({
   price: v.currentPriceJpy ?? v.startingPriceJpy,
   bids: v.isAuction ? v.bidCount : null,
   watchers: v.watcherCount,
-  endsIn: formatEndsIn(v.endsAt, v.isAuction),
+  endsIn: formatEndsIn(v.endsAt ?? null, v.isAuction),
   auction: v.isAuction,
   verified: v.isVerified,
 });

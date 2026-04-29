@@ -56,7 +56,7 @@ const uuidToPublicId = (uuid: string): string => {
 /** server `SpecimenLogView` を legacy `LogEntry` に変換。 */
 const toLogEntry = (v: SpecimenLogView): LogEntry => ({
   date: v.loggedAt,
-  time: trimSeconds(v.loggedAtTime),
+  time: trimSeconds(v.loggedAtTime ?? null),
   type: toLogType(v.logType),
   title: v.title,
   body: v.body,

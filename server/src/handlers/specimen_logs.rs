@@ -31,7 +31,7 @@ async fn require_user_id(state: &AppState, session_id: Uuid) -> Result<Uuid, App
     session.user_id.ok_or(AppError::Unauthorized)
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SpecimenLogView {
     pub id: String,
@@ -43,6 +43,10 @@ pub struct SpecimenLogView {
     pub title: String,
     pub body: String,
     pub has_photo: bool,
+    /// 構造化 metrics (= log_type ごとに JSONB で柔軟に持つ)。例: weight log なら `{ "weight_g": 28.4 }`。
+    /// 任意 JSON object として表現するため `HashMap<String, serde_json::Value>` を value_type に指定
+    /// (= OpenAPI で `type: object, additionalProperties: ...` を emit / TS 側 `Record<string, unknown>`)。
+    #[schema(value_type = std::collections::HashMap<String, serde_json::Value>)]
     pub metrics: Value,
 }
 
@@ -63,7 +67,7 @@ impl From<specimen_logs::SpecimenLogRow> for SpecimenLogView {
     }
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CreateSpecimenLogRequest {
     pub log_type: String,                               // "weight" / "feed" / "mat" / "molt" / "observation"
@@ -75,7 +79,10 @@ pub struct CreateSpecimenLogRequest {
     #[serde(default)]
     pub has_photo: bool,
     /// 構造化 metrics (= log_type ごとに JSONB で柔軟に持つ)。例: weight log なら `{ "weight_g": 28.4 }`。
+    /// 任意 JSON object として表現するため `HashMap<String, serde_json::Value>` を value_type に指定
+    /// (= OpenAPI で `type: object, additionalProperties: ...` を emit / TS 側 `Record<string, unknown>`)。
     #[serde(default = "default_metrics")]
+    #[schema(value_type = std::collections::HashMap<String, serde_json::Value>)]
     pub metrics: Value,
 }
 
@@ -83,7 +90,7 @@ fn default_metrics() -> Value {
     Value::Object(serde_json::Map::new())
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateSpecimenLogResponse {
     pub id: String,
@@ -91,6 +98,15 @@ pub struct CreateSpecimenLogResponse {
 
 /// `GET /api/v1/me/logs` — login user の所有 specimens 全体のログを横断で返す。
 /// マイページの「今月のログ」KPI / `listLogs()` 互換 (= フロント data.ts 移行)。
+#[utoipa::path(
+    get,
+    path = "/me/logs",
+    tag = "specimens",
+    responses(
+        (status = 200, description = "login user の全 specimen ログを横断で返す", body = Vec<SpecimenLogView>),
+        (status = 401, description = "未ログイン", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn list_my_logs(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
@@ -103,6 +119,18 @@ pub async fn list_my_logs(
 }
 
 /// `GET /api/v1/specimens/{id}/logs` — 1 specimen の log を時系列降順で返す。public 閲覧 OK。
+#[utoipa::path(
+    get,
+    path = "/specimens/{id}/logs",
+    tag = "specimens",
+    params(
+        ("id" = String, Path, description = "specimen の internal UUID (= specimens.id)"),
+    ),
+    responses(
+        (status = 200, description = "log を logged_at 降順で返す", body = Vec<SpecimenLogView>),
+        (status = 404, description = "specimen 不存在 / archived", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn list_logs(
     State(state): State<AppState>,
     Path(id): Path<String>,
@@ -123,6 +151,21 @@ pub async fn list_logs(
 }
 
 /// `POST /api/v1/specimens/{id}/logs` — 自分の specimen にログ追加。login + 所有者必須。
+#[utoipa::path(
+    post,
+    path = "/specimens/{id}/logs",
+    tag = "specimens",
+    params(
+        ("id" = String, Path, description = "specimen の internal UUID (= specimens.id)"),
+    ),
+    request_body = CreateSpecimenLogRequest,
+    responses(
+        (status = 200, description = "ログ作成成功", body = CreateSpecimenLogResponse),
+        (status = 400, description = "log_type 不正 / archived specimen", body = crate::openapi::ErrorResponse),
+        (status = 401, description = "未ログイン", body = crate::openapi::ErrorResponse),
+        (status = 404, description = "specimen 不存在 / 所有者でない (= account enumeration 防御で 404)", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn create_log(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
