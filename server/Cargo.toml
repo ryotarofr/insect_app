@@ -52,6 +52,28 @@ sha2 = "0.10"
 hex = "0.4"
 subtle = "2.6"
 
+# メール送信 (Sprint 2 / N1-N2 / email_outbox relay worker 経由)。
+# - dev / test: builder + StubTransport (= 送信内容を Vec<Message> に貯めるだけ)
+# - prod:       AsyncSmtpTransport で SendGrid / Mailgun の SMTP relay へ
+# tokio runtime + rustls TLS で Windows でも openssl 不要にビルド可能。
+lettre = { version = "0.11", default-features = false, features = [
+    "builder",
+    "smtp-transport",
+    "tokio1-rustls-tls",
+] }
+
+# Mailer trait に async fn を持たせるため (= Rust 1.75+ なら native async fn in trait も可だが
+# dyn 越し呼び出しに `Box<dyn Mailer>` を使いたいので async_trait を採用)。
+async-trait = "0.1"
+
+# OpenAPI スキーマ生成 (Phase 1 / A1)。
+# - `utoipa`           : #[utoipa::path] + #[derive(ToSchema)] で OpenAPI 3.x を組み立てる
+# - `utoipa-swagger-ui`: 開発時の swagger-ui を /swagger-ui で配信 (= axum 統合あり)
+# 生成 spec はビルド時ではなく runtime で `ApiDoc::openapi()` を呼び出して取り出す
+# (= 純 Rust マクロ展開で完結。CI で /openapi.json を fetch して TS 生成に流す)。
+utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-swagger-ui = { version = "9", features = ["axum"] }
+
 # property-based test (M8 / 設計書 §13.6)
 # 任意の CardBlock を生成 → JSON serialize → deserialize の round-trip 等価性を assert。
 # discriminator 衝突 / Option<T> の null vs missing 揺れ / camelCase 変換漏れを機械的に検出。

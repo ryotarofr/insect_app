@@ -12,6 +12,8 @@
     "typecheck": "tsc --noEmit",
     "gen:sdui": "node scripts/gen-sdui-types.mjs",
     "gen:sdui:fast": "node scripts/gen-sdui-types.mjs --skip-cargo",
+    "gen:openapi": "node scripts/gen-openapi.mjs",
+    "gen:openapi:fast": "node scripts/gen-openapi.mjs --skip-cargo",
     "check:i18n": "node scripts/check-i18n-keys.mjs",
     "check:i18n:strict": "node scripts/check-i18n-keys.mjs --strict"
   },
