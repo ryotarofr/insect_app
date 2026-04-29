@@ -14,6 +14,7 @@ pub mod order_fulfillment;
 pub mod orders;
 pub mod password_resets;
 pub mod prefectures;
+pub mod product_bloodlines;
 pub mod product_watches;
 pub mod products;
 pub mod shipping_methods;

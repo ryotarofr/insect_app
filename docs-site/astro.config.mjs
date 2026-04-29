@@ -12,6 +12,7 @@
 
 import { defineConfig } from "astro/config";
 import starlight from "@astrojs/starlight";
+import mermaid from "astro-mermaid";
 
 export default defineConfig({
   // ── GitHub Pages 配信先 ────────────────────────────────────────
@@ -23,6 +24,13 @@ export default defineConfig({
   output: "static",
 
   integrations: [
+    // Mermaid 統合は Starlight の前に置く必要あり (= remark/rehype の処理順)。
+    // ```mermaid フェンスをクライアント側で SVG にレンダリングする。
+    // autoTheme=true で Starlight の light/dark 切替に追従。
+    mermaid({
+      theme: "default",
+      autoTheme: true,
+    }),
     starlight({
       title: "昆虫EC × 飼育管理 — 設計ドキュメント",
       description:

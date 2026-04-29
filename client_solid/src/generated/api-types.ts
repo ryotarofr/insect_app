@@ -34,6 +34,13 @@ export type ProductSummary = components["schemas"]["ProductResponse"];
 /** server `GET /api/v1/species` の 1 行。`name` は locale 別、`sciName` は学名。 */
 export type SpeciesSummary = components["schemas"]["SpeciesResponse"];
 
+/** server `GET /api/v1/product_bloodlines` の 1 行 (= 1 商品の血統情報)。 */
+export type ProductBloodlineSummary =
+  components["schemas"]["ProductBloodlineResponse"];
+
+/** server `GET /api/v1/product_bloodlines` の ancestor 1 件 (= 親 / 祖父母)。 */
+export type ProductBloodlineAncestor = components["schemas"]["AncestorResponse"];
+
 // ──────────────────────────────────────────────────────────────────────
 // auth (= request / response それぞれ per-call-site で alias)
 //

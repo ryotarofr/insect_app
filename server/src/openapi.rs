@@ -96,6 +96,8 @@ pub struct ErrorResponse {
         // PR O-3: data.ts 移行系 (species + products, raw JSON)
         crate::handlers::species::list_species,
         crate::handlers::products::list_products,
+        // 商品血統情報 (= フロント PRODUCT_BLOODLINE 移行)
+        crate::handlers::product_bloodlines::list_product_bloodlines,
         // PR O-4: 飼育ログ (specimen_logs)
         crate::handlers::specimen_logs::list_my_logs,
         crate::handlers::specimen_logs::list_logs,
@@ -163,6 +165,9 @@ pub struct ErrorResponse {
             // PR O-3: data.ts 移行系
             crate::handlers::species::SpeciesResponse,
             crate::handlers::products::ProductResponse,
+            // 商品血統情報 DTO
+            crate::handlers::product_bloodlines::ProductBloodlineResponse,
+            crate::handlers::product_bloodlines::AncestorResponse,
             // PR O-4: 飼育ログ DTO
             crate::handlers::specimen_logs::SpecimenLogView,
             crate::handlers::specimen_logs::CreateSpecimenLogRequest,

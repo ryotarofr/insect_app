@@ -43,6 +43,8 @@ import type {
   PatchShippingFieldResponse,
   PatchShippingMethodResponse,
   PlaceBidResponse,
+  ProductBloodlineAncestor,
+  ProductBloodlineSummary,
   ProductSummary,
   RegisterRequest,
   RegisterResponse,
@@ -80,6 +82,8 @@ export type {
   PatchShippingFieldResponse,
   PatchShippingMethodResponse,
   PlaceBidResponse,
+  ProductBloodlineAncestor,
+  ProductBloodlineSummary,
   ProductSummary,
   RegisterRequest,
   RegisterResponse,
@@ -477,6 +481,17 @@ export const fetchProducts = async (
 /** `GET /api/v1/species?locale=ja` — 全種を id 昇順で返す。 */
 export const fetchSpecies = async (locale = "ja"): Promise<SpeciesSummary[]> => {
   return fetchJson<SpeciesSummary[]>(`/species?locale=${encodeURIComponent(locale)}`);
+};
+
+// ──────────────────────────────────────────────────────────────────────
+// 商品血統情報 (= /api/v1/product_bloodlines) — フロント PRODUCT_BLOODLINE 移行
+// ──────────────────────────────────────────────────────────────────────
+
+/** `GET /api/v1/product_bloodlines` — 全商品の血統データを public_id 昇順で返す。 */
+export const fetchProductBloodlines = async (): Promise<
+  ProductBloodlineSummary[]
+> => {
+  return fetchJson<ProductBloodlineSummary[]>(`/product_bloodlines`);
 };
 
 // ──────────────────────────────────────────────────────────────────────

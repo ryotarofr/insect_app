@@ -2,8 +2,13 @@
 //
 // **目的**:
 //   /products/:id の血統サマリー + フル系図モーダル用データソース。
-//   現状は手書き fixture。将来は GET /api/v1/cards/products/{id}/bloodline 経由で
-//   server-driven 化する予定 (= shape を維持しておけば差し替えが楽)。
+//
+// **データ層**:
+//   `GET /api/v1/product_bloodlines` から fetch して `store/productBloodlines.ts` の
+//   signal に詰めた値を参照する。fixture / 定数は本ファイルから廃止済 (Phase 9.x DB 移行)。
+//   起動時 `App.tsx` 側で `loadProductBloodlines()` が 1 度呼ばれる前提。
+//   それ以前 / fetch 失敗時は `getProductBloodline()` が undefined を返す
+//   (= 商品詳細の血統セクションが非表示 = 用品 fallback と同じ振る舞い)。
 //
 // **対象**:
 //   `kind: "生体"` の商品のみ。用品 (ゼリー / マット 等) には bloodline 無し。
@@ -56,97 +61,20 @@ export interface ProductBloodline {
 }
 
 // ──────────────────────────────────────────────────────────
-// fixture data (= 既存 NODES (= /bloodline) と整合させる)
+// データ取得 (= server fetch + store cache)
 // ──────────────────────────────────────────────────────────
+//
+// 旧 PRODUCT_BLOODLINE 定数は server (`GET /api/v1/product_bloodlines`) に移行。
+// ここでは store の signal を読むだけの薄い adapter を残し、既存呼び出し側
+// (BloodlineSummary / BloodlineLineageModal / BloodlineCardChips /
+// CartBloodlineReminder) を無改修にする。
 
-const w = (id: string, name: string, sex: Sex): BlAncestor => ({
-  id, name, sex, gen: "WILD", isWild: true,
-});
-
-const a = (
-  id: string, name: string, sex: Sex, gen: string, sizeMm?: number,
-  deceasedNote?: string,
-): BlAncestor => ({
-  id, name, sex, gen, sizeMm, isWild: false, deceasedNote,
-});
-
-export const PRODUCT_BLOODLINE: Record<string, ProductBloodline> = {
-  "p-hh-m-142": {
-    productId: "p-hh-m-142",
-    generation: "CBF2",
-    inbreedingCoef: 0.05,
-    breederCertified: true,
-    thirdPartyVerified: false,
-    pedigreeNotes:
-      "ANCHOR BEETLE CO. 自家累代。父系は 2019 グアドループ産 WILD から 3 代目。" +
-      "母系は ANCHOR BEETLE CO. 自家累代 F0。F値 0.05 で安全圏内。",
-    father: a("#DHH-0213", "漆黒", "m", "CBF1", 152),
-    mother: a("#DHH-0244", "マリア", "f", "F0", 66),
-    grandparents: {
-      paternalFather: a("#DHH-0150", "月影", "m", "F0", 148, "故 (2025-10-02)"),
-      paternalMother: a("#DHH-0204", "花音", "f", "F0", 68),
-      maternalFather: w("#WILD-DHH-A", "野生 ♂", "m"),
-      maternalMother: w("#WILD-DHH-B", "野生 ♀", "f"),
-    },
-  },
-
-  "p-cat-l": {
-    productId: "p-cat-l",
-    generation: "CBF3",
-    inbreedingCoef: 0.08,
-    breederCertified: true,
-    thirdPartyVerified: false,
-    pedigreeNotes:
-      "ANCHOR BEETLE CO. 自家累代 CBF3。父系・母系ともに KUWAGATA.jp 由来 F0 ペアから。" +
-      "F値 0.08 で「注意」域。次サイクルは別系統との交配を推奨。",
-    father: a("#CAT-0118", "雷", "m", "CBF1", 95),
-    mother: a("#CAT-0089", "雪", "f", "CBF1", 50),
-    grandparents: {
-      paternalFather: a("#CAT-0091", "嵐", "m", "F0", 110),
-      paternalMother: a("#CAT-0097", "蘭", "f", "F0", 60),
-      maternalFather: a("#CAT-0091", "嵐", "m", "F0", 110), // sibling 交配で同じ親
-      maternalMother: a("#CAT-0097", "蘭", "f", "F0", 60),
-    },
-  },
-
-  "p-neo-m": {
-    productId: "p-neo-m",
-    generation: "CBF2",
-    inbreedingCoef: 0.0,
-    breederCertified: true,
-    thirdPartyVerified: true,
-    pedigreeNotes:
-      "MIYAMA FARM 自家累代 CBF2。父系・母系ともに別系統の MIYAMA FARM F0 ペア。" +
-      "F値 0.00 で完全に安全圏。第三者血統認証済。",
-    father: a("#NEO-0058", "青嵐", "m", "CBF1", 102),
-    mother: a("#NEO-0024", "凜", "f", "F0", 68),
-    grandparents: {
-      paternalFather: a("#NEO-0011", "蒼", "m", "F0", 125),
-      paternalMother: a("#NEO-0007", "翠", "f", "F0", 65),
-      maternalFather: w("#WILD-NEO-A", "野生 ♂", "m"),
-      maternalMother: w("#WILD-NEO-B", "野生 ♀", "f"),
-    },
-  },
-
-  "p-aki": {
-    productId: "p-aki",
-    generation: "WF1",
-    inbreedingCoef: 0.0,
-    breederCertified: true,
-    thirdPartyVerified: true,
-    pedigreeNotes:
-      "MIYAMA FARM が 2024 年に直輸入した WILD ペアから採れた WF1。" +
-      "両親ともペルー産野生個体で完全血統不明 + F値 0.00。第三者認証済。",
-    father: w("#WILD-AKI-A", "野生 ♂ ペルー", "m"),
-    mother: w("#WILD-AKI-B", "野生 ♀ ペルー", "f"),
-    // WF1 は祖父母不明 (= grandparents 省略)
-  },
-};
+import { serverProductBloodlines } from "../../store/productBloodlines";
 
 /** 商品 ID から血統データを取得 (= 用品やデータ未登録なら undefined)。 */
 export const getProductBloodline = (
   productId: string,
-): ProductBloodline | undefined => PRODUCT_BLOODLINE[productId];
+): ProductBloodline | undefined => serverProductBloodlines()[productId];
 
 /** F値のバンド分類。 */
 export type FBand = "safe" | "caution" | "dense";

@@ -109,6 +109,13 @@ pub fn api_v1(state: AppState) -> Router {
         // 既存 /cards/products は SDUI block 形式、本 endpoint は raw JSON で
         // CommandPalette / Hero / breadcrumb 等の軽量参照用。
         .route("/products", get(handlers::products::list_products))
+        // 商品血統情報 (= /api/v1/product_bloodlines)。認証不要 / public。
+        // 4 商品の血統 fixture を bulk で返す。フロントは store/productBloodlines.ts で
+        // 起動時に 1 回 fetch して signal に詰め、商品一覧 / 詳細 / カートで参照する。
+        .route(
+            "/product_bloodlines",
+            get(handlers::product_bloodlines::list_product_bloodlines),
+        )
         // Phase 9.D: 個体カルテ (specimens) 用 endpoint。
         // - /specimens/me と POST / archive は login 必須 (401)、GET /{public_id} は public 閲覧 OK。
         .route("/specimens/me", get(handlers::specimens::list_my_specimens))

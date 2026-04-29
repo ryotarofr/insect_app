@@ -55,7 +55,10 @@ if (!skipCargo) {
 // ── Step 2: openapi-typescript で TS 型生成 ──────────────────────────
 //
 // `bunx openapi-typescript <input> -o <output>` で d.ts を生成。
-// `bunx` 経由なので devDependencies に未登録でも自動 fetch される。
+// `openapi-typescript` は `package.json` の devDependencies に **exact version pin**
+// (= 7.13.0) されているので `bunx` は node_modules 配下を読み、CI と local で同 version
+// が走る (= drift 防止 / 各 PR で生成出力が再現可能)。pin を上げる時は本コメントの
+// 記載 version も更新する。
 mkdirSync(dirname(OUTPUT_PATH), { recursive: true });
 console.log("[gen:openapi] running `openapi-typescript`...");
 execSync(`bunx openapi-typescript "${TMP_JSON}" -o "${OUTPUT_PATH}"`, {

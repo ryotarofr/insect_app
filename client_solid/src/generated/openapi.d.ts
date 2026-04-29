@@ -640,6 +640,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/product_bloodlines": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** `GET /api/v1/product_bloodlines` — 全商品の血統データを public_id 昇順で返す。 */
+        get: operations["list_product_bloodlines"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/products": {
         parameters: {
             query?: never;
@@ -980,6 +997,35 @@ export interface components {
          * @enum {string}
          */
         AnalyticsEventType: "impression" | "click";
+        AncestorResponse: {
+            /** @description 「故 (2025-10-02)」のような死亡注記 (任意)。 */
+            deceasedNote?: string | null;
+            /**
+             * @description 世代タグ。例: `WILD` / `F0` / `CBF1`
+             *
+             *     JSON 上の key は `gen` (= フロント `BlAncestor.gen` と一致)。
+             *     Rust 2024 の予約語 `gen` を避けるため Rust 側は `gen_label` で持ち、
+             *     `#[serde(rename = "gen")]` で wire format だけ短縮名に倒す。
+             */
+            gen: string;
+            /** @description 表示 ID。例: `#DHH-0150` / `#WILD-DHH-A` */
+            id: string;
+            /** @description WILD = 野生個体。色合いを変える指標。 */
+            isWild: boolean;
+            name: string;
+            /**
+             * @description 役割。`father` / `mother` / `paternal_father` / `paternal_mother` /
+             *     `maternal_father` / `maternal_mother`
+             */
+            role: string;
+            /** @description 性別 (= `m` / `f`)。フロント `BlAncestor.sex` 型と一致。 */
+            sex: string;
+            /**
+             * Format: double
+             * @description 体長 (mm)。WILD 等で未計測なら null。
+             */
+            sizeMm?: number | null;
+        };
         ChangeLifeStatusRequest: {
             /**
              * Format: date
@@ -1265,6 +1311,23 @@ export interface components {
             bidId: string;
             /** Format: int64 */
             currentPriceJpy: number;
+        };
+        ProductBloodlineResponse: {
+            /** @description 親 / 祖父母 (= 最大 6 役割、最少 2)。順序は固定しない。 */
+            ancestors: components["schemas"]["AncestorResponse"][];
+            breederCertified: boolean;
+            /** @description 商品自身の世代タグ。例: `CBF2` / `WF1` */
+            generation: string;
+            /**
+             * Format: double
+             * @description 近交係数 (Wright's F)。0..1。
+             */
+            inbreedingCoef: number;
+            /** @description 起源・累代の要約。サマリで 2 行 / modal で全文。 */
+            pedigreeNotes: string;
+            /** @description 商品 public_id。例: `p-hh-m-142` */
+            productId: string;
+            thirdPartyVerified: boolean;
         };
         ProductResponse: {
             /** @description 表示バッジ (= 「血統書付」「ペア割」等)。 */
@@ -2586,6 +2649,26 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_product_bloodlines: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 全商品の血統データを public_id 昇順で返す */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ProductBloodlineResponse"][];
                 };
             };
         };

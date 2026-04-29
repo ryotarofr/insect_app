@@ -47,6 +47,7 @@ import { NotFoundPage } from "./pages/NotFound";
 import { cartCount } from "./store/cart";
 import { currentUser, refreshMe } from "./store/auth";
 import { loadProducts } from "./store/products";
+import { loadProductBloodlines } from "./store/productBloodlines";
 import { loadSpecies } from "./store/species";
 import { clearMyLogs, refreshMyLogs } from "./store/myLogs";
 import { loadListings } from "./store/listings";
@@ -361,6 +362,8 @@ export const App = () => {
     // 商品マスタを 1 回 fetch して store/products.ts の signal に詰める。
     // 失敗時は loadProducts 内で warn 済 (= 例外は伝播しない)。
     void loadProducts();
+    // 商品血統情報を 1 回 fetch (= 商品詳細 / 一覧 chip / カートリマインダで参照)。
+    void loadProductBloodlines();
     // 種マスタを 1 回 fetch (= specimens 表示時に speciesId → 和名/学名 を引くため)。
     void loadSpecies();
     // marketplace 出品一覧を 1 回 fetch (= public 閲覧 OK / login 不要)。
