@@ -21,7 +21,7 @@
 
 use uuid::Uuid;
 
-use crate::repos::{order_fulfillment, orders, products, specimens};
+use crate::repos::{email_outbox, order_fulfillment, orders, products, specimens, users};
 use crate::state::AppState;
 
 /// `paid` 遷移した注文に対して、live `order_items` 1 行 = 1 specimen を生成する。
@@ -173,7 +173,72 @@ pub async fn fulfill_paid_order(state: &AppState, order_id: Uuid) -> anyhow::Res
         }
     }
 
+    // PR N-3: 注文確認メールを email_outbox に enqueue。
+    // - idempotency_key="order:{order_id}" で同 stripe event 2 重 enqueue を排除
+    // - to_email は users.email から取得 (= NULL なら warn skip / メール送れない user)
+    // - email_outbox 失敗は order 自体の整合性に影響しないので warn のみ
+    enqueue_order_confirmation(state, order_id, owner_user_id, order.amount_jpy).await;
+
     Ok(())
+}
+
+/// `order_confirmation` 種別の email を outbox に enqueue。失敗は warn ログのみで握り潰す
+/// (= 注文 / 個体生成は既に成功しており、メールは best-effort)。
+async fn enqueue_order_confirmation(
+    state: &AppState,
+    order_id: Uuid,
+    user_id: Uuid,
+    amount_jpy: i64,
+) {
+    let user = match users::find_by_id(state.db(), user_id).await {
+        Ok(Some(u)) => u,
+        Ok(None) => {
+            tracing::warn!(
+                "enqueue_order_confirmation: user {} not found (order={})",
+                user_id,
+                order_id
+            );
+            return;
+        }
+        Err(e) => {
+            tracing::warn!(
+                "enqueue_order_confirmation: user lookup failed: {e} (order={order_id})"
+            );
+            return;
+        }
+    };
+    let Some(to_email) = user.email else {
+        tracing::warn!(
+            "enqueue_order_confirmation: user {} has NULL email; cannot send confirmation (order={})",
+            user_id,
+            order_id
+        );
+        return;
+    };
+
+    let payload = email_outbox::OutboxEnqueue {
+        kind: "order_confirmation".to_string(),
+        to_email,
+        template_args: serde_json::json!({
+            "order_id": order_id.to_string(),
+            "amount_jpy": amount_jpy,
+        }),
+        idempotency_key: Some(format!("order:{order_id}")),
+        owner_user_id: Some(user_id),
+    };
+
+    match email_outbox::enqueue(state.db(), payload).await {
+        Ok(outbox_id) => {
+            tracing::info!(
+                outbox_id = %outbox_id,
+                order_id = %order_id,
+                "order_confirmation enqueued"
+            );
+        }
+        Err(e) => {
+            tracing::warn!("enqueue_order_confirmation failed: {e} (order={order_id})");
+        }
+    }
 }
 
 /// specimen の `public_id` を `#{SPECIES_UPPER}-{first 6 hex of item_id}` 形式で生成。

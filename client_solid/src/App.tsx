@@ -46,6 +46,10 @@ import { WarrantyPage } from "./pages/help/Warranty";
 import { NotFoundPage } from "./pages/NotFound";
 import { cartCount } from "./store/cart";
 import { currentUser, refreshMe } from "./store/auth";
+import { loadProducts } from "./store/products";
+import { loadSpecies } from "./store/species";
+import { clearMyLogs, refreshMyLogs } from "./store/myLogs";
+import { loadListings } from "./store/listings";
 import {
   clearServerSpecimens,
   refreshMySpecimens,
@@ -354,22 +358,33 @@ export const App = () => {
       // App 起動は止めず、login が必要な画面で 401 を見て対応する。
       console.warn("auth refresh failed:", err);
     });
+    // 商品マスタを 1 回 fetch して store/products.ts の signal に詰める。
+    // 失敗時は loadProducts 内で warn 済 (= 例外は伝播しない)。
+    void loadProducts();
+    // 種マスタを 1 回 fetch (= specimens 表示時に speciesId → 和名/学名 を引くため)。
+    void loadSpecies();
+    // marketplace 出品一覧を 1 回 fetch (= public 閲覧 OK / login 不要)。
+    void loadListings();
   });
 
   // Phase 9.D: login user の所有個体 (= /api/v1/specimens/me) を自動 sync する。
+  // PR #6: 飼育ログ (= /api/v1/me/logs) も同様に auth 連動で sync する。
   //   currentUser() の遷移を監視し、
-  //     - null  → 非ログイン → store を null にクリア (= mock fallback に戻す)
-  //     - User  → /specimens/me を fetch して store に詰める
+  //     - null  → 非ログイン → 両 store を空にクリア
+  //     - User  → /specimens/me + /me/logs を fetch して store に詰める
   //   anonymous からのページ全体描画は cleanup フックではなく明示的な clear で固定する。
   createEffect(() => {
     const u = currentUser();
     if (u) {
       refreshMySpecimens().catch((err: unknown) => {
-        // 5xx / network はストア側 error signal にも詰められているのでここでは log だけ。
         console.warn("specimens refresh failed:", err);
+      });
+      refreshMyLogs().catch((err: unknown) => {
+        console.warn("logs refresh failed:", err);
       });
     } else {
       clearServerSpecimens();
+      clearMyLogs();
     }
   });
 

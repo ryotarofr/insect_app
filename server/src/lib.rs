@@ -14,12 +14,14 @@
 pub mod db;
 pub mod error;
 pub mod handlers;
+pub mod openapi;
 pub mod repos;
 pub mod routes;
 pub mod sdui;
 pub mod session;
 pub mod state;
 pub mod stripe;
+pub mod workers;
 
 // ──────────────────────────────────────────────────────────────────────
 // production env 必須化アサーション (review fix: blocker)

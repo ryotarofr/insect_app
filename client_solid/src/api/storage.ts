@@ -4,9 +4,9 @@
 // 全 I/O を try/catch で包む。キーはここで一元管理する。
 
 export const LS_KEYS = {
-  logs: "kochu:logs",
-  memos: "kochu:specimen-memos",
-  /** P4-22: Bloodline 交配記録 */
+  // PR #6 で `logs` (= 旧 ユーザ追加ログ) は server 化により削除済。
+  // PR #5b で `memos` (= 旧 個体メモ) は server 化により削除済。
+  /** P4-22: Bloodline 交配記録 (= 別機能、現状 client-only 永続化が残る)。 */
   matingRecords: "kochu:mating-records",
 } as const;
 

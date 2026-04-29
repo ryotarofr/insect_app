@@ -376,6 +376,9 @@ export interface AuthUser {
   role: string;
   /** /me 専用に avatarInitial が乗る (register / login レスポンスは含まない場合あり)。 */
   avatarInitial?: string;
+  /** /me 専用。アカウント開設日時 (ISO 8601)。client は YYYY.MM 形式に整形して
+   *  「登録 2024.03 より」のような表示に使う。 */
+  joinedAt?: string;
 }
 
 export interface RegisterRequest {
@@ -426,6 +429,50 @@ export const postAuthLogout = async (): Promise<void> => {
 /** `GET /api/v1/auth/me` — 現在 login 中の user 情報。anonymous は 401。 */
 export const fetchAuthMe = async (): Promise<AuthUser> => {
   return fetchJson<AuthUser>(`/auth/me`);
+};
+
+// ──────────────────────────────────────────────────────────────────────
+// 商品マスタ (= /api/v1/products) — フロント data.ts 移行
+// ──────────────────────────────────────────────────────────────────────
+
+/** server `GET /api/v1/products` のレスポンス 1 行。
+ *  data.ts の `interface Product` と同じ shape (= server 側で kind / badge を ja に整形済)。 */
+export interface ProductSummary {
+  id: string;
+  kind: string;             // "生体" / "用品"
+  title: string;
+  sci?: string;
+  price: number;
+  badge?: string;
+  generation?: string;
+  shop: string;
+  tone: string;             // "forest" / "amber"
+  phLabel: string;
+}
+
+/** `GET /api/v1/products?locale=ja` — 全 active 商品を id 昇順で返す。 */
+export const fetchProducts = async (
+  locale = "ja",
+): Promise<ProductSummary[]> => {
+  return fetchJson<ProductSummary[]>(`/products?locale=${encodeURIComponent(locale)}`);
+};
+
+// ──────────────────────────────────────────────────────────────────────
+// 種マスタ (= /api/v1/species) — フロント data.ts 移行
+// ──────────────────────────────────────────────────────────────────────
+
+/** server `GET /api/v1/species` のレスポンス 1 行。
+ *  legacy `interface Species` と完全 1:1 ではなく、`name` / `sciName` の camelCase 形式。 */
+export interface SpeciesSummary {
+  id: string;
+  name: string;          // locale 別の和名
+  sciName: string;       // 学名
+  region: string;        // 生息地
+}
+
+/** `GET /api/v1/species?locale=ja` — 全種を id 昇順で返す。 */
+export const fetchSpecies = async (locale = "ja"): Promise<SpeciesSummary[]> => {
+  return fetchJson<SpeciesSummary[]>(`/species?locale=${encodeURIComponent(locale)}`);
 };
 
 // ──────────────────────────────────────────────────────────────────────
@@ -493,6 +540,8 @@ export interface SpecimenView {
   eclosionEta: string | null;
   lifeStatus: string;                                  // "active" / "deceased" / "transferred" / "escaped"
   isArchived: boolean;
+  /** 個体メモ。PR #5b で server 永続化 (= 旧 localStorage memo)。 */
+  notes: string | null;
 }
 
 export interface CreateSpecimenRequest {
@@ -564,6 +613,19 @@ export const postSpecimenLifeStatus = async (
   });
 };
 
+/** `PATCH /api/v1/specimens/{id}/notes` — 個体メモ更新 (= 204)。
+ *  notes に "" や null を渡すと「メモを消す」(= server 側で NULL に倒す)。 */
+export const patchSpecimenNotes = async (
+  id: string,
+  notes: string | null,
+): Promise<void> => {
+  return fetchNoContent(`/specimens/${encodeURIComponent(id)}/notes`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ notes }),
+  });
+};
+
 export interface StatusHistoryView {
   id: string;
   specimenId: string;
@@ -612,6 +674,12 @@ export interface CreateSpecimenLogRequest {
 /** `GET /api/v1/specimens/{id}/logs` — 飼育ログを時系列降順で返す (= public 閲覧 OK)。 */
 export const fetchSpecimenLogs = async (id: string): Promise<SpecimenLogView[]> => {
   return fetchJson<SpecimenLogView[]>(`/specimens/${encodeURIComponent(id)}/logs`);
+};
+
+/** `GET /api/v1/me/logs` — login user の全 specimens 横断ログを時系列降順で返す。
+ *  legacy `listLogs()` 相当。anonymous は 401。 */
+export const fetchMyLogs = async (): Promise<SpecimenLogView[]> => {
+  return fetchJson<SpecimenLogView[]>(`/me/logs`);
 };
 
 /** `POST /api/v1/specimens/{id}/logs` — 飼育ログ追加 (= login + 所有者必須)。 */
@@ -718,6 +786,14 @@ export interface ListingView {
   isVerified: boolean;
 }
 
+/** `GET /api/v1/listings` のレスポンス。`ListingView` + sellerName / 入札数 /
+ *  ウォッチ数を含む (= PR-7 でフロント mock 廃止のために server 側で集約)。 */
+export interface ListingViewWithCounts extends ListingView {
+  sellerName: string;
+  bidCount: number;
+  watcherCount: number;
+}
+
 export interface CreateListingRequest {
   publicId: string;
   specimenId?: string | null;
@@ -728,9 +804,10 @@ export interface CreateListingRequest {
   endsAt?: string | null;
 }
 
-/** `GET /api/v1/listings` — active な出品一覧 (= public 閲覧 OK)。 */
-export const fetchListings = async (): Promise<ListingView[]> => {
-  return fetchJson<ListingView[]>(`/listings`);
+/** `GET /api/v1/listings` — active な出品一覧 (= public 閲覧 OK)。
+ *  PR-7: レスポンスに sellerName / bidCount / watcherCount を含む形に拡張。 */
+export const fetchListings = async (): Promise<ListingViewWithCounts[]> => {
+  return fetchJson<ListingViewWithCounts[]>(`/listings`);
 };
 
 /** `POST /api/v1/listings` — 新規出品 (= login 必須)。 */

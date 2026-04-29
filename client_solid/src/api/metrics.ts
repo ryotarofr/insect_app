@@ -6,10 +6,9 @@
 //   - 所有個体: listSpecimens().length
 //   - 羽化予定(60日以内): listUrgentEclosion(60).length
 //     うち7日以内: listUrgentEclosion(7).length
-//   - 血統ライン: APP_DATA.specimens の `generation` のユニーク数 (最深も算出)
+//   - 血統ライン: listSpecimens() の `generation` のユニーク数 (最深も算出)
 //   - 今月の飼育ログ: listLogs() のうち今月のものをカウント
 //     前月比は昨月分との差を返す
-import { APP_DATA } from "../data";
 import { listSpecimens, listUrgentEclosion } from "./specimens";
 import { listLogs } from "./logs";
 
@@ -67,12 +66,12 @@ export const getUserMetrics = (): UserMetrics => {
     else if (t >= lastMonthStart.getTime()) lastMonthLogs += 1;
   }
 
-  // 血統ライン: APP_DATA.specimens の generation 値のユニーク数
+  // 血統ライン: listSpecimens() の generation 値のユニーク数
   // (バックエンドがある前提なら Bloodline API から取る)
   const gens = new Set<string>();
   let deepestN = 0;
   let deepestLabel = "—";
-  for (const s of APP_DATA.specimens) {
+  for (const s of listSpecimens()) {
     const g = s.generation;
     if (g) gens.add(g);
     const d = generationDepth(g);

@@ -8,6 +8,8 @@ pub mod hello;
 pub mod listings;
 pub mod mating_records;
 pub mod orders;
+pub mod products;
+pub mod species;
 pub mod specimen_fulfillment;
 pub mod specimen_logs;
 pub mod specimens;

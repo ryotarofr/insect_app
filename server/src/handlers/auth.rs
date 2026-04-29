@@ -23,7 +23,7 @@ use std::sync::OnceLock;
 use uuid::Uuid;
 
 use crate::error::AppError;
-use crate::repos::{cart_items, product_watches, user_sessions, users};
+use crate::repos::{cart_items, email_outbox, password_resets, product_watches, user_sessions, users};
 use crate::session::SessionId;
 use crate::state::AppState;
 
@@ -61,7 +61,7 @@ fn dummy_phc_hash() -> &'static str {
     })
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct RegisterRequest {
     pub public_id: String,                              // "alice" (= handle)
@@ -79,7 +79,7 @@ fn default_role() -> String {
     "breeder".to_string()
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RegisterResponse {
     /// 新規発行された UUID (= users.id)
@@ -91,6 +91,16 @@ pub struct RegisterResponse {
 }
 
 /// `POST /api/v1/auth/register` — 新規ユーザを登録し、現 session に紐付ける。
+#[utoipa::path(
+    post,
+    path = "/auth/register",
+    tag = "auth",
+    request_body = RegisterRequest,
+    responses(
+        (status = 200, description = "登録成功 + 現 session を user に紐付け", body = RegisterResponse),
+        (status = 400, description = "入力 invalid / public_id-email 重複", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn post_register(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
@@ -153,14 +163,14 @@ pub async fn post_register(
 // POST /api/v1/auth/login
 // ──────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct LoginRequest {
     pub email: String,
     pub password: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct LoginResponse {
     pub user_id: String,
@@ -175,6 +185,17 @@ pub struct LoginResponse {
 }
 
 /// `POST /api/v1/auth/login` — email + password を検証して session を user に昇格させる。
+#[utoipa::path(
+    post,
+    path = "/auth/login",
+    tag = "auth",
+    request_body = LoginRequest,
+    responses(
+        (status = 200, description = "login 成功", body = LoginResponse),
+        (status = 400, description = "email / password 入力不足", body = crate::openapi::ErrorResponse),
+        (status = 401, description = "認証失敗 (= account enumeration 防御で詳細隠す)", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn post_login(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
@@ -251,6 +272,15 @@ pub async fn post_login(
 ///     client は「ログアウト成功」と思い込むが server は session 残存のまま、という
 ///     observability ゼロの不整合が起こる。alert / re-try ロジックが効くよう
 ///     `AppError::Internal` で返す。
+#[utoipa::path(
+    post,
+    path = "/auth/logout",
+    tag = "auth",
+    responses(
+        (status = 204, description = "logout 成功 (= idempotent)"),
+        (status = 500, description = "DB 不整合等の internal error", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn post_logout(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
@@ -275,7 +305,7 @@ pub async fn post_logout(
 // GET /api/v1/auth/me
 // ──────────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct MeResponse {
     pub user_id: String,
@@ -284,10 +314,22 @@ pub struct MeResponse {
     pub email: Option<String>,
     pub role: String,
     pub avatar_initial: String,
+    /// アカウント開設日時 (= users.joined_at)。client は YYYY.MM 形式に整形して
+    /// 「登録 2024.03 より」のような表示に使う。
+    pub joined_at: chrono::DateTime<chrono::Utc>,
 }
 
 /// `GET /api/v1/auth/me` — 現在 session の user 情報を返す。
 ///   anonymous (= session.user_id が NULL / session 行未登録) は 401。
+#[utoipa::path(
+    get,
+    path = "/auth/me",
+    tag = "auth",
+    responses(
+        (status = 200, description = "現 login user 情報", body = MeResponse),
+        (status = 401, description = "anonymous", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn get_me(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
@@ -310,7 +352,135 @@ pub async fn get_me(
         email: user.email,
         role: user.role,
         avatar_initial: user.avatar_initial,
+        joined_at: user.joined_at,
     }))
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// PR N-5: パスワードリセット (= /api/v1/auth/password_reset_*)
+// ──────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PasswordResetRequest {
+    pub email: String,
+}
+
+/// `POST /api/v1/auth/password_reset_request` — リセット token 発行 + メール送信を outbox 経由で
+/// enqueue する。
+///
+/// **重要 (= account enumeration 防御)**:
+///   email が users に存在するか否かに **関わらず常に 200** を返す。存在する場合のみ
+/// outbox に enqueue するが、レスポンスでは区別しない (= 攻撃者が「この email は登録済」を
+/// 判定できないようにする)。
+#[utoipa::path(
+    post,
+    path = "/auth/password_reset_request",
+    tag = "auth",
+    request_body = PasswordResetRequest,
+    responses(
+        (status = 200, description = "常に 200 (= account enumeration 防御 / user 不在でも success と区別不能)"),
+    ),
+)]
+pub async fn post_password_reset_request(
+    State(state): State<AppState>,
+    Json(req): Json<PasswordResetRequest>,
+) -> Result<StatusCode, AppError> {
+    // email 形式チェックも 200 で返す (= 攻撃者向けに細かいエラーを出さない)
+    if !req.email.contains('@') || req.email.is_empty() {
+        return Ok(StatusCode::OK);
+    }
+
+    let user = users::find_by_email(state.db(), &req.email)
+        .await
+        .map_err(|e| AppError::BadRequest(format!("user lookup: {e}")))?;
+
+    let Some(user) = user else {
+        // user 不在: 何もせず 200。タイミング差は dummy_phc_hash で平均化したいが、
+        // password_reset 経路は既に email 引きが O(1) で軽量なので timing 漏れリスクは低い。
+        tracing::info!("password_reset_request: email not found (returning 200 silently)");
+        return Ok(StatusCode::OK);
+    };
+
+    // token 発行 (= row INSERT + secret 生成)
+    let plain_token = match password_resets::create(state.db(), user.id).await {
+        Ok(t) => t,
+        Err(e) => {
+            tracing::error!("password_reset create failed: {e}");
+            // ここも 200 を返す (= 攻撃者には fail / success の区別を見せない)
+            return Ok(StatusCode::OK);
+        }
+    };
+
+    // outbox に enqueue (= worker が実際に送信)
+    let payload = email_outbox::OutboxEnqueue {
+        kind: "password_reset".to_string(),
+        to_email: req.email.clone(),
+        template_args: serde_json::json!({
+            "token": plain_token,
+            "user_name": user.name,
+        }),
+        // idempotency_key=None: 同 user が連打した場合は別個の email を送る (= 各 token は
+        // 独立に有効。古い link は consume しなければ TTL 後に廃棄される)
+        idempotency_key: None,
+        owner_user_id: Some(user.id),
+    };
+    if let Err(e) = email_outbox::enqueue(state.db(), payload).await {
+        tracing::error!("password_reset outbox enqueue failed: {e}");
+    }
+
+    Ok(StatusCode::OK)
+}
+
+#[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PasswordResetConfirmRequest {
+    pub token: String,
+    pub new_password: String,
+}
+
+/// `POST /api/v1/auth/password_reset_confirm` — token を verify + 新 password で users を更新。
+///
+/// **失敗ケース**:
+///   - token 不正 / 不存在 / 既使用 / 期限切れ → **すべて 400** で同じメッセージ
+///     (= 攻撃者に「token が valid / consumed / expired のどれか」を区別させない)
+///   - new_password が短すぎる → 400
+#[utoipa::path(
+    post,
+    path = "/auth/password_reset_confirm",
+    tag = "auth",
+    request_body = PasswordResetConfirmRequest,
+    responses(
+        (status = 204, description = "password 更新成功"),
+        (status = 400, description = "token 不正 / 期限切れ / 既使用 / password short (= 詳細は隠す)", body = crate::openapi::ErrorResponse),
+    ),
+)]
+pub async fn post_password_reset_confirm(
+    State(state): State<AppState>,
+    Json(req): Json<PasswordResetConfirmRequest>,
+) -> Result<StatusCode, AppError> {
+    if req.new_password.len() < 8 {
+        return Err(AppError::BadRequest(
+            "new_password must be 8+ chars".to_string(),
+        ));
+    }
+
+    let user_id = password_resets::consume(state.db(), &req.token)
+        .await
+        .map_err(|e| {
+            tracing::info!("password_reset_confirm rejected: {e}");
+            // 失敗詳細は隠す (= attacker oracle 防御)
+            AppError::BadRequest("invalid or expired token".to_string())
+        })?;
+
+    let new_hash = users::hash_password(&req.new_password)
+        .map_err(|e| AppError::BadRequest(format!("password hash: {e}")))?;
+    users::update_password_hash(state.db(), user_id, &new_hash)
+        .await
+        .map_err(|e| AppError::BadRequest(format!("update password: {e}")))?;
+
+    tracing::info!(user_id = %user_id, "password reset successful");
+    Ok(StatusCode::NO_CONTENT)
 }
 
 #[cfg(test)]
@@ -733,5 +903,186 @@ mod tests {
             Err(AppError::Unauthorized) => {}
             other => panic!("expected Unauthorized after logout, got {other:?}"),
         }
+    }
+
+    // ── PR N-5 / password reset ──────────────────────────────────
+
+    /// password_reset テストは users + outbox + password_resets の memory store を弄るので
+    /// 通常 lock + outbox / password_resets の guard を一気に取る。
+    fn lock_guards_with_reset() -> (
+        std::sync::MutexGuard<'static, ()>,
+        std::sync::MutexGuard<'static, ()>,
+        std::sync::MutexGuard<'static, ()>,
+        std::sync::MutexGuard<'static, ()>,
+        std::sync::MutexGuard<'static, ()>,
+        std::sync::MutexGuard<'static, ()>,
+    ) {
+        let u = users::memory_guard();
+        let s = user_sessions::memory_guard();
+        let c = cart_items::memory_guard();
+        let w = product_watches::memory_guard();
+        let o = email_outbox::memory_guard();
+        let r = password_resets::memory_guard();
+        (u, s, c, w, o, r)
+    }
+
+    #[tokio::test]
+    async fn password_reset_request_unknown_email_returns_200_silently() {
+        let _g = lock_guards_with_reset();
+        users::reset_dynamic_for_test();
+        email_outbox::reset_memory_for_test();
+        password_resets::reset_memory_for_test();
+
+        let res = post_password_reset_request(
+            st(),
+            Json(PasswordResetRequest {
+                email: "nobody@example.com".to_string(),
+            }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(res, StatusCode::OK);
+        // outbox にも何も入らない (= account enumeration 防御の挙動確認)
+        // (= 「不在 email では outbox に痕跡無し」という不変条件)
+    }
+
+    #[tokio::test]
+    async fn password_reset_request_for_existing_user_enqueues_outbox() {
+        let _g = lock_guards_with_reset();
+        users::reset_dynamic_for_test();
+        user_sessions::reset_memory_for_test();
+        email_outbox::reset_memory_for_test();
+        password_resets::reset_memory_for_test();
+
+        // 事前に user を作成 (= register 経由)
+        let session = Uuid::new_v4();
+        let _ = user_sessions::create_anonymous_for_test(None, session).await.unwrap();
+        let _ = post_register(st(), ext(session), Json(req("alice", "alice@example.com")))
+            .await
+            .unwrap();
+
+        let res = post_password_reset_request(
+            st(),
+            Json(PasswordResetRequest {
+                email: "alice@example.com".to_string(),
+            }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(res, StatusCode::OK);
+
+        // outbox に password_reset 1 行 enqueue されている
+        let claimed = email_outbox::claim_pending(None, 10).await.unwrap();
+        assert_eq!(claimed.len(), 1);
+        assert_eq!(claimed[0].kind, "password_reset");
+        assert_eq!(claimed[0].to_email, "alice@example.com");
+        // template_args.token が plain token (= "{uuid}.{secret}" 形式)
+        let token = claimed[0]
+            .template_args
+            .get("token")
+            .and_then(|v| v.as_str())
+            .unwrap();
+        assert!(token.contains('.'));
+    }
+
+    #[tokio::test]
+    async fn password_reset_confirm_round_trip_updates_password() {
+        let _g = lock_guards_with_reset();
+        users::reset_dynamic_for_test();
+        user_sessions::reset_memory_for_test();
+        email_outbox::reset_memory_for_test();
+        password_resets::reset_memory_for_test();
+
+        // user を作成
+        let session = Uuid::new_v4();
+        let _ = user_sessions::create_anonymous_for_test(None, session).await.unwrap();
+        let _ = post_register(st(), ext(session), Json(req("alice", "alice@example.com")))
+            .await
+            .unwrap();
+
+        // request → outbox から token を抽出
+        post_password_reset_request(
+            st(),
+            Json(PasswordResetRequest {
+                email: "alice@example.com".to_string(),
+            }),
+        )
+        .await
+        .unwrap();
+        let claimed = email_outbox::claim_pending(None, 10).await.unwrap();
+        let token = claimed[0]
+            .template_args
+            .get("token")
+            .and_then(|v| v.as_str())
+            .unwrap()
+            .to_string();
+
+        // confirm
+        let res = post_password_reset_confirm(
+            st(),
+            Json(PasswordResetConfirmRequest {
+                token: token.clone(),
+                new_password: "brand-new-secret-12345".to_string(),
+            }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(res, StatusCode::NO_CONTENT);
+
+        // 同 token 2 回目は AlreadyUsed → 400
+        let again = post_password_reset_confirm(
+            st(),
+            Json(PasswordResetConfirmRequest {
+                token,
+                new_password: "different-password-67890".to_string(),
+            }),
+        )
+        .await;
+        assert!(matches!(again, Err(AppError::BadRequest(_))));
+
+        // 新 password で login 成功する (= 旧 password では失敗するはず)
+        let new_session = Uuid::new_v4();
+        let _ = user_sessions::create_anonymous_for_test(None, new_session)
+            .await
+            .unwrap();
+        let login_res = post_login(
+            st(),
+            ext(new_session),
+            Json(LoginRequest {
+                email: "alice@example.com".to_string(),
+                password: "brand-new-secret-12345".to_string(),
+            }),
+        )
+        .await
+        .unwrap();
+        assert_eq!(login_res.0.public_id, "alice");
+    }
+
+    #[tokio::test]
+    async fn password_reset_confirm_short_password_rejected() {
+        let _g = lock_guards_with_reset();
+        let res = post_password_reset_confirm(
+            st(),
+            Json(PasswordResetConfirmRequest {
+                token: format!("{}.somesecret", Uuid::new_v4()),
+                new_password: "short".to_string(),
+            }),
+        )
+        .await;
+        assert!(matches!(res, Err(AppError::BadRequest(_))));
+    }
+
+    #[tokio::test]
+    async fn password_reset_confirm_invalid_token_format_returns_400() {
+        let _g = lock_guards_with_reset();
+        let res = post_password_reset_confirm(
+            st(),
+            Json(PasswordResetConfirmRequest {
+                token: "no-dot-no-uuid".to_string(),
+                new_password: "valid-password-12345".to_string(),
+            }),
+        )
+        .await;
+        assert!(matches!(res, Err(AppError::BadRequest(_))));
     }
 }

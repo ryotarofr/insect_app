@@ -3,17 +3,19 @@
 //
 // P2-9: open 時に focusTrap をインストール。閉じたらトリガー要素にフォーカスを戻す。
 import { createEffect, createSignal, For, Show, onMount, onCleanup } from "solid-js";
-import { addLog, listSpecimens, type LogType } from "../../api";
+import { listSpecimens, type LogType } from "../../api";
 import { LOG_TYPES, buildLogTitle } from "./types";
 import { installFocusTrap, type FocusTrapHandle } from "../../utils/focusTrap";
 
 // Phase 9.D 連携: server-backed specimen が target の時は POST /specimens/{id}/logs
-//   を叩いて、終わったら飼育ログ cache を refresh する。anonymous / mock specimen は
-//   従来 mock fallback (addLog) を保つ (= 既存テスト・UX を壊さない)。
+//   を叩いて、終わったら飼育ログ cache を refresh する。
+// PR #6: anonymous / cache miss の mock fallback (= localStorage) は廃止。
+//   未 login or cache miss は inline error で「ログインしてください」を出す。
 import { SduiFetchError, postSpecimenLog } from "../../sdui/api";
 import { isLoggedIn } from "../../store/auth";
 import { findServerSpecimenByPublicId } from "../../store/specimens";
 import { refreshLogsForSpecimen } from "../../store/specimenLogs";
+import { triggerMyLogsRefresh } from "../../store/myLogs";
 
 interface QuickLogSheetProps {
   open: boolean;
@@ -132,10 +134,12 @@ export const QuickLogSheet = (p: QuickLogSheetProps) => {
     const sv = isLoggedIn() ? findServerSpecimenByPublicId(targetId) : undefined;
 
     if (!sv) {
-      // mock fallback: 従来動作 (= localStorage に積む)。anonymous / cache miss はここ。
-      addLog({ type: t, title, body, specimen: targetId });
-      p.onSaved?.();
-      p.onClose();
+      // PR #6: anonymous / cache miss は localStorage fallback を廃止 → 明示エラー。
+      setError(
+        isLoggedIn()
+          ? "個体情報がまだ読み込まれていません。少し待って再試行してください。"
+          : "ログインが必要です。",
+      );
       return;
     }
 
@@ -155,10 +159,12 @@ export const QuickLogSheet = (p: QuickLogSheetProps) => {
       metrics,
     })
       .then(async () => {
-        // server cache を最新化 (= SpecimenDetail の log timeline が再レンダリング)。
+        // server cache を最新化 (= SpecimenDetail の log timeline と
+        // マイページの「今月のログ」KPI を即座に反映)。
         await refreshLogsForSpecimen(sv.id).catch(() => {
           // 取得 retry の失敗は致命でない (= 次の page 描画で取り直せる)。
         });
+        triggerMyLogsRefresh();
         p.onSaved?.();
         p.onClose();
       })

@@ -11,7 +11,6 @@
 import { createMemo, For, Show } from "solid-js";
 import { type RouteKey } from "../data";
 import {
-  getCurrentUser,
   getUpcomingActions,
   getUserMetrics,
   listSpecimens,
@@ -21,7 +20,18 @@ import {
 } from "../api";
 import { Icons } from "../components/Icons";
 import { Tooltip } from "../components/Tooltip";
-import { isLoggedIn } from "../store/auth";
+import { currentUser, isLoggedIn } from "../store/auth";
+
+/** ISO 8601 (= "2024-03-15T00:00:00Z") を「2024.03」形式に整形。
+ *  「登録 YYYY.MM より」の表示用。`joinedAt` 未取得時は "—" を返す。 */
+const formatJoinedAt = (iso: string | undefined): string => {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "—";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  return `${y}.${m}`;
+};
 import { serverSpecimens, serverSpecimensError } from "../store/specimens";
 import type { SpecimenView } from "../sdui/api";
 
@@ -186,8 +196,10 @@ export const MyPage = (props: MyPageProps) => {
     <>
       <div class="page-head">
         <div>
-          <div class="cat">マイページ · 登録 {getCurrentUser().since} より</div>
-          <h1>{getCurrentUser().name}</h1>
+          <div class="cat">
+            マイページ · 登録 {formatJoinedAt(currentUser()?.joinedAt)} より
+          </div>
+          <h1>{currentUser()?.name ?? "—"}</h1>
         </div>
         <div class="page-actions">
           <button class="btn" onClick={() => props.setRoute("log")}>

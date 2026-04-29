@@ -33,6 +33,7 @@ const sampleA = {
   eclosionEta: null,
   lifeStatus: "active",
   isArchived: false,
+  notes: null,
 };
 
 const sampleB = {

@@ -116,13 +116,62 @@ pub struct ToggleWatchResponse {
 // ──────────────────────────────────────────────────────────────────────
 
 /// `GET /api/v1/listings` — active な出品の公開一覧。
+///
+/// PR-7 (フロント listings adapter DB 化) で `seller_name` / `bid_count` /
+/// `watcher_count` を含む `ListingViewWithCounts` 形式に拡張。Market.tsx の
+/// 表示要件 (出品者 / 入札数 / ウォッチ数) を 1 fetch で満たす。
 pub async fn list_active(
     State(state): State<AppState>,
-) -> Result<Json<Vec<ListingView>>, AppError> {
-    let rows = listings::find_active(state.db())
+) -> Result<Json<Vec<ListingViewWithCounts>>, AppError> {
+    let rows = listings::find_active_with_counts(state.db())
         .await
         .map_err(|e| AppError::BadRequest(format!("listings fetch: {e}")))?;
-    Ok(Json(rows.into_iter().map(ListingView::from).collect()))
+    Ok(Json(rows.into_iter().map(ListingViewWithCounts::from).collect()))
+}
+
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListingViewWithCounts {
+    pub id: String,
+    pub public_id: String,
+    pub seller_user_id: String,
+    /// JOIN users.name で取得。
+    pub seller_name: String,
+    pub specimen_id: Option<String>,
+    pub title: String,
+    pub description: Option<String>,
+    pub is_auction: bool,
+    pub starting_price_jpy: i64,
+    pub current_price_jpy: Option<i64>,
+    pub ends_at: Option<DateTime<Utc>>,
+    pub status: String,
+    pub is_verified: bool,
+    /// `v_listings_with_counts.bid_count`。
+    pub bid_count: i64,
+    /// `v_listings_with_counts.watcher_count`。
+    pub watcher_count: i64,
+}
+
+impl From<listings::ListingWithCounts> for ListingViewWithCounts {
+    fn from(r: listings::ListingWithCounts) -> Self {
+        Self {
+            id: r.id.to_string(),
+            public_id: r.public_id,
+            seller_user_id: r.seller_user_id.to_string(),
+            seller_name: r.seller_name,
+            specimen_id: r.specimen_id.map(|u| u.to_string()),
+            title: r.title,
+            description: r.description,
+            is_auction: r.is_auction,
+            starting_price_jpy: r.starting_price_jpy,
+            current_price_jpy: r.current_price_jpy,
+            ends_at: r.ends_at,
+            status: r.status,
+            is_verified: r.is_verified,
+            bid_count: r.bid_count,
+            watcher_count: r.watcher_count,
+        }
+    }
 }
 
 /// `POST /api/v1/listings` — 新規出品。seller_user_id は session の user_id に固定。

@@ -85,3 +85,9 @@ export const logout = async (): Promise<void> => {
 export const resetAuthForTest = (): void => {
   setUser(null);
 };
+
+/** テスト専用: signal にフィクスチャ user を直接セットする。
+ *  /auth/me を fetch したくない component test (= Shell 等) で使う。 */
+export const setAuthForTest = (u: AuthUser | null): void => {
+  setUser(u);
+};

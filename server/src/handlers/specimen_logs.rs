@@ -89,6 +89,19 @@ pub struct CreateSpecimenLogResponse {
     pub id: String,
 }
 
+/// `GET /api/v1/me/logs` — login user の所有 specimens 全体のログを横断で返す。
+/// マイページの「今月のログ」KPI / `listLogs()` 互換 (= フロント data.ts 移行)。
+pub async fn list_my_logs(
+    State(state): State<AppState>,
+    Extension(session_id): Extension<SessionId>,
+) -> Result<Json<Vec<SpecimenLogView>>, AppError> {
+    let user_id = require_user_id(&state, session_id.0).await?;
+    let rows = specimen_logs::list_by_user_id(state.db(), user_id)
+        .await
+        .map_err(|e| AppError::BadRequest(format!("logs fetch: {e}")))?;
+    Ok(Json(rows.into_iter().map(SpecimenLogView::from).collect()))
+}
+
 /// `GET /api/v1/specimens/{id}/logs` — 1 specimen の log を時系列降順で返す。public 閲覧 OK。
 pub async fn list_logs(
     State(state): State<AppState>,

@@ -95,6 +95,101 @@ pub async fn find_active(
     }
 }
 
+/// `v_listings_with_counts` VIEW + `users` JOIN で seller name と bid_count /
+/// watcher_count を埋めた active な出品を返す (= フロント Market.tsx 用)。
+///
+/// **PR-7 (フロント listings adapter DB 化)** で追加。in-memory モードでは
+/// users / bids / listing_watches の cross-module 解決が複雑なので空配列を返す。
+#[derive(Debug, Clone, FromRow)]
+pub struct ListingWithCounts {
+    pub id: Uuid,
+    pub public_id: String,
+    pub seller_user_id: Uuid,
+    pub seller_name: String,
+    pub specimen_id: Option<Uuid>,
+    pub title: String,
+    pub description: Option<String>,
+    pub is_auction: bool,
+    pub starting_price_jpy: i64,
+    pub current_price_jpy: Option<i64>,
+    pub ends_at: Option<DateTime<Utc>>,
+    pub status: String,
+    pub is_verified: bool,
+    pub bid_count: i64,
+    pub watcher_count: i64,
+}
+
+pub async fn find_active_with_counts(
+    pool: Option<&PgPool>,
+) -> Result<Vec<ListingWithCounts>, ListingRepoError> {
+    match pool {
+        Some(p) => sqlx::query_as::<_, ListingWithCounts>(
+            r#"
+            SELECT
+                v.id, v.public_id, v.seller_user_id,
+                u.name AS seller_name,
+                v.specimen_id, v.title, v.description,
+                v.is_auction, v.starting_price_jpy, v.current_price_jpy,
+                v.ends_at, v.status, v.is_verified,
+                v.bid_count, v.watcher_count
+            FROM v_listings_with_counts v
+            JOIN users u ON u.id = v.seller_user_id
+            WHERE v.status = 'active'
+            ORDER BY v.id DESC
+            "#,
+        )
+        .fetch_all(p)
+        .await
+        .map_err(ListingRepoError::Db),
+        None => {
+            // in-memory fallback: 各 cross-module store から counts と seller name を解決。
+            // unit test (= handler 経由 / DB 不在) で create_listing → list_active が動くために必要。
+            let active_rows: Vec<ListingRow> = memory_lock()
+                .iter()
+                .filter(|r| r.status == "active")
+                .cloned()
+                .collect();
+
+            let mut out = Vec::with_capacity(active_rows.len());
+            for r in active_rows {
+                let seller_name = crate::repos::users::find_by_id(None, r.seller_user_id)
+                    .await
+                    .ok()
+                    .flatten()
+                    .map(|u| u.name)
+                    .unwrap_or_default();
+                let bid_count = crate::repos::bids::list_by_listing(None, r.id)
+                    .await
+                    .map(|v| v.len() as i64)
+                    .unwrap_or(0);
+                let watcher_count = crate::repos::listing_watches::count_by_listing(None, r.id)
+                    .await
+                    .unwrap_or(0);
+                out.push(ListingWithCounts {
+                    id: r.id,
+                    public_id: r.public_id,
+                    seller_user_id: r.seller_user_id,
+                    seller_name,
+                    specimen_id: r.specimen_id,
+                    title: r.title,
+                    description: r.description,
+                    is_auction: r.is_auction,
+                    starting_price_jpy: r.starting_price_jpy,
+                    current_price_jpy: r.current_price_jpy,
+                    ends_at: r.ends_at,
+                    status: r.status,
+                    is_verified: r.is_verified,
+                    bid_count,
+                    watcher_count,
+                });
+            }
+            // id 降順 (= DB クエリと同じ並び)
+            out.sort_by(|a, b| b.id.cmp(&a.id));
+            Ok(out)
+        }
+    }
+}
+
 pub async fn insert(
     pool: Option<&PgPool>,
     payload: ListingInsert,

@@ -21,11 +21,13 @@
 
 import { createSignal } from "solid-js";
 
+import type { LifeStatus, Specimen } from "../data";
 import {
   type SpecimenView,
   SduiFetchError,
   fetchMySpecimens,
 } from "../sdui/api";
+import { findSpeciesById } from "./species";
 
 const [specimens, setSpecimens] = createSignal<SpecimenView[] | null>(null);
 const [isLoading, setIsLoading] = createSignal<boolean>(false);
@@ -39,6 +41,73 @@ export const isSpecimensLoading = isLoading;
 
 /** 5xx / network 等の取得失敗メッセージ。401 は静かに null にするのでここには載らない。 */
 export const serverSpecimensError = error;
+
+// ──────────────────────────────────────────────────────────────────────
+// SpecimenView → legacy Specimen 正規化 (= PR #5a / api/specimens.ts 側で使う)
+// ──────────────────────────────────────────────────────────────────────
+//
+// 旧 `data.ts::Specimen` と新 server `SpecimenView` で 9 フィールド差分があるため、
+// 正規化レイヤで埋めて legacy 互換 shape を提供する。
+// 不足分のデフォルト値:
+//   - sci / species_name      → species cache から speciesId で引く / 不在は speciesId
+//   - shop                    → "ANCHOR BEETLE CO." 固定 (= MVP は 1 ショップ)
+//   - price                   → 0 (= server に purchase_price_jpy は持つが現状 API 未公開)
+//   - bloodline               → { father: "野生", mother: "野生" } (= server father_id 等は別経路)
+//   - lifeStatusDetail        → undefined (= server 別 endpoint で履歴を引く設計)
+//   - eclosionInDays          → eclosionEta - today (= client 計算)
+//   - notes                   → "" (= localStorage memo は api/specimens.ts 側で別途 merge)
+
+const SEX_SYMBOL: Record<string, string> = {
+  male: "♂",
+  female: "♀",
+  unknown: "?",
+};
+
+const SHOP_NAME_FALLBACK = "ANCHOR BEETLE CO.";
+
+/** ISO 日付文字列 ("2026-05-04") から **今日からの日数** を計算。
+ *  null / 不正値は null を返す。負値 (= 過去) は計算上ありうる (= 羽化遅延等)。 */
+const computeEclosionInDays = (eta: string | null): number | null => {
+  if (!eta) return null;
+  const etaDate = new Date(eta);
+  if (Number.isNaN(etaDate.getTime())) return null;
+  const today = new Date();
+  today.setHours(0, 0, 0, 0);
+  const diffMs = etaDate.getTime() - today.getTime();
+  return Math.round(diffMs / (1000 * 60 * 60 * 24));
+};
+
+/** `SpecimenView` (server) を legacy `Specimen` (data.ts) shape に正規化する。
+ *  - 種名 / 学名は species cache から speciesId で引く
+ *  - 不足フィールドは defaults で埋める (= 上のコメント参照)
+ *  - 個体メモ (notes) は server 値をそのまま使う (PR #5b で localStorage 廃止) */
+export const normalizeSpecimenForLegacy = (v: SpecimenView): Specimen => {
+  const species = findSpeciesById(v.speciesId);
+  const lifeStatus = (v.lifeStatus as LifeStatus | undefined) ?? "active";
+  return {
+    id: v.publicId,
+    name: v.name,
+    species: species?.name ?? v.speciesId,
+    sci: species?.sciName ?? "",
+    sex: SEX_SYMBOL[v.sex] ?? v.sex,
+    stage: v.stage,
+    stageProgress: v.stageProgress,
+    sizeMm: v.sizeMm ?? 0,
+    weightG: v.weightG ?? 0,
+    birthDate: v.birthDate ?? "",
+    purchasedAt: v.purchasedAt ?? "",
+    shop: SHOP_NAME_FALLBACK,
+    generation: v.generation ?? "",
+    price: 0,
+    eclosionETA: v.eclosionEta,
+    eclosionInDays: computeEclosionInDays(v.eclosionEta),
+    status: lifeStatus === "active" ? "alive" : lifeStatus,
+    lifeStatus,
+    lifeStatusDetail: undefined,
+    bloodline: { father: "野生", mother: "野生" },
+    notes: v.notes ?? "",
+  };
+};
 
 /** publicId (= "#DHH-0271" 等) で 1 件引く。未取得 / 不存在は undefined。
  *  `serverSpecimens()` のキャッシュを線形探索するだけ (= 個体数 O(数十) 想定で十分)。 */
@@ -109,4 +178,10 @@ export const resetServerSpecimensForTest = (): void => {
   setSpecimens(null);
   setIsLoading(false);
   setError(null);
+};
+
+/** テスト専用: signal にフィクスチャを直接セットする。
+ *  /specimens/me を fetch したくない unit test (= api.test.ts) で使う。 */
+export const setServerSpecimensForTest = (list: SpecimenView[] | null): void => {
+  setSpecimens(list);
 };

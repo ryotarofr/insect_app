@@ -1,6 +1,47 @@
 // Shop.tsx — ショップ管理ダッシュボード
+//
+// **本ページのデータは全て page-local sample**:
+//   元 `APP_DATA.shopStats` / `APP_DATA.orders` を本ファイルに co-locate した。
+//   Phase 7 (= 多店舗対応 / Stripe Connect / shop_owner role auth) で実 API
+//   (`GET /api/v1/shop/orders` 等) に置き換える前提で MVP は sample 表示で固定。
+//   本ページは sidebar で admin にのみ露出する想定。
+
 import { For } from "solid-js";
-import { getShopStats, listOrders } from "../api";
+
+interface SampleShopStats {
+  todayRevenue: number;
+  todayOrders: number;
+  pendingShip: number;
+  lowStock: number;
+  mau: number;
+  revenue7d: number[];
+}
+
+interface SampleOrder {
+  id: string;
+  buyer: string;
+  items: string;
+  total: number;
+  status: string;
+  temp: string;
+}
+
+const SAMPLE_SHOP_STATS: SampleShopStats = {
+  todayRevenue: 184200,
+  todayOrders: 12,
+  pendingShip: 5,
+  lowStock: 3,
+  mau: 2340,
+  revenue7d: [62000, 48000, 91000, 73000, 124000, 102000, 184200],
+};
+
+const SAMPLE_ORDERS: SampleOrder[] = [
+  { id: "#2026-04180-A", buyer: "田中 亮", items: "ヘラクレス♂142 他1点", total: 48980, status: "要発送", temp: "要温度制御" },
+  { id: "#2026-04179-B", buyer: "佐藤 恵", items: "コーカサス幼虫×2", total: 24000, status: "発送済", temp: "常温" },
+  { id: "#2026-04178-C", buyer: "鈴木 駿", items: "ゼリー×3 マット×2", total: 6960, status: "発送済", temp: "常温" },
+  { id: "#2026-04177-D", buyer: "高橋 花", items: "ネプチューン ペア", total: 28000, status: "準備中", temp: "要温度制御" },
+  { id: "#2026-04176-E", buyer: "伊藤 翔", items: "アクタエオン WF1♂", total: 62000, status: "入金待ち", temp: "要温度制御" },
+];
 
 const LOW_STOCK = [
   { name: "高栄養ゼリー 17g×50", qty: 12, threshold: 50, img: "amber" },
@@ -31,8 +72,8 @@ const SERIES_LABEL: Record<BarSeries, string> = {
 };
 
 export const ShopPage = () => {
-  const st = getShopStats();
-  const orders = listOrders();
+  const st = SAMPLE_SHOP_STATS;
+  const orders = SAMPLE_ORDERS;
   const maxRev = Math.max(...st.revenue7d);
 
   const topCards = [
@@ -89,8 +130,9 @@ export const ShopPage = () => {
         </For>
       </div>
 
-      {/* P4-12: ダッシュボードの数値はすべて固定フィクスチャ (APP_DATA)。
-          本番データ差替え前に "偽数値" の誤解を避けるため、バナーで明示する。 */}
+      {/* P4-12: ダッシュボードの数値はすべて page-local sample (= 本ファイル冒頭の
+          SAMPLE_SHOP_STATS / SAMPLE_ORDERS / LOW_STOCK)。Phase 7 (= 多店舗対応) で
+          実 admin API (`GET /api/v1/shop/orders` 等) に差し替える前提。 */}
       <div
         class="sample-banner"
         role="note"
@@ -100,7 +142,8 @@ export const ShopPage = () => {
         <div class="sb-body">
           <div class="sb-title">サンプルデータ表示中</div>
           <div class="sb-desc">
-            KPI / チャート / 在庫は固定のデモ値です。実店舗 API 接続後に置き換わります。
+            KPI / チャート / 在庫 / 注文一覧は Phase 7 (多店舗対応 + shop_owner 権限) で
+            実店舗 API に置き換え予定です。
           </div>
         </div>
       </div>

@@ -1,9 +1,8 @@
 // api.test.ts — 全フェッチャーのユニットテスト
-// データ層（APP_DATA）に依存する薄いラッパー群。フィクスチャの厳密値ではなく、
+// データ層（APP_DATA / store）に依存する薄いラッパー群。フィクスチャの厳密値ではなく、
 // 形状と不変条件（sort 順・filter 閾値・存在判定）を検証する。
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  getCurrentUser,
   listProducts,
   getProduct,
   productExists,
@@ -16,26 +15,224 @@ import {
   listLogsBySpecimen,
   listLogsByType,
   listMarketListings,
-  getShopStats,
-  listOrders,
   getUpcomingActions,
   getAuditLog,
+  type Product,
 } from "./index";
+import {
+  resetProductsForTest,
+  setProductsForTest,
+} from "../store/products";
+import {
+  resetServerSpecimensForTest,
+  setServerSpecimensForTest,
+} from "../store/specimens";
+import { setSpeciesForTest, resetSpeciesForTest } from "../store/species";
+import { setMyLogsForTest, resetMyLogsForTest } from "../store/myLogs";
+import {
+  setListingsForTest,
+  resetListingsForTest,
+} from "../store/listings";
+import type {
+  ListingViewWithCounts,
+  SpecimenLogView,
+  SpecimenView,
+} from "../sdui/api";
 
-describe("api/user", () => {
-  it("returns a user with required fields", () => {
-    const u = getCurrentUser();
-    expect(u).toMatchObject({
-      name: expect.any(String),
-      initial: expect.any(String),
-      role: expect.any(String),
-      since: expect.any(String),
-    });
-    expect(u.initial.length).toBeGreaterThanOrEqual(1);
-  });
+// specimens は server の /api/v1/specimens/me から fetch する設計に移行済 (PR #5a)。
+// 単体テストでは fetch を経由せず、store/specimens に直接フィクスチャを仕込む。
+// `eclosionEta` は今日から +7日 / +30日 / null の 3 パターンを混ぜて閾値テストを満たす。
+const todayPlus = (days: number): string => {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+};
+
+const specimensFixture: SpecimenView[] = [
+  {
+    id: "11111111-1111-4111-8111-111111111111",
+    publicId: "#DHH-0271",
+    ownerUserId: "a0a0a0a0-0000-4000-8000-00000000a0a0",
+    speciesId: "dhh",
+    name: "ヘラクレス 黒曜",
+    sex: "male",
+    stage: "蛹",
+    stageProgress: 0.72,
+    sizeMm: 142,
+    weightG: 28.4,
+    birthDate: "2024-08-12",
+    purchasedAt: "2025-11-03",
+    generation: "CBF2",
+    eclosionEta: todayPlus(7),
+    lifeStatus: "active",
+    isArchived: false,
+    notes: null,
+  },
+  {
+    id: "22222222-2222-4222-8222-222222222222",
+    publicId: "#CAT-0118",
+    ownerUserId: "a0a0a0a0-0000-4000-8000-00000000a0a0",
+    speciesId: "cat",
+    name: "コーカサス 雷",
+    sex: "male",
+    stage: "幼虫 3齢",
+    stageProgress: 0.35,
+    sizeMm: 95,
+    weightG: 52,
+    birthDate: "2025-09-01",
+    purchasedAt: "2026-01-12",
+    generation: "CBF3",
+    eclosionEta: todayPlus(45),
+    lifeStatus: "active",
+    isArchived: false,
+    notes: null,
+  },
+  {
+    id: "33333333-3333-4333-8333-333333333333",
+    publicId: "#DHH-0244",
+    ownerUserId: "a0a0a0a0-0000-4000-8000-00000000a0a0",
+    speciesId: "dhh",
+    name: "マリア",
+    sex: "female",
+    stage: "成虫",
+    stageProgress: 1,
+    sizeMm: 66,
+    weightG: 12.1,
+    birthDate: "2023-06-20",
+    purchasedAt: "2024-05-01",
+    generation: "CBF1",
+    eclosionEta: null,
+    lifeStatus: "active",
+    isArchived: false,
+    notes: null,
+  },
+];
+
+// PR-7: listings は server の /api/v1/listings から fetch する設計に移行済。
+// fixture は seller_name / bid_count / watcher_count を含む拡張形 (= server-side で集約)。
+const listingsFixture: ListingViewWithCounts[] = [
+  {
+    id: "11111111-aaaa-4111-8111-111111111111",
+    publicId: "L-0421",
+    sellerUserId: "a0a0a0a0-0000-4000-8000-00000000a0a0",
+    sellerName: "山田 徹",
+    specimenId: null,
+    title: "ヘラクレス♂ 148mm 自家累代CBF3",
+    description: null,
+    isAuction: true,
+    startingPriceJpy: 50000,
+    currentPriceJpy: 52000,
+    endsAt: new Date(Date.now() + 2 * 24 * 60 * 60 * 1000).toISOString(),
+    status: "active",
+    isVerified: true,
+    bidCount: 7,
+    watcherCount: 34,
+  },
+  {
+    id: "22222222-aaaa-4222-8222-222222222222",
+    publicId: "L-0419",
+    sellerUserId: "b0b0b0b0-0000-4000-8000-00000000b0b0",
+    sellerName: "KUWAGATA.jp",
+    specimenId: null,
+    title: "コーカサス幼虫 3齢ペア 55g/32g",
+    description: null,
+    isAuction: false,
+    startingPriceJpy: 18000,
+    currentPriceJpy: null,
+    endsAt: null,
+    status: "active",
+    isVerified: true,
+    bidCount: 0,
+    watcherCount: 12,
+  },
+];
+
+// PR #6: logs は server の /api/v1/me/logs から fetch する設計に移行済。
+// fixture を beforeEach で setMyLogsForTest に流し込む。
+// specimenId は specimensFixture[0] (= #DHH-0271) の UUID と一致させる。
+const logsFixture: SpecimenLogView[] = [
+  {
+    id: "aaaa1111-1111-4111-8111-111111111111",
+    specimenId: "11111111-1111-4111-8111-111111111111",
+    authorUserId: "a0a0a0a0-0000-4000-8000-00000000a0a0",
+    logType: "weight",
+    loggedAt: "2026-04-15",
+    loggedAtTime: "22:03:00",
+    title: "体重測定",
+    body: "52.0g → 52.8g",
+    hasPhoto: false,
+    metrics: {},
+  },
+  {
+    id: "aaaa2222-2222-4222-8222-222222222222",
+    specimenId: "11111111-1111-4111-8111-111111111111",
+    authorUserId: "a0a0a0a0-0000-4000-8000-00000000a0a0",
+    logType: "observation",
+    loggedAt: "2026-04-18",
+    loggedAtTime: "21:40:00",
+    title: "蛹室確認",
+    body: "蛹室の壁が硬くなった",
+    hasPhoto: true,
+    metrics: {},
+  },
+];
+
+// products は server の /api/v1/products から fetch する設計に移行済 (PR #3)。
+// 単体テストでは fetch を経由せず、store/products に直接フィクスチャを仕込む。
+const productFixture: Product[] = [
+  {
+    id: "p-hh-m-142",
+    kind: "生体",
+    title: "ヘラクレスオオカブト ♂ 142mm",
+    sci: "Dynastes hercules hercules",
+    price: 48000,
+    badge: "血統書付",
+    generation: "CBF2",
+    shop: "ANCHOR BEETLE CO.",
+    tone: "forest",
+    phLabel: "D",
+  },
+  {
+    id: "p-jelly",
+    kind: "用品",
+    title: "高栄養ゼリー 17g × 50個",
+    sci: null,
+    price: 1480,
+    badge: "消耗品",
+    generation: null,
+    shop: "ANCHOR BEETLE CO.",
+    tone: "amber",
+    phLabel: "J",
+  },
+];
+
+// specimens / species / logs / listings fixture を全テスト前に仕込む。
+// (= specimens / logs / audit / metrics / market の各 describe ブロックが依存)
+beforeEach(() => {
+  setServerSpecimensForTest(specimensFixture);
+  setSpeciesForTest([
+    { id: "dhh", name: "ヘラクレスオオカブト", sciName: "Dynastes hercules hercules", region: "中南米" },
+    { id: "cat", name: "コーカサスオオカブト", sciName: "Chalcosoma chiron", region: "東南アジア" },
+  ]);
+  setMyLogsForTest(logsFixture);
+  setListingsForTest(listingsFixture);
+});
+afterEach(() => {
+  resetServerSpecimensForTest();
+  resetSpeciesForTest();
+  resetMyLogsForTest();
+  resetListingsForTest();
 });
 
 describe("api/products", () => {
+  beforeEach(() => {
+    setProductsForTest(productFixture);
+  });
+  afterEach(() => {
+    resetProductsForTest();
+  });
+
   it("listProducts returns a non-empty array of products", () => {
     const ps = listProducts();
     expect(ps.length).toBeGreaterThan(0);
@@ -75,7 +272,8 @@ describe("api/specimens", () => {
 
   it("getSpecimen(id) finds by id, undefined if missing", () => {
     const first = listSpecimens()[0];
-    expect(getSpecimen(first.id)).toBe(first);
+    // PR #5a: normalize で都度新オブジェクトを生成するため reference 等価から value 等価に変更。
+    expect(getSpecimen(first.id)).toEqual(first);
     expect(getSpecimen("#NONEXISTENT")).toBeUndefined();
   });
 
@@ -156,28 +354,6 @@ describe("api/market", () => {
       expect(typeof l.price).toBe("number");
       expect(typeof l.seller).toBe("string");
       expect(typeof l.auction).toBe("boolean");
-    }
-  });
-});
-
-describe("api/shop", () => {
-  it("getShopStats returns numeric fields", () => {
-    const s = getShopStats();
-    expect(typeof s.todayRevenue).toBe("number");
-    expect(typeof s.todayOrders).toBe("number");
-    expect(typeof s.pendingShip).toBe("number");
-    expect(typeof s.lowStock).toBe("number");
-    expect(Array.isArray(s.revenue7d)).toBe(true);
-    expect(s.revenue7d.length).toBe(7);
-  });
-
-  it("listOrders returns orders with required fields", () => {
-    const orders = listOrders();
-    expect(orders.length).toBeGreaterThan(0);
-    for (const o of orders) {
-      expect(o.id).toMatch(/^/);
-      expect(typeof o.total).toBe("number");
-      expect(typeof o.status).toBe("string");
     }
   });
 });

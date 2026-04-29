@@ -130,6 +130,57 @@ pub async fn find_by_owner(
     }
 }
 
+/// `eclosion_eta` が `(today, today + days_ahead]` の範囲にある active specimen を返す。
+/// (= PR N-4 / eclosion_daily worker が「7 日前」リマインダ enqueue 用に使う)
+///
+/// **条件**:
+///   - `is_archived=false`
+///   - `life_status='active'`
+///   - `eclosion_eta IS NOT NULL`
+///   - `eclosion_eta > today AND eclosion_eta <= today + days_ahead`
+pub async fn list_with_upcoming_eclosion(
+    pool: Option<&PgPool>,
+    today: chrono::NaiveDate,
+    days_ahead: i64,
+) -> Result<Vec<SpecimenRow>, SpecimenRepoError> {
+    let upper = today + chrono::Duration::days(days_ahead);
+    match pool {
+        Some(p) => sqlx::query_as::<_, SpecimenRow>(
+            r#"
+            SELECT id, public_id, owner_user_id, species_id, name, sex,
+                   stage, stage_progress, size_mm, weight_g, birth_date,
+                   purchased_at, purchased_from_shop_id, generation,
+                   purchase_price_jpy, eclosion_eta, life_status,
+                   life_status_at, life_status_note, notes,
+                   father_id, mother_id, father_label, mother_label,
+                   is_archived
+            FROM specimens
+            WHERE is_archived = false
+              AND life_status = 'active'
+              AND eclosion_eta IS NOT NULL
+              AND eclosion_eta > $1
+              AND eclosion_eta <= $2
+            ORDER BY eclosion_eta
+            "#,
+        )
+        .bind(today)
+        .bind(upper)
+        .fetch_all(p)
+        .await
+        .map_err(SpecimenRepoError::Db),
+        None => Ok(memory_store_lock()
+            .iter()
+            .filter(|r| {
+                !r.is_archived
+                    && r.life_status == "active"
+                    && r.eclosion_eta
+                        .is_some_and(|eta| eta > today && eta <= upper)
+            })
+            .cloned()
+            .collect()),
+    }
+}
+
 /// validate + INSERT。生成された UUID を返す。
 pub async fn insert(
     pool: Option<&PgPool>,
@@ -260,6 +311,49 @@ pub async fn update_life_status(
             )
             .await
             .map_err(|e| SpecimenRepoError::Invalid(format!("history insert: {e}")))?;
+            Ok(())
+        }
+    }
+}
+
+/// 個体メモ (notes) を更新する。owner_user_id 一致チェックを含む (= 他人の個体は弾く)。
+///
+/// **PR #5b**: フロント `updateSpecimenMemo` の localStorage 永続化を server 化。
+/// 空文字列も許容する (= 「メモを消す」操作)。owner_user_id 不一致は `NotFound` を返して
+/// 他人の specimen の存在を隠す。
+pub async fn update_notes(
+    pool: Option<&PgPool>,
+    id: Uuid,
+    owner_user_id: Uuid,
+    notes: Option<&str>,
+) -> Result<(), SpecimenRepoError> {
+    match pool {
+        Some(p) => {
+            let res = sqlx::query(
+                r#"
+                UPDATE specimens
+                SET notes = $3
+                WHERE id = $1 AND owner_user_id = $2
+                "#,
+            )
+            .bind(id)
+            .bind(owner_user_id)
+            .bind(notes)
+            .execute(p)
+            .await
+            .map_err(SpecimenRepoError::Db)?;
+            if res.rows_affected() == 0 {
+                return Err(SpecimenRepoError::NotFound(id));
+            }
+            Ok(())
+        }
+        None => {
+            let mut store = memory_store_lock_mut();
+            let row = store
+                .iter_mut()
+                .find(|r| r.id == id && r.owner_user_id == owner_user_id)
+                .ok_or(SpecimenRepoError::NotFound(id))?;
+            row.notes = notes.map(|s| s.to_string());
             Ok(())
         }
     }

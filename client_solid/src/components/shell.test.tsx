@@ -3,10 +3,11 @@
 // P2-2 以降、Shell / BottomTabBar は @solidjs/router の <A> を使うため、
 // 各テストで Router で包む必要がある。
 import { render } from "@solidjs/testing-library";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { Router, Route } from "@solidjs/router";
 import type { JSX } from "solid-js";
 import { Shell } from "./Shell";
+import { resetAuthForTest, setAuthForTest } from "../store/auth";
 
 const wrapWithRouter = (child: () => JSX.Element) => (
   <Router>
@@ -16,6 +17,19 @@ const wrapWithRouter = (child: () => JSX.Element) => (
 
 beforeEach(() => {
   window.history.replaceState({}, "", "/");
+  // sidebar-footer は currentUser() に依存。テスト用フィクスチャを仕込む。
+  setAuthForTest({
+    userId: "a0a0a0a0-0000-4000-8000-00000000a0a0",
+    publicId: "t_yamada",
+    name: "山田 徹",
+    role: "breeder",
+    avatarInitial: "山",
+    joinedAt: "2024-03-15T00:00:00Z",
+  });
+});
+
+afterEach(() => {
+  resetAuthForTest();
 });
 
 describe("Shell", () => {
@@ -29,7 +43,7 @@ describe("Shell", () => {
     );
     const text = container.textContent ?? "";
     expect(text).toContain("KOCHŪ");
-    expect(text).toContain("山田 徹"); // from getCurrentUser()
+    expect(text).toContain("山田 徹"); // from currentUser() fixture
     expect(text).toContain("EC");
     expect(text).toContain("飼育");
     expect(text).toContain("取引");

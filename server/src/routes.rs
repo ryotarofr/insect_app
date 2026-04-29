@@ -93,6 +93,22 @@ pub fn api_v1(state: AppState) -> Router {
         .route("/auth/login", post(handlers::auth::post_login))
         .route("/auth/logout", post(handlers::auth::post_logout))
         .route("/auth/me", get(handlers::auth::get_me))
+        // PR N-5: パスワードリセット (= request → email link → confirm の 2 step)。
+        // 両 endpoint 共に anonymous で叩ける (= login 不要 / cookie session で識別)。
+        .route(
+            "/auth/password_reset_request",
+            post(handlers::auth::post_password_reset_request),
+        )
+        .route(
+            "/auth/password_reset_confirm",
+            post(handlers::auth::post_password_reset_confirm),
+        )
+        // 種マスタ (= /api/v1/species?locale=ja)。認証不要 / public。
+        .route("/species", get(handlers::species::list_species))
+        // 商品一覧 (= /api/v1/products?locale=ja)。認証不要 / public。
+        // 既存 /cards/products は SDUI block 形式、本 endpoint は raw JSON で
+        // CommandPalette / Hero / breadcrumb 等の軽量参照用。
+        .route("/products", get(handlers::products::list_products))
         // Phase 9.D: 個体カルテ (specimens) 用 endpoint。
         // - /specimens/me と POST / archive は login 必須 (401)、GET /{public_id} は public 閲覧 OK。
         .route("/specimens/me", get(handlers::specimens::list_my_specimens))
@@ -102,12 +118,20 @@ pub fn api_v1(state: AppState) -> Router {
             "/specimens/{id}/archive",
             post(handlers::specimens::archive_specimen),
         )
+        // 個体メモ更新 (= /specimens/{id}/notes PATCH)。owner 必須 / 空文字 = 削除。
+        // PR #5b で localStorage 永続化を廃止して server 化。
+        .route(
+            "/specimens/{id}/notes",
+            patch(handlers::specimens::patch_specimen_notes),
+        )
         // 飼育ログ (= /specimens/{id}/logs)。{id} は specimen の internal UUID。
         .route(
             "/specimens/{id}/logs",
             get(handlers::specimen_logs::list_logs)
                 .post(handlers::specimen_logs::create_log),
         )
+        // 自分の全 specimen 横断ログ (= フロント listLogs() の DB 化)。login 必須。
+        .route("/me/logs", get(handlers::specimen_logs::list_my_logs))
         // life_status 遷移 + 履歴 (= Medium #3 規律 / 必ず history 経由で更新)
         .route(
             "/specimens/{id}/life_status",

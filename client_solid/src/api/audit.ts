@@ -15,7 +15,8 @@
 //
 // 型は将来的にバックエンド (event store) と差し替えてもブレないよう
 // 最小限にとどめる (date / event / actor)。
-import { APP_DATA, type Specimen } from "../data";
+import type { Specimen } from "../data";
+import { listSpecimens } from "./specimens";
 
 export interface AuditLogEntry {
   /** YYYY-MM-DD */
@@ -26,7 +27,7 @@ export interface AuditLogEntry {
   actor: string;
 }
 
-const OWNER = "ANCHOR"; // POC の自分 (getCurrentUser().name を将来参照)
+const OWNER = "ANCHOR"; // POC の自分 (将来 store/auth.ts::currentUser() を参照)
 
 /** Date → YYYY-MM-DD (local) */
 const iso = (d: Date): string => {
@@ -59,7 +60,7 @@ const seedRand = (id: string, salt: number): number => {
 };
 
 const getSpecimen = (id: string): Specimen | undefined =>
-  APP_DATA.specimens.find((s) => s.id === id);
+  listSpecimens().find((s) => s.id === id);
 
 /**
  * 個体の変更履歴を返す。新しい順 (降順) でソートされた配列。

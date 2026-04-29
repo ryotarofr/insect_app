@@ -1,6 +1,6 @@
 // pages/products/Hero.tsx — 新規訪問者向けヒーローセクション
 // 3つのバリュープロポジション（BUY / RAISE / TRADE）と今週の看板個体カードを表示
-import type { JSX } from "solid-js";
+import { Show, type JSX } from "solid-js";
 import type { RouteKey } from "../../data";
 import { getProduct, listProducts } from "../../api";
 import "./hero.css";
@@ -131,42 +131,47 @@ export const Hero = (props: HeroProps) => {
           </ul>
         </div>
 
-        {/* 右：今週の看板個体カード */}
-        <article
-          class="hero-feature card"
-          onClick={() => props.setRoute("product-detail")}
-          role="link"
-          tabIndex={0}
-          onKeyDown={(e) => e.key === "Enter" && props.setRoute("product-detail")}
-        >
-          <div
-            class="ph forest hero-feature-ph"
-            role="img"
-            aria-label={`${featured().title} 注目商品 (プレースホルダ画像)`}
-          >
-            <div class="hero-feature-chips">
-              <span class="chip ink mono">注目</span>
-              <span class="chip amber">{featured().badge ?? "血統書付"}</span>
-            </div>
-            <div class="ph-label">{featured().phLabel}</div>
-          </div>
-          <div class="hero-feature-meta mono">
-            <span>#DHH-0271 · {featured().shop}</span>
-            <span>{featured().generation}</span>
-          </div>
-          <h3 class="hero-feature-title">{featured().title}</h3>
-          <div class="hero-feature-sci">{featured().sci}</div>
-          <div class="hero-feature-price">
-            {fmtPrice(featured().price)}
-            <small>税込 / 送料別</small>
-          </div>
-          <div class="hero-feature-forecast">
-            <span>
-              <strong>15日後に羽化予測</strong> · 2026-05-04 ±5日
-            </span>
-            <span class="mono">羽化予測</span>
-          </div>
-        </article>
+        {/* 右：今週の看板個体カード。
+            store/products の load 完了前は featured() が undefined なので Show でガード。 */}
+        <Show when={featured()}>
+          {(p) => (
+            <article
+              class="hero-feature card"
+              onClick={() => props.setRoute("product-detail")}
+              role="link"
+              tabIndex={0}
+              onKeyDown={(e) => e.key === "Enter" && props.setRoute("product-detail")}
+            >
+              <div
+                class="ph forest hero-feature-ph"
+                role="img"
+                aria-label={`${p().title} 注目商品 (プレースホルダ画像)`}
+              >
+                <div class="hero-feature-chips">
+                  <span class="chip ink mono">注目</span>
+                  <span class="chip amber">{p().badge ?? "血統書付"}</span>
+                </div>
+                <div class="ph-label">{p().phLabel}</div>
+              </div>
+              <div class="hero-feature-meta mono">
+                <span>#DHH-0271 · {p().shop}</span>
+                <span>{p().generation}</span>
+              </div>
+              <h3 class="hero-feature-title">{p().title}</h3>
+              <div class="hero-feature-sci">{p().sci}</div>
+              <div class="hero-feature-price">
+                {fmtPrice(p().price)}
+                <small>税込 / 送料別</small>
+              </div>
+              <div class="hero-feature-forecast">
+                <span>
+                  <strong>15日後に羽化予測</strong> · 2026-05-04 ±5日
+                </span>
+                <span class="mono">羽化予測</span>
+              </div>
+            </article>
+          )}
+        </Show>
       </div>
 
       {/* 3 PROMISES ストリップ */}

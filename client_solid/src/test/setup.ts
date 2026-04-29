@@ -2,7 +2,7 @@
 import "@testing-library/jest-dom/vitest";
 import { afterEach, beforeEach, vi } from "vitest";
 import { cleanup } from "@solidjs/testing-library";
-import { __resetUserLogs, __resetSpecimenMemos } from "../api";
+import { resetMyLogsForTest } from "../store/myLogs";
 
 // jsdom が未実装の Window.scrollTo / scroll を stub して無害化
 if (typeof window !== "undefined") {
@@ -22,13 +22,11 @@ if (typeof globalThis.BroadcastChannel !== "undefined") {
 // 各テスト前後で localStorage と api signal の永続状態をクリアして副作用を遮断
 beforeEach(() => {
   if (typeof localStorage !== "undefined") localStorage.clear();
-  __resetUserLogs();
-  __resetSpecimenMemos();
+  resetMyLogsForTest();
 });
 
 afterEach(() => {
   cleanup();
   if (typeof localStorage !== "undefined") localStorage.clear();
-  __resetUserLogs();
-  __resetSpecimenMemos();
+  resetMyLogsForTest();
 });

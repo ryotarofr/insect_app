@@ -116,6 +116,33 @@ pub async fn insert(
     }
 }
 
+/// 1 user の所有 specimens 全体のログを横断で返す (= マイページ「今月のログ」KPI 等)。
+/// ORDER は logged_at + logged_at_time の降順。in-memory モードは空 Vec を返す
+/// (= 本経路は login 必須で DB 前提のため、in-memory では試験的なテストフィクスチャ未対応)。
+pub async fn list_by_user_id(
+    pool: Option<&PgPool>,
+    user_id: Uuid,
+) -> Result<Vec<SpecimenLogRow>, SpecimenLogRepoError> {
+    match pool {
+        Some(p) => sqlx::query_as::<_, SpecimenLogRow>(
+            r#"
+            SELECT sl.id, sl.specimen_id, sl.author_user_id, sl.log_type,
+                   sl.logged_at, sl.logged_at_time, sl.title, sl.body,
+                   sl.has_photo, sl.metrics
+            FROM specimen_logs sl
+            JOIN specimens s ON s.id = sl.specimen_id
+            WHERE s.owner_user_id = $1
+            ORDER BY sl.logged_at DESC, sl.logged_at_time DESC NULLS LAST, sl.id
+            "#,
+        )
+        .bind(user_id)
+        .fetch_all(p)
+        .await
+        .map_err(SpecimenLogRepoError::Db),
+        None => Ok(vec![]),
+    }
+}
+
 /// 1 specimen のログを logged_at + logged_at_time の降順で返す。
 pub async fn list_by_specimen(
     pool: Option<&PgPool>,

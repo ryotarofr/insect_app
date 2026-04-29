@@ -139,6 +139,44 @@ describe("E2E: cart flow", () => {
 });
 
 describe("E2E: specimen carte tabs", () => {
+  // PR #5a: APP_DATA.specimens 廃止後は serverSpecimens cache に fixture を仕込む。
+  // App の createEffect が currentUser()=null で clearServerSpecimens() を呼ぶため、
+  // auth fixture も併せて仕込む (= login 状態にして refresh 経路へ流す。fetch は失敗するが
+  // 例外パスは fixture を消さないので fixture は残る)。
+  beforeEach(async () => {
+    const { setAuthForTest } = await import("../store/auth");
+    const { setServerSpecimensForTest } = await import("../store/specimens");
+    setAuthForTest({
+      userId: "a0a0a0a0-0000-4000-8000-00000000a0a0",
+      publicId: "t_yamada",
+      name: "山田 徹",
+      role: "breeder",
+      avatarInitial: "山",
+      joinedAt: "2024-03-15T00:00:00Z",
+    });
+    setServerSpecimensForTest([
+      {
+        id: "11111111-1111-4111-8111-111111111111",
+        publicId: "#DHH-0271",
+        ownerUserId: "a0a0a0a0-0000-4000-8000-00000000a0a0",
+        speciesId: "dhh",
+        name: "ヘラクレス 黒曜",
+        sex: "male",
+        stage: "蛹",
+        stageProgress: 0.72,
+        sizeMm: 142,
+        weightG: 28.4,
+        birthDate: "2024-08-12",
+        purchasedAt: "2025-11-03",
+        generation: "CBF2",
+        eclosionEta: "2026-05-04",
+        lifeStatus: "active",
+        isArchived: false,
+        notes: null,
+      },
+    ]);
+  });
+
   // UX-1: 個体カルテはサイドバー / ショートカットから外したので、
   //   テストでは直接 URL で個体ページにジャンプする (実運用では MyPage 所有個体カードから遷移)。
   //   id の "#" は fragment と区別するため encodeURIComponent で %23 にエンコードする。

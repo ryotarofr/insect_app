@@ -20,6 +20,7 @@ use argon2::{
     Argon2,
     password_hash::{PasswordHash, PasswordHasher, PasswordVerifier, SaltString, rand_core::OsRng},
 };
+use chrono::{DateTime, Utc};
 use sqlx::{FromRow, PgPool};
 use uuid::Uuid;
 
@@ -32,6 +33,7 @@ pub struct UserRow {
     pub email: Option<String>,
     pub avatar_initial: String,
     pub is_active: bool,
+    pub joined_at: DateTime<Utc>,
 }
 
 /// register 時の INSERT payload。`password_plain` は呼び出し側が握り、
@@ -159,10 +161,51 @@ pub async fn create_with_password(
                     email: Some(input.email),
                     avatar_initial: input.avatar_initial,
                     is_active: true,
+                    joined_at: Utc::now(),
                 },
                 Some(hash),
             ));
             Ok(id)
+        }
+    }
+}
+
+/// 既存ユーザの password_hash を上書き更新する (= PR N-5 / password reset confirm)。
+/// 平文ではなく既に hash 済の phc 文字列を受け取る (= 呼び出し側が `hash_password` を実行)。
+/// user_id 不在は `NotFound` を返す。
+pub async fn update_password_hash(
+    pool: Option<&PgPool>,
+    user_id: Uuid,
+    new_hash: &str,
+) -> Result<(), UserRepoError> {
+    match pool {
+        Some(p) => {
+            let res = sqlx::query(
+                r#"
+                UPDATE users
+                SET password_hash = $2
+                WHERE id = $1
+                "#,
+            )
+            .bind(user_id)
+            .bind(new_hash)
+            .execute(p)
+            .await
+            .map_err(UserRepoError::Db)?;
+            if res.rows_affected() == 0 {
+                return Err(UserRepoError::NotFound);
+            }
+            Ok(())
+        }
+        None => {
+            let mut store = memory_dynamic_lock_mut();
+            for entry in store.iter_mut() {
+                if entry.0.id == user_id {
+                    entry.1 = Some(new_hash.to_string());
+                    return Ok(());
+                }
+            }
+            Err(UserRepoError::NotFound)
         }
     }
 }
@@ -202,7 +245,7 @@ async fn find_by_public_id_db(
 ) -> Result<Option<UserRow>, UserRepoError> {
     sqlx::query_as::<_, UserRow>(
         r#"
-        SELECT id, public_id, name, role, email, avatar_initial, is_active
+        SELECT id, public_id, name, role, email, avatar_initial, is_active, joined_at
         FROM users
         WHERE public_id = $1
         "#,
@@ -216,7 +259,7 @@ async fn find_by_public_id_db(
 async fn find_by_id_db(pool: &PgPool, id: Uuid) -> Result<Option<UserRow>, UserRepoError> {
     sqlx::query_as::<_, UserRow>(
         r#"
-        SELECT id, public_id, name, role, email, avatar_initial, is_active
+        SELECT id, public_id, name, role, email, avatar_initial, is_active, joined_at
         FROM users
         WHERE id = $1
         "#,
@@ -230,7 +273,7 @@ async fn find_by_id_db(pool: &PgPool, id: Uuid) -> Result<Option<UserRow>, UserR
 async fn find_all_active_db(pool: &PgPool) -> Result<Vec<UserRow>, UserRepoError> {
     sqlx::query_as::<_, UserRow>(
         r#"
-        SELECT id, public_id, name, role, email, avatar_initial, is_active
+        SELECT id, public_id, name, role, email, avatar_initial, is_active, joined_at
         FROM users
         WHERE is_active = true
         ORDER BY public_id
@@ -247,7 +290,7 @@ async fn find_by_email_db(
 ) -> Result<Option<UserRow>, UserRepoError> {
     sqlx::query_as::<_, UserRow>(
         r#"
-        SELECT id, public_id, name, role, email, avatar_initial, is_active
+        SELECT id, public_id, name, role, email, avatar_initial, is_active, joined_at
         FROM users
         WHERE email = $1
         "#,
@@ -263,33 +306,45 @@ async fn find_password_hash_by_email_db(
     email: &str,
 ) -> Result<Option<(UserRow, Option<String>)>, UserRepoError> {
     #[allow(clippy::type_complexity)]
-    let row: Option<(Uuid, String, String, String, Option<String>, String, bool, Option<String>)> =
-        sqlx::query_as(
-            r#"
-            SELECT id, public_id, name, role, email, avatar_initial, is_active, password_hash
-            FROM users
-            WHERE email = $1
-            "#,
-        )
-        .bind(email)
-        .fetch_optional(pool)
-        .await
-        .map_err(UserRepoError::Db)?;
+    let row: Option<(
+        Uuid,
+        String,
+        String,
+        String,
+        Option<String>,
+        String,
+        bool,
+        DateTime<Utc>,
+        Option<String>,
+    )> = sqlx::query_as(
+        r#"
+        SELECT id, public_id, name, role, email, avatar_initial, is_active, joined_at, password_hash
+        FROM users
+        WHERE email = $1
+        "#,
+    )
+    .bind(email)
+    .fetch_optional(pool)
+    .await
+    .map_err(UserRepoError::Db)?;
 
-    Ok(row.map(|(id, public_id, name, role, email, avatar_initial, is_active, password_hash)| {
-        (
-            UserRow {
-                id,
-                public_id,
-                name,
-                role,
-                email,
-                avatar_initial,
-                is_active,
-            },
-            password_hash,
-        )
-    }))
+    Ok(row.map(
+        |(id, public_id, name, role, email, avatar_initial, is_active, joined_at, password_hash)| {
+            (
+                UserRow {
+                    id,
+                    public_id,
+                    name,
+                    role,
+                    email,
+                    avatar_initial,
+                    is_active,
+                    joined_at,
+                },
+                password_hash,
+            )
+        },
+    ))
 }
 
 async fn create_with_password_db(
@@ -375,6 +430,11 @@ fn memory_seed_users() -> Vec<UserRow> {
         email: None,
         avatar_initial: "山".to_string(),
         is_active: true,
+        // "登録 2024.03 より" 表示が出るよう、in-memory fallback 用に固定値を入れる。
+        // DB 経路では 0004 の DEFAULT now() か実 INSERT 時刻が使われる。
+        joined_at: chrono::TimeZone::with_ymd_and_hms(&Utc, 2024, 3, 15, 0, 0, 0)
+            .single()
+            .expect("valid timestamp"),
     }]
 }
 

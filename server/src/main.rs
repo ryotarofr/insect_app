@@ -5,7 +5,7 @@ use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
 use insect_app_server::{
-    db, ensure_production_env_or_panic, handlers, repos, routes, state::AppState,
+    db, ensure_production_env_or_panic, handlers, openapi, repos, routes, state::AppState, workers,
 };
 
 #[tokio::main]
@@ -43,7 +43,17 @@ async fn main() -> anyhow::Result<()> {
         tracing::warn!("warm_prefectures_cache failed: {e} (using in-memory fallback)");
     }
 
-    let app = build_app(AppState { db: db_pool.clone() });
+    let state = AppState { db: db_pool.clone() };
+
+    // Sprint 2 / N1-N2: バックグラウンド worker (= email_send relay loop /
+    // eclosion_daily 等) を `KOCHU_WORKER_ENABLE=true` 時のみ spawn する。
+    //   - dev / `cargo test`: env 未設定 → 何もしない (= worker 起動なし)
+    //   - prod web task     : env=false → web のみ
+    //   - prod worker task  : env=true  → web も並走するが ECS 側で別 task に分ける想定
+    //                          (= 単一 task に web+worker 同居も可)
+    workers::spawn_all(state.clone());
+
+    let app = build_app(state);
 
     let bind_addr = std::env::var("KOCHU_BIND_ADDR")
         .unwrap_or_else(|_| "0.0.0.0:3000".to_string());
@@ -69,6 +79,9 @@ fn init_tracing() {
 fn build_app(state: AppState) -> Router {
     Router::new()
         .route("/health", get(handlers::health::health))
+        // Phase 1 / A1: /openapi.json + /swagger-ui を提供 (= dev / CI 用)。
+        // 本番では reverse proxy で外部公開を絞る運用想定。
+        .merge(openapi::router())
         .nest("/api/v1", routes::api_v1(state))
         .layer(CorsLayer::permissive())
         .layer(TraceLayer::new_for_http())

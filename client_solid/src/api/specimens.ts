@@ -1,74 +1,81 @@
-// api/specimens.ts — 個体 (Specimen) の取得 + 羽化予測 + メモ永続化
+// api/specimens.ts — 個体 (Specimen) の取得 + 羽化予測 + メモ更新
 //
-// 個体メモ (notes) は localStorage 側の上書きを優先し、未編集の個体は
-// APP_DATA の seed をそのまま返す。reactive な signal を経由するので、
-// updateSpecimenMemo() 後にコンポーネントは自動更新される。
-import { createSignal } from "solid-js";
-import { APP_DATA, type Specimen } from "../data";
-import { LS_KEYS, readJSON, writeJSON } from "./storage";
+// **責務**:
+//   - `store/specimens.ts` の `serverSpecimens()` (= /specimens/me 経由) から正規化した
+//     legacy `Specimen[]` を sync で公開する
+//   - 個体メモ (notes) は `PATCH /specimens/{id}/notes` で server 永続化
+//     (= PR #5b で localStorage 廃止)
+//
+// **anonymous の扱い**:
+//   `serverSpecimens()` は未 login 時 null。本ファイルは null → `[]` で吸収する。
+//
+// **正規化**:
+//   `SpecimenView` (server) と legacy `Specimen` (data.ts) は 9 フィールド差分。
+//   `normalizeSpecimenForLegacy()` で defaults 埋めをして shape を揃える。
+//   notes は server 値そのまま。
 
-type MemoMap = Record<string, string>;
+import type { Specimen } from "../data";
+import { patchSpecimenNotes } from "../sdui/api";
+import {
+  findServerSpecimenByPublicId,
+  normalizeSpecimenForLegacy,
+  serverSpecimens,
+  triggerSpecimensRefresh,
+} from "../store/specimens";
 
-const [memos, setMemos] = createSignal<MemoMap>(
-  readJSON<MemoMap>(LS_KEYS.memos, {}),
-);
-
-/** 編集済みメモがあれば notes を上書きした個体を返す。なければ参照そのまま。 */
-const applyMemo = (s: Specimen): Specimen => {
-  const m = memos()[s.id];
-  return m !== undefined ? { ...s, notes: m } : s;
+/** `serverSpecimens()` を legacy `Specimen[]` に正規化して返す。null は空配列。 */
+const normalizedSpecimens = (): Specimen[] => {
+  const list = serverSpecimens();
+  if (!list) return [];
+  return list.map((v) => normalizeSpecimenForLegacy(v));
 };
 
-export const listSpecimens = (): Specimen[] =>
-  APP_DATA.specimens.map(applyMemo);
+export const listSpecimens = (): Specimen[] => normalizedSpecimens();
 
-export const getSpecimen = (id: string): Specimen | undefined => {
-  const s = APP_DATA.specimens.find((x) => x.id === id);
-  return s ? applyMemo(s) : undefined;
-};
+export const getSpecimen = (id: string): Specimen | undefined =>
+  normalizedSpecimens().find((s) => s.id === id);
 
 export const specimenExists = (id: string): boolean =>
-  APP_DATA.specimens.some((s) => s.id === id);
+  normalizedSpecimens().some((s) => s.id === id);
 
 /** eclosionInDays が `maxDays` 未満の個体だけを返す。eclosionInDays が null の個体は除外。 */
 export const listUrgentEclosion = (
   maxDays = 60,
 ): Array<Specimen & { eclosionInDays: number }> =>
-  APP_DATA.specimens
-    .map(applyMemo)
-    .filter(
-      (s): s is Specimen & { eclosionInDays: number } =>
-        s.eclosionInDays !== null && s.eclosionInDays < maxDays,
-    );
+  normalizedSpecimens().filter(
+    (s): s is Specimen & { eclosionInDays: number } =>
+      s.eclosionInDays !== null && s.eclosionInDays < maxDays,
+  );
 
-/** 羽化予測対象（eclosionInDays が数値）の個体を早い順にソートして返す */
+/** 羽化予測対象 (eclosionInDays が数値) の個体を早い順にソートして返す。 */
 export const listEclosionForecasts = (): Array<
   Specimen & { eclosionInDays: number }
 > =>
-  APP_DATA.specimens
-    .map(applyMemo)
+  normalizedSpecimens()
     .filter(
       (s): s is Specimen & { eclosionInDays: number } =>
         s.eclosionInDays !== null,
     )
     .sort((a, b) => a.eclosionInDays - b.eclosionInDays);
 
-/** 個体メモの取得。編集済みなら永続化分、未編集なら APP_DATA の seed (notes ?? "") */
-export const getSpecimenMemo = (id: string): string => {
-  const m = memos()[id];
-  if (m !== undefined) return m;
-  return APP_DATA.specimens.find((s) => s.id === id)?.notes ?? "";
-};
+/** 個体メモの取得。serverSpecimens cache から server 値を引く (= 旧 localStorage は廃止)。
+ *  キャッシュ未読込 / publicId 不存在は空文字列。 */
+export const getSpecimenMemo = (id: string): string =>
+  getSpecimen(id)?.notes ?? "";
 
-/** メモを更新 (空文字列も許可) */
-export const updateSpecimenMemo = (id: string, memo: string): void => {
-  const next: MemoMap = { ...memos(), [id]: memo };
-  setMemos(next);
-  writeJSON(LS_KEYS.memos, next);
-};
-
-/** テスト用: 全メモをクリア (localStorage も消す) */
-export const __resetSpecimenMemos = (): void => {
-  setMemos({});
-  writeJSON(LS_KEYS.memos, {});
+/** メモを更新。`PATCH /specimens/{uuid}/notes` を叩いて server 永続化する。
+ *  成功後に `triggerSpecimensRefresh()` で specimens cache を更新 (= UI 自動反映)。
+ *  publicId 未解決 / login 切れ時は throw。 */
+export const updateSpecimenMemo = async (
+  id: string,
+  memo: string,
+): Promise<void> => {
+  const sv = findServerSpecimenByPublicId(id);
+  if (!sv) {
+    throw new Error(
+      `updateSpecimenMemo: specimen not found for publicId "${id}" (cache miss / not logged in)`,
+    );
+  }
+  await patchSpecimenNotes(sv.id, memo);
+  triggerSpecimensRefresh();
 };

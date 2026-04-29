@@ -64,6 +64,8 @@ pub struct SpecimenView {
     pub eclosion_eta: Option<NaiveDate>,
     pub life_status: String,
     pub is_archived: bool,
+    /// 個体メモ (= 自由テキスト)。PR #5b で localStorage から server 永続化に移行。
+    pub notes: Option<String>,
 }
 
 impl From<specimens::SpecimenRow> for SpecimenView {
@@ -85,6 +87,7 @@ impl From<specimens::SpecimenRow> for SpecimenView {
             eclosion_eta: r.eclosion_eta,
             life_status: r.life_status,
             is_archived: r.is_archived,
+            notes: r.notes,
         }
     }
 }
@@ -131,12 +134,42 @@ pub async fn list_my_specimens(
 }
 
 /// `POST /api/v1/specimens` — 自分の所有 specimen を新規登録。
+///
+/// **PR N-4**: req.eclosion_eta が None かつ birth_date が Some なら、`species_stats` から
+/// 自動計算して埋める (= birth_date + larva_days + pupa_days)。stats が見つからなければ None
+/// のままで OK (= UI 側で「未登録」表示)。
 pub async fn create_specimen(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
     Json(req): Json<CreateSpecimenRequest>,
 ) -> Result<Json<CreateSpecimenResponse>, AppError> {
     let user_id = require_user_id(&state, session_id.0).await?;
+
+    // eclosion_eta が未指定 + birth_date がある → species_stats から自動計算
+    let computed_eta = match (req.eclosion_eta, req.birth_date) {
+        (Some(eta), _) => Some(eta),
+        (None, Some(birth)) => {
+            match crate::repos::species_stats::find_by_id(state.db(), &req.species_id).await {
+                Ok(Some(stats)) => {
+                    Some(crate::repos::species_stats::compute_eta(birth, &stats))
+                }
+                Ok(None) => {
+                    tracing::debug!(
+                        "create_specimen: no species_stats for {} (eclosion_eta left None)",
+                        req.species_id
+                    );
+                    None
+                }
+                Err(e) => {
+                    tracing::warn!(
+                        "create_specimen: species_stats lookup failed: {e} (continuing with eta=None)"
+                    );
+                    None
+                }
+            }
+        }
+        (None, None) => None,
+    };
 
     let id = specimens::insert(
         state.db(),
@@ -155,7 +188,7 @@ pub async fn create_specimen(
             purchased_from_shop_id: None,
             generation: req.generation,
             purchase_price_jpy: None,
-            eclosion_eta: req.eclosion_eta,
+            eclosion_eta: computed_eta,
             father_id: None,
             mother_id: None,
             father_label: None,
@@ -295,6 +328,37 @@ pub async fn list_status_history(
         .await
         .map_err(|e| AppError::BadRequest(format!("status_history fetch: {e}")))?;
     Ok(Json(rows.into_iter().map(StatusHistoryView::from).collect()))
+}
+
+/// `PATCH /api/v1/specimens/{id}/notes` — 個体メモ更新 (= 自由テキスト)。
+/// PR #5b で localStorage 永続化を廃止して server 化。空文字列は「メモ削除」として許容。
+/// 他人の specimen は 404 (= 存在隠し)。
+#[derive(Debug, Clone, Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct UpdateNotesRequest {
+    /// `null` または "" を渡すと notes を NULL に戻す (= 「メモを消す」)。
+    pub notes: Option<String>,
+}
+
+pub async fn patch_specimen_notes(
+    State(state): State<AppState>,
+    Extension(session_id): Extension<SessionId>,
+    Path(id): Path<String>,
+    Json(req): Json<UpdateNotesRequest>,
+) -> Result<StatusCode, AppError> {
+    let user_id = require_user_id(&state, session_id.0).await?;
+    let target_id = Uuid::parse_str(&id).map_err(|_| AppError::NotFound)?;
+
+    // notes を NULL にする ("" は明示的な削除として NULL に倒す)。
+    let notes_value = req.notes.as_deref().filter(|s| !s.is_empty());
+
+    specimens::update_notes(state.db(), target_id, user_id, notes_value)
+        .await
+        .map_err(|e| match e {
+            specimens::SpecimenRepoError::NotFound(_) => AppError::NotFound,
+            other => AppError::BadRequest(format!("update_notes failed: {other}")),
+        })?;
+    Ok(StatusCode::NO_CONTENT)
 }
 
 /// `POST /api/v1/specimens/{id}/archive` — 自分の specimen を archive する。

@@ -65,7 +65,7 @@ const QuickLogBar = (p: {
 
   const currentMeta = () => LOG_TYPES.find((t) => t.key === type())!;
 
-  const submit = (e: Event) => {
+  const submit = async (e: Event) => {
     e.preventDefault();
     const t = type();
     const v = value().trim();
@@ -73,15 +73,20 @@ const QuickLogBar = (p: {
       setError("内容を入力してください");
       return;
     }
-    addLog({
-      type: t,
-      title: buildLogTitle(t, v),
-      body: memo().trim() || v,
-      specimen: p.target,
-    });
-    setValue("");
-    setMemo("");
-    p.onSaved("記録を追加しました");
+    try {
+      await addLog({
+        type: t,
+        title: buildLogTitle(t, v),
+        body: memo().trim() || v,
+        specimen: p.target,
+      });
+      setValue("");
+      setMemo("");
+      p.onSaved("記録を追加しました");
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setError(`保存に失敗しました: ${msg}`);
+    }
   };
 
   const targetSpec = () => specimens.find((s) => s.id === p.target);

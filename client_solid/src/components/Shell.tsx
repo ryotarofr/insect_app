@@ -12,7 +12,6 @@
 import { createEffect, For, Show, type JSX } from "solid-js";
 import { A, useLocation } from "@solidjs/router";
 import { type RouteKey } from "../data";
-import { getCurrentUser } from "../api";
 import { Icons } from "./Icons";
 import { BottomTabBar } from "./BottomTabBar";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
@@ -137,15 +136,19 @@ export const Shell = (props: ShellProps) => {
           )}
         </For>
 
-        <div class="sidebar-footer">
-          <div class="avatar" aria-hidden="true">
-            {getCurrentUser().initial}
-          </div>
-          <div>
-            <div class="user-name">{getCurrentUser().name}</div>
-            <div class="user-role">{getCurrentUser().role}</div>
-          </div>
-        </div>
+        <Show when={currentUser()}>
+          {(u) => (
+            <div class="sidebar-footer">
+              <div class="avatar" aria-hidden="true">
+                {u().avatarInitial ?? u().name.slice(0, 1)}
+              </div>
+              <div>
+                <div class="user-name">{u().name}</div>
+                <div class="user-role">{u().role}</div>
+              </div>
+            </div>
+          )}
+        </Show>
 
         {/* Phase 9.G: 認証 quick action。anonymous → ログインリンク / 既ログイン → ログアウト。
             mock user 表示 (上の sidebar-footer) はそのまま残し、本リンクは独立 row で出す。
