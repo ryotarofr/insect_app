@@ -32,6 +32,13 @@ interface Props {
   onSubmit: (draft: SpecimenDraft) => Promise<void>;
   /** キャンセル時 */
   onCancel: () => void;
+  /** Phase 8: submit 成功通知 (連続登録カウンタ等を上位で持つため)。
+   *  continueAfter=true なら「保存して続けて登録」、false なら「登録する」経由。 */
+  onSubmitSuccess?: (continueAfter: boolean) => void;
+  /** Phase 8: 「キャンセル」ボタンのラベル上書き (連続セッション中は「登録を終了」に変えたい) */
+  cancelLabel?: string;
+  /** Phase 8: フォーム上部に追加で描画したい要素 (ステータスバナー等)。 */
+  headerSlot?: JSX.Element;
 }
 
 interface ContextDraft {
@@ -135,6 +142,8 @@ export const SpecimenDetailForm = (props: Props) => {
     setError(null);
     try {
       await props.onSubmit(buildDraft());
+      // Phase 8: 上位 (= /specimens/new) にカウンタ加算を通知。
+      props.onSubmitSuccess?.(continueAfter);
       if (continueAfter) {
         // コンテキスト保持 + リセット
         persistContext();
@@ -175,6 +184,9 @@ export const SpecimenDetailForm = (props: Props) => {
           <span class="reg-form__preview-id mn">{previewId()}</span>
         </div>
       </div>
+
+      {/* Phase 8: 連続登録モード時のステータスバナー差し込み口 */}
+      <Show when={props.headerSlot}>{props.headerSlot}</Show>
 
       {/* 基本情報 */}
       <section class="card reg-form__section">
@@ -332,7 +344,7 @@ export const SpecimenDetailForm = (props: Props) => {
           onClick={props.onCancel}
           disabled={submitting()}
         >
-          キャンセル
+          {props.cancelLabel ?? "キャンセル"}
         </button>
         <button
           type="button"

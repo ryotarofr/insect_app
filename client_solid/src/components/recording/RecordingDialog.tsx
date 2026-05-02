@@ -23,6 +23,13 @@ interface BaseProps {
   open: boolean;
   onCancel: () => void;
   onConfirm: () => void;
+  /** タイトル上書き。省略時は kind に応じて固定文言。
+   *  Phase 8 (連続単発登録モード) で「登録モードを終了しますか？」など差し替えるため。 */
+  title?: string;
+  /** 確定ボタンのラベル上書き (デフォルト "終了する" / "OK")。 */
+  confirmLabel?: string;
+  /** 完了 dialog の自動遷移先サフィックス (デフォルト "群詳細") */
+  completeDestinationLabel?: string;
 }
 
 interface ConfirmEndProps extends BaseProps {
@@ -152,14 +159,16 @@ export const RecordingDialog = (props: Props) => {
             </svg>
           </Show>
           <h2 id="rec-dialog-title" class="rec-dialog__title">
-            {props.kind === "complete"
-              ? "個体化モードが完了しました"
-              : "個体化モードを終了しますか？"}
+            {props.title ??
+              (props.kind === "complete"
+                ? "個体化モードが完了しました"
+                : "個体化モードを終了しますか？")}
           </h2>
           <div class="rec-dialog__body">{props.body}</div>
           <Show when={props.kind === "complete"}>
             <p class="rec-dialog__countdown">
-              ({remaining()} 秒後に群詳細へ自動遷移)
+              ({remaining()} 秒後に
+              {props.completeDestinationLabel ?? "群詳細"}へ自動遷移)
             </p>
           </Show>
           <div class="rec-dialog__actions">
@@ -179,7 +188,7 @@ export const RecordingDialog = (props: Props) => {
                     class="btn primary"
                     onClick={onConfirmClick}
                   >
-                    終了する
+                    {props.confirmLabel ?? "終了する"}
                   </button>
                 </>
               }
@@ -189,7 +198,7 @@ export const RecordingDialog = (props: Props) => {
                 class="btn primary"
                 onClick={onConfirmClick}
               >
-                OK
+                {props.confirmLabel ?? "OK"}
               </button>
             </Show>
           </div>
