@@ -33,7 +33,11 @@ import { toggleShortcutsHelp } from "./store/shortcutsHelp";
 import { MyPage } from "./pages/MyPage";
 import { ProductsList, ProductDetail } from "./pages/products";
 import { SpecimenDetail } from "./pages/specimen";
-import { LogPage } from "./pages/Log";
+import { SpecimenNewPage } from "./pages/specimen/new";
+import { CohortListPage } from "./pages/cohort/index";
+import { CohortDetailPage } from "./pages/cohort/detail";
+import { CohortPromotePage } from "./pages/cohort/promote";
+import { CohortNewPage } from "./pages/cohort/new";
 import { EclosionPage } from "./pages/Eclosion";
 import { BloodlinePage } from "./pages/Bloodline";
 import { ShopPage } from "./pages/Shop";
@@ -71,7 +75,8 @@ import { saveScroll, consumeScroll } from "./store/scrollMemory";
 const SHORTCUT_MAP: Record<string, RouteKey> = {
   "1": "mypage",
   "2": "products",
-  "3": "log",
+  // Cohort Phase 1: 旧 "log" (= /log 飼育ログ) は削除。3 は飼育 (cohort) に再割当。
+  "3": "cohort",
   "4": "eclosion",
   "5": "bloodline",
   "6": "market",
@@ -293,6 +298,19 @@ export const App = () => {
     return extractPathId(location.pathname, "/orders") ?? "";
   });
 
+  // Cohort Phase 1: /cohorts/:publicId と /cohorts/:publicId/promote の publicId 抽出。
+  //   /cohorts/:id/promote では末尾 /promote を削ってから decode する。
+  const currentCohortPublicId = createMemo<string>(() => {
+    const path = location.pathname.replace(/\/+$/, "");
+    const m = path.match(/^\/cohorts\/([^/]+)(?:\/promote)?$/);
+    if (!m) return "";
+    try {
+      return decodeURIComponent(m[1]);
+    } catch {
+      return "";
+    }
+  });
+
   // localStorage へ永続化 (P2-3 で見直し)
   createEffect(() => {
     localStorage.setItem("kochu:specimen", specimenFallback());
@@ -447,6 +465,8 @@ export const App = () => {
         const p = getProduct(currentProductId());
         return p ? p.title : undefined;
       })(),
+      // Cohort Phase 1: 群詳細 / 個体化モードのパンくず用 LOT ID
+      cohortPublicId: currentCohortPublicId() || undefined,
     };
     return crumbFor(r, ids);
   });
@@ -476,8 +496,20 @@ export const App = () => {
             setSelectedSpecimen={setSelectedSpecimen}
           />
         </Show>
-        <Show when={route() === "log"}>
-          <LogPage />
+        <Show when={route() === "specimen-new"}>
+          <SpecimenNewPage />
+        </Show>
+        <Show when={route() === "cohort"}>
+          <CohortListPage />
+        </Show>
+        <Show when={route() === "cohort-new"}>
+          <CohortNewPage />
+        </Show>
+        <Show when={route() === "cohort-detail"}>
+          <CohortDetailPage cohortPublicId={currentCohortPublicId()} />
+        </Show>
+        <Show when={route() === "cohort-promote"}>
+          <CohortPromotePage cohortPublicId={currentCohortPublicId()} />
         </Show>
         <Show when={route() === "eclosion"}>
           <EclosionPage setRoute={setRoute} setSelectedSpecimen={setSelectedSpecimen} />

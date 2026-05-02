@@ -17,7 +17,17 @@ export type RouteKey =
   | "products"
   | "product-detail"
   | "specimen"
-  | "log"
+  // Cohort Phase 1: 個体登録ページ (/specimens/new)
+  | "specimen-new"
+  // Cohort Phase 1: 飼育 (cohort) 一覧 — 旧「群」概念のラベル
+  | "cohort"
+  // Cohort Phase 1: 群詳細 (/cohorts/:id)
+  | "cohort-detail"
+  // Cohort Phase 1: 個体化モード (/cohorts/:id/promote)
+  | "cohort-promote"
+  // Cohort Phase 1: 群を作成 (/cohorts/new)
+  | "cohort-new"
+  // 旧 飼育ログ (/log) は Cohort Phase 1 で削除。ロギングは群・個体の文脈内に内包。
   | "eclosion"
   | "bloodline"
   | "shop"

@@ -9,7 +9,16 @@ export const ROUTE_PATHS: Record<RouteKey, string> = {
   products: "/products",
   "product-detail": "/products", // 実際には /products/:id を別途使用
   specimen: "/specimen",
-  log: "/log",
+  // Cohort Phase 1: 単独個体登録フォーム
+  "specimen-new": "/specimens/new",
+  // Cohort Phase 1: 飼育 (cohort) ナビ。「群」概念をユーザー向けに「飼育」と表示。
+  cohort: "/cohorts",
+  // Cohort Phase 1: 群詳細 (= 実際は /cohorts/:id を別途使用)
+  "cohort-detail": "/cohorts",
+  // Cohort Phase 1: 個体化モード (= /cohorts/:id/promote、id は別途)
+  "cohort-promote": "/cohorts",
+  // Cohort Phase 1: 群を作成
+  "cohort-new": "/cohorts/new",
   eclosion: "/eclosion",
   bloodline: "/bloodline",
   shop: "/shop",
@@ -42,8 +51,18 @@ export const pathnameToRouteKey = (pathname: string): RouteKey => {
   if (/^\/products\/[^/]+/.test(path)) return "product-detail";
   if (path === "/products") return "products";
 
+  // Cohort Phase 1: /specimens/new (単独個体登録) は specimen 詳細より先にマッチさせる。
+  if (path === "/specimens/new") return "specimen-new";
   if (/^\/specimen(?:\/|$)/.test(path)) return "specimen";
-  if (path === "/log") return "log";
+  // Cohort Phase 1: 飼育 (cohort) 系ルート。
+  //   /cohorts/new → cohort-new
+  //   /cohorts/:id/promote → cohort-promote
+  //   /cohorts/:id → cohort-detail
+  //   /cohorts → cohort
+  if (path === "/cohorts/new") return "cohort-new";
+  if (/^\/cohorts\/[^/]+\/promote$/.test(path)) return "cohort-promote";
+  if (/^\/cohorts\/[^/]+$/.test(path)) return "cohort-detail";
+  if (path === "/cohorts") return "cohort";
   if (path === "/eclosion") return "eclosion";
   if (/^\/bloodline(?:\/|$)/.test(path)) return "bloodline";
   if (path === "/shop") return "shop";
@@ -76,6 +95,16 @@ export const pathnameToRouteKey = (pathname: string): RouteKey => {
 export const sidebarRouteKey = (route: RouteKey): RouteKey => {
   if (route === "specimen") return "mypage";
   if (route === "product-detail") return "products";
+  // Cohort Phase 1: 飼育配下の派生ルートはサイドバー上「飼育」をハイライト
+  if (
+    route === "cohort-detail" ||
+    route === "cohort-promote" ||
+    route === "cohort-new"
+  ) {
+    return "cohort";
+  }
+  // 単独個体登録もサイドバー上は「飼育」配下扱い (= 飼育の CTA から到達するため)
+  if (route === "specimen-new") return "cohort";
   return route;
 };
 
@@ -93,6 +122,14 @@ export const bloodlineUrl = (id?: string): string =>
 export const orderUrl = (id: string): string =>
   `/orders/${encodeURIComponent(id)}`;
 
+/** Cohort Phase 1: 群詳細 URL */
+export const cohortUrl = (publicId: string): string =>
+  `/cohorts/${encodeURIComponent(publicId)}`;
+
+/** Cohort Phase 1: 個体化モード URL */
+export const cohortPromoteUrl = (publicId: string): string =>
+  `/cohorts/${encodeURIComponent(publicId)}/promote`;
+
 /**
  * P2-14: RouteKey から階層パンくずを組み立てる。
  *   - 末尾 (現在地) は href を持たない = リンクにならない
@@ -105,6 +142,8 @@ export interface CrumbIds {
   bloodlineId?: string;
   productTitle?: string;
   specimenName?: string;
+  /** Cohort Phase 1: 群詳細 / 個体化モードのパンくず用 LOT ID */
+  cohortPublicId?: string;
 }
 
 export const crumbFor = (route: RouteKey, ids: CrumbIds = {}): Crumb[] => {
@@ -125,8 +164,35 @@ export const crumbFor = (route: RouteKey, ids: CrumbIds = {}): Crumb[] => {
         { label: "所有個体", href: "/" },
         { label: ids.specimenName ?? ids.specimenId ?? "個体カルテ" },
       ];
-    case "log":
-      return [{ label: "飼育", href: "/" }, { label: "飼育ログ" }];
+    case "specimen-new":
+      // Cohort Phase 1: 単独個体登録は飼育配下の枝
+      return [
+        { label: "飼育", href: "/cohorts" },
+        { label: "個体登録" },
+      ];
+    case "cohort":
+      return [{ label: "飼育" }];
+    case "cohort-detail":
+      return [
+        { label: "飼育", href: "/cohorts" },
+        { label: ids.cohortPublicId ?? "群詳細" },
+      ];
+    case "cohort-promote":
+      return [
+        { label: "飼育", href: "/cohorts" },
+        {
+          label: ids.cohortPublicId ?? "群詳細",
+          href: ids.cohortPublicId
+            ? `/cohorts/${encodeURIComponent(ids.cohortPublicId)}`
+            : "/cohorts",
+        },
+        { label: "個体化" },
+      ];
+    case "cohort-new":
+      return [
+        { label: "飼育", href: "/cohorts" },
+        { label: "群を作成" },
+      ];
     case "eclosion":
       return [{ label: "飼育", href: "/" }, { label: "羽化予測" }];
     case "bloodline":

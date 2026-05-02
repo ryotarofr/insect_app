@@ -69,7 +69,8 @@ export const BottomTabBar = (props: BottomTabBarProps) => {
       icon: Icons.bell,
       badge: () => props.eclosionCount?.(),
     },
-    { key: "log", label: "記録", icon: Icons.timeline },
+    // Cohort Phase 1: 旧「記録 (= /log)」を「飼育 (= /cohorts)」に置換。
+    { key: "cohort", label: "飼育", icon: Icons.timeline },
     { key: "market", label: "市場", icon: Icons.beetle },
     {
       key: "cart",

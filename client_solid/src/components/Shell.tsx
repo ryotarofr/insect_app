@@ -79,7 +79,14 @@ export const Shell = (props: ShellProps) => {
     // 個体カルテは詳細ビュー (`:id` パラメトリック) なので、サイドバーには出さない。
     // マイページの所有個体カード / 羽化レーダー / Bloodline 等から id 付きで開く。
     { key: "specimen", label: "個体カルテ", icon: Icons.card, group: "飼育", hidden: true },
-    { key: "log", label: "飼育ログ", icon: Icons.timeline, group: "飼育" },
+    // Cohort Phase 1: 旧「飼育ログ」を「飼育」にリネームして /cohorts に統合。
+    //   ロギング機能は群詳細・個体詳細・個体化モードのコンテキスト内に内包。
+    { key: "cohort", label: "飼育", icon: Icons.timeline, group: "飼育" },
+    // Cohort Phase 1 派生ルート (= サイドバーに出さない、親 cohort をハイライト)
+    { key: "cohort-detail", label: "群詳細", icon: Icons.card, group: "飼育", hidden: true },
+    { key: "cohort-promote", label: "個体化", icon: Icons.card, group: "飼育", hidden: true },
+    { key: "cohort-new", label: "群を作成", icon: Icons.card, group: "飼育", hidden: true },
+    { key: "specimen-new", label: "個体登録", icon: Icons.card, group: "飼育", hidden: true },
     {
       key: "eclosion",
       label: "羽化予測",

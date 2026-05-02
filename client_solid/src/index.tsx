@@ -7,6 +7,7 @@ import "./styles/utilities.css";
 import "./styles/bottom-tab.css";
 import "./styles/toast.css";
 import "./styles/tooltip.css";
+import "./styles/cohort.css";
 import { App } from "./App";
 import { registerServiceWorker } from "./pwa";
 

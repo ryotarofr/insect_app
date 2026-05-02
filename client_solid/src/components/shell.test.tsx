@@ -53,21 +53,21 @@ describe("Shell", () => {
   it("marks the current route's nav item as active with aria-current", () => {
     // @solidjs/router's <A> 自身が URL に基づき aria-current="page" を付与する。
     // そのため現在 pathname をテスト対象の route に合わせる必要がある。
-    // UX-1 で個体カルテはサイドバーから外したため、ここでは飼育ログを利用する。
-    window.history.replaceState({}, "", "/log");
+    // Cohort Phase 1: /log を廃止して /cohorts に統合済。アクティブ検証はそちらで行う。
+    window.history.replaceState({}, "", "/cohorts");
     const { container } = render(() =>
       wrapWithRouter(() => (
-        <Shell current="log" setRoute={() => {}} crumbs={[{ label: "test" }]}>
+        <Shell current="cohort" setRoute={() => {}} crumbs={[{ label: "test" }]}>
           <div />
         </Shell>
       )),
     );
     const actives = container.querySelectorAll('.nav-item[aria-current="page"]');
     expect(actives.length).toBeGreaterThan(0);
-    const logActive = Array.from(actives).find((el) =>
-      el.textContent?.includes("飼育ログ"),
+    const cohortActive = Array.from(actives).find((el) =>
+      el.textContent?.includes("飼育"),
     );
-    expect(logActive).toBeTruthy();
+    expect(cohortActive).toBeTruthy();
   });
 
   it("does not list 個体カルテ in the sidebar (UX-1)", () => {

@@ -78,7 +78,9 @@ const PAGE_ITEMS: ReadonlyArray<
   { label: "生体・用品", sub: "商品一覧", href: ROUTE_PATHS.products, tags: "products 商品 ショップ" },
   // UX-1: 個体カルテは詳細ビューなので "ページ" としては列挙せず、
   //   "個体" セクション (specimen kind) からそれぞれの個体を直接選んでもらう。
-  { label: "飼育ログ", sub: "タイムライン", href: ROUTE_PATHS.log, tags: "log 記録 ログ" },
+  { label: "飼育", sub: "群一覧", href: ROUTE_PATHS.cohort, tags: "cohort 飼育 群 lot" },
+  { label: "群を作成", sub: "新規ロット", href: ROUTE_PATHS["cohort-new"], tags: "cohort new 群 ロット 産卵" },
+  { label: "個体を登録", sub: "単独個体", href: ROUTE_PATHS["specimen-new"], tags: "specimen new 個体 register" },
   { label: "羽化予測", sub: "予定一覧", href: ROUTE_PATHS.eclosion, tags: "eclosion 羽化" },
   { label: "血統系図", sub: "系統ツリー", href: ROUTE_PATHS.bloodline, tags: "bloodline 血統 family" },
   { label: "ショップ管理", sub: "売上・在庫", href: ROUTE_PATHS.shop, tags: "shop 売上 売り上げ" },
