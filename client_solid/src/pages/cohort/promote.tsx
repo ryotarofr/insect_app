@@ -31,6 +31,7 @@ import {
 import { SpecimenSpinner } from "../../components/recording/SpecimenSpinner";
 import { RecordingDialog } from "../../components/recording/RecordingDialog";
 import { showToast } from "../../store/toast";
+import { findSpeciesById } from "../../store/species";
 import { cohortUrl } from "../../router";
 import type { PromoteCohortRequest } from "../../types/cohort";
 
@@ -187,8 +188,39 @@ export const CohortPromotePage = (props: Props) => {
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
-      setErrMsg(msg);
-      showToast({ tone: "error", message: `失敗: ${msg}` });
+      // BE が返す技術的なエラー文字列 ("version conflict ..." 等) をユーザー向け
+      // 日本語に翻訳 + 自動 recovery (= 群詳細へ戻る or 詳細を再取得)。
+      // 想定される BE エラー (handlers/cohorts.rs の map_cohort_err):
+      //   - "version conflict (expected N)"   → 二重タブ等で並列更新された
+      //   - "cohort already archived"         → 既に archive 済 (= 通常は導線で防がれる)
+      //   - "cohort is empty (current_count = 0)" → 全件個体化済
+      const lower = msg.toLowerCase();
+      if (lower.includes("version conflict")) {
+        showToast({
+          tone: "warn",
+          message: "別の操作と競合しました。最新の状態を取得します。",
+        });
+        setErrMsg(null);
+        // 詳細を再取得して current_count / archived_at を最新に。
+        await loadCohortDetail(props.cohortPublicId);
+      } else if (lower.includes("already archived")) {
+        showToast({
+          tone: "warn",
+          message: "この群は既にアーカイブされています。",
+        });
+        navigate(cohortUrl(props.cohortPublicId), { replace: true });
+      } else if (lower.includes("cohort is empty")) {
+        showToast({
+          tone: "info",
+          message: "全ての個体を個体化済みです。群詳細に戻ります。",
+        });
+        navigate(`${cohortUrl(props.cohortPublicId)}?just_completed=true`, {
+          replace: true,
+        });
+      } else {
+        setErrMsg(msg);
+        showToast({ tone: "error", message: `失敗: ${msg}` });
+      }
     } finally {
       setSubmitting(false);
     }
@@ -280,7 +312,7 @@ export const CohortPromotePage = (props: Props) => {
                 </p>
                 <p class="promote-form__id mn">自動採番 (次の 1 匹)</p>
                 <p class="promote-form__sub">
-                  {d().speciesName ?? d().speciesId}
+                  {d().speciesName ?? findSpeciesById(d().speciesId)?.name ?? d().speciesId}
                   {d().bloodlineName ? ` · ${d().bloodlineName}` : ""}
                   {d().parentMatingId ? " · 親継承" : ""}
                 </p>
@@ -297,6 +329,8 @@ export const CohortPromotePage = (props: Props) => {
                     value={weight()}
                     onChange={setWeight}
                     step={0.1}
+                    decimals={2}
+                    min={0}
                     autoFocus
                     onSubmit={handleSubmit}
                   />
@@ -311,6 +345,7 @@ export const CohortPromotePage = (props: Props) => {
                     value={length()}
                     onChange={setLength}
                     step={1}
+                    min={0}
                     onSubmit={handleSubmit}
                   />
                 </div>

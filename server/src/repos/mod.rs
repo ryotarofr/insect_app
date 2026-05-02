@@ -6,6 +6,8 @@
 pub mod assets;
 pub mod bids;
 pub mod cart_items;
+pub mod cohort_logs;
+pub mod cohorts;
 pub mod email_outbox;
 pub mod listing_watches;
 pub mod listings;

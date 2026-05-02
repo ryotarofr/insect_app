@@ -468,6 +468,95 @@ async fn find_by_owner_db(
         .map_err(SpecimenRepoError::Db)
 }
 
+/// 親個体検索 (typeahead 用)。owner_user_id で絞り込み + sex / species_id / 部分一致 q。
+///
+/// **本機能 (Cohort Phase 6)**: 個体登録 / 個体化モードの「父個体 / 母個体」selector が使用。
+/// 部分一致は public_id / name に対して ILIKE。
+pub async fn search(
+    pool: Option<&PgPool>,
+    owner_user_id: Uuid,
+    q: Option<&str>,
+    sex: Option<&str>,
+    species_id: Option<&str>,
+    include_deceased: bool,
+    limit: i64,
+) -> Result<Vec<SpecimenRow>, SpecimenRepoError> {
+    match pool {
+        Some(p) => search_db(p, owner_user_id, q, sex, species_id, include_deceased, limit).await,
+        None => {
+            let needle = q.map(|s| s.to_lowercase());
+            let mut rows: Vec<SpecimenRow> = memory_store_lock()
+                .iter()
+                .filter(|r| r.owner_user_id == owner_user_id)
+                .filter(|r| !r.is_archived)
+                .filter(|r| {
+                    if let Some(s) = sex {
+                        r.sex == s
+                    } else {
+                        true
+                    }
+                })
+                .filter(|r| {
+                    if let Some(sp) = species_id {
+                        r.species_id == sp
+                    } else {
+                        true
+                    }
+                })
+                .filter(|r| include_deceased || r.life_status == "active")
+                .filter(|r| {
+                    let Some(n) = needle.as_ref() else {
+                        return true;
+                    };
+                    r.public_id.to_lowercase().contains(n)
+                        || r.name.to_lowercase().contains(n)
+                })
+                .cloned()
+                .collect();
+            rows.truncate(limit as usize);
+            Ok(rows)
+        }
+    }
+}
+
+async fn search_db(
+    pool: &PgPool,
+    owner_user_id: Uuid,
+    q: Option<&str>,
+    sex: Option<&str>,
+    species_id: Option<&str>,
+    include_deceased: bool,
+    limit: i64,
+) -> Result<Vec<SpecimenRow>, SpecimenRepoError> {
+    let qp = q.map(|s| format!("%{s}%"));
+    let sql = format!(
+        r#"
+        SELECT {SELECT_FIELDS}
+        FROM specimens
+        WHERE owner_user_id = $1
+          AND is_archived = false
+          AND ($2::TEXT IS NULL OR sex = $2)
+          AND ($3::TEXT IS NULL OR species_id = $3)
+          AND ($4 = true OR life_status = 'active')
+          AND ($5::TEXT IS NULL
+               OR public_id ILIKE $5
+               OR name ILIKE $5)
+        ORDER BY created_at DESC, id
+        LIMIT $6
+        "#
+    );
+    sqlx::query_as::<_, SpecimenRow>(&sql)
+        .bind(owner_user_id)
+        .bind(sex)
+        .bind(species_id)
+        .bind(include_deceased)
+        .bind(qp)
+        .bind(limit)
+        .fetch_all(pool)
+        .await
+        .map_err(SpecimenRepoError::Db)
+}
+
 async fn insert_db(
     pool: &PgPool,
     p: SpecimenInsert,

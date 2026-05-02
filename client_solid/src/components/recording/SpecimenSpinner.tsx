@@ -35,8 +35,12 @@ interface Props {
   id?: string;
   /** 表示用の placeholder (未入力時) */
   placeholder?: string;
-  /** value の小数桁 (= step に応じる。0.1 なら 1 桁、1 なら 0 桁) */
+  /** value の最大小数桁 (省略時は step から推測。step=0.1 でも decimals=2 を指定すれば 2 桁許容) */
   decimals?: number;
+  /** 最小値 (省略時は制限なし、min=0 を渡せば負値を弾く) */
+  min?: number;
+  /** 最大値 (省略時は制限なし) */
+  max?: number;
 }
 
 const decimalsFromStep = (step: number): number => {
@@ -70,8 +74,17 @@ export const SpecimenSpinner = (props: Props) => {
   const decimals = () => props.decimals ?? decimalsFromStep(step());
   const display = createMemo(() => formatValue(props.value, decimals()));
 
+  /** min / max でクランプし、未定義のときはそのまま返す */
+  const clamp = (v: number | undefined): number | undefined => {
+    if (v === undefined) return undefined;
+    let next = v;
+    if (props.min !== undefined && next < props.min) next = props.min;
+    if (props.max !== undefined && next > props.max) next = props.max;
+    return next;
+  };
+
   const setValue = (next: number | undefined) => {
-    props.onChange(next);
+    props.onChange(clamp(next));
   };
 
   const bump = (dir: 1 | -1) => {
@@ -81,9 +94,43 @@ export const SpecimenSpinner = (props: Props) => {
     setValue(next);
   };
 
+  /** 入力中に許す文字列に整形 (= 数字 + 必要なら 1 つの "." + min<0 のとき先頭 "-")。
+   *  小数点以下は decimals() 桁までで切り捨て (打ち入れ抑止)。 */
+  const sanitizeRaw = (raw: string): string => {
+    let s = raw;
+    // マイナス禁止のときは符号を全削除
+    if (props.min === undefined || props.min < 0) {
+      // 先頭以外の "-" は捨てる
+      s = s.replace(/(?!^)-/g, "");
+    } else {
+      s = s.replace(/-/g, "");
+    }
+    // 数字と "." 以外を除去 (符号は既に処理済み)
+    s = s.replace(/[^0-9.\-]/g, "");
+    // 小数点が複数あったら最初の 1 つだけ残す
+    const firstDot = s.indexOf(".");
+    if (firstDot !== -1) {
+      s = s.slice(0, firstDot + 1) + s.slice(firstDot + 1).replace(/\./g, "");
+    }
+    // 小数桁を decimals() に切り詰め (打ち入れ抑止 = 入力時点で破棄)
+    if (firstDot !== -1) {
+      const intPart = s.slice(0, firstDot + 1);
+      const decPart = s.slice(firstDot + 1).slice(0, decimals());
+      s = intPart + decPart;
+      // decimals=0 のとき末尾の "." を残さない
+      if (decimals() === 0) s = s.replace(/\.$/, "");
+    }
+    return s;
+  };
+
   const onInput: JSX.EventHandler<HTMLInputElement, InputEvent> = (e) => {
     const raw = e.currentTarget.value;
-    setValue(parseValue(raw, decimals()));
+    const sanitized = sanitizeRaw(raw);
+    if (sanitized !== raw) {
+      // DOM の表示も即座に補正してカーソル位置を維持
+      e.currentTarget.value = sanitized;
+    }
+    setValue(parseValue(sanitized, decimals()));
   };
 
   const onKeyDown: JSX.EventHandler<HTMLInputElement, KeyboardEvent> = (e) => {
@@ -120,15 +167,15 @@ export const SpecimenSpinner = (props: Props) => {
       </button>
       <input
         id={props.id}
-        type="number"
+        type="text"
         inputmode="decimal"
-        step={step()}
         class="spec-spinner__input"
         value={display()}
         placeholder={props.placeholder ?? "—"}
         onInput={onInput}
         onKeyDown={onKeyDown}
         autofocus={props.autoFocus}
+        aria-label="数値入力"
       />
       <button
         type="button"

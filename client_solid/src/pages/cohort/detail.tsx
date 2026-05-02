@@ -24,7 +24,17 @@ import {
 import { STAGE_LABEL } from "../../api/cohorts";
 import { CohortStatusBadge } from "../../components/cohort/CohortStatusBadge";
 import { cohortPromoteUrl } from "../../router";
+import { findSpeciesById } from "../../store/species";
 import type { CohortDetailView, CohortLogView } from "../../types/cohort";
+
+/** speciesName が無いときは store/species.ts から resolve、それも無ければ slug を返す。 */
+const resolveSpeciesName = (
+  speciesName: string | null | undefined,
+  speciesId: string,
+): string => {
+  if (speciesName && speciesName.trim().length > 0) return speciesName;
+  return findSpeciesById(speciesId)?.name ?? speciesId;
+};
 
 interface Props {
   cohortPublicId: string;
@@ -110,8 +120,10 @@ export const CohortDetailPage = (props: Props) => {
 
             <div class="page-head">
               <div>
-                <div class="cat">飼育 · 由来 {d().parentMatingId ?? "—"}</div>
-                <h1>{d().speciesName ?? d().speciesId}</h1>
+                <div class="cat">
+                  飼育{d().parentMatingId ? ` · 由来 #${d().parentMatingId}` : ""}
+                </div>
+                <h1>{resolveSpeciesName(d().speciesName, d().speciesId)}</h1>
                 <p class="page-head-sub">
                   <span class="mn">#{d().publicId}</span>
                   {d().bloodlineName ? ` · ${d().bloodlineName}` : ""}
@@ -119,17 +131,9 @@ export const CohortDetailPage = (props: Props) => {
               </div>
               <div class="page-actions">
                 <CohortStatusBadge archivedAt={d().archivedAt} />
-                <Show
-                  when={!d().archivedAt}
-                  fallback={
-                    <A
-                      href={`/specimens?cohort_id=${encodeURIComponent(d().publicId)}`}
-                      class="btn"
-                    >
-                      個体一覧 ({d().promotedSpecimensCount} 匹) →
-                    </A>
-                  }
-                >
+                {/* archived 時の「個体一覧」CTA は /specimens 一覧ページが未実装のため
+                    Phase 8 まで保留。下の KPI 行「個体化済」で件数は確認できる。 */}
+                <Show when={!d().archivedAt}>
                   <button class="btn" type="button">
                     一括ログ
                   </button>

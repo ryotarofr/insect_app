@@ -12,6 +12,7 @@
 import { createMemo, createSignal, For, Show, type JSX } from "solid-js";
 import { LS_KEYS, readJSON, writeJSON } from "../../api/storage";
 import { SpecimenSpinner } from "../recording/SpecimenSpinner";
+import { serverSpecies } from "../../store/species";
 import type {
   CohortInsert,
   CohortStage,
@@ -38,12 +39,10 @@ interface ContextDraft {
 
 const CTX_KEY = "kochu:cohort-form-context";
 
-const SPECIES_OPTIONS = [
-  { id: "sp_dorcus_hopei", name: "国産オオクワガタ" },
-  { id: "sp_dorcus_titanus", name: "外産オオクワガタ" },
-  { id: "sp_prosopocoilus", name: "国産ノコギリクワガタ" },
-  { id: "sp_tarandus", name: "タランドゥス" },
-  { id: "sp_dynastes", name: "ヘラクレスオオカブト" },
+/** 種マスタは store/species.ts からリアクティブに取得 (= 起動時 fetch 済み)。
+ *  store が空 (= fetch 失敗 / 未起動) の場合のフォールバックも用意する。 */
+const FALLBACK_SPECIES = [
+  { id: "dhh", name: "ヘラクレスオオカブト" },
 ];
 
 const ORIGIN_OPTIONS: Array<{ value: OriginKind; label: string }> = [
@@ -66,9 +65,20 @@ const todayISO = (): string => new Date().toISOString().slice(0, 10);
 export const CohortDetailForm = (props: Props) => {
   const initialCtx = readJSON<ContextDraft>(CTX_KEY, {});
 
-  const [publicId, setPublicId] = createSignal(props.suggestedPublicId);
+  // 種マスタ: store から取得 (= server master)。空なら FALLBACK で 1 件だけ表示。
+  const speciesOptions = createMemo(() => {
+    const list = serverSpecies();
+    if (list.length > 0) {
+      return list.map((s) => ({ id: s.id, name: s.name }));
+    }
+    return FALLBACK_SPECIES;
+  });
+
+  // publicId は初期値を空にして「自動採番」を placeholder で示す。
+  //   props.suggestedPublicId は表示用のヒント文字列 ("(自動採番)" 等) として扱う。
+  const [publicId, setPublicId] = createSignal("");
   const [speciesId, setSpeciesId] = createSignal<string>(
-    initialCtx.speciesId ?? SPECIES_OPTIONS[0].id,
+    initialCtx.speciesId ?? speciesOptions()[0]?.id ?? "dhh",
   );
   const [name, setName] = createSignal("");
   const [bloodlineName, setBloodlineName] = createSignal(initialCtx.bloodlineName ?? "");
@@ -86,7 +96,7 @@ export const CohortDetailForm = (props: Props) => {
     speciesId: speciesId(),
     bloodlineName: bloodlineName() || undefined,
     originKind: originKind(),
-    parentMatingId,
+    parentMatingId: parentMatingId(),
     initialCount: initialCount() ?? 0,
     stage: stage(),
     startDate: startDate(),
@@ -177,7 +187,7 @@ export const CohortDetailForm = (props: Props) => {
               value={speciesId()}
               onChange={(e) => setSpeciesId(e.currentTarget.value)}
             >
-              <For each={SPECIES_OPTIONS}>
+              <For each={speciesOptions()}>
                 {(opt) => <option value={opt.id}>{opt.name}</option>}
               </For>
             </select>
@@ -266,7 +276,7 @@ export const CohortDetailForm = (props: Props) => {
         <div class="reg-form__grid reg-form__grid--regime">
           <div class="reg-form__field">
             <label class="reg-form__label">初期数</label>
-            <SpecimenSpinner value={initialCount()} onChange={setInitialCount} step={1} />
+            <SpecimenSpinner value={initialCount()} onChange={setInitialCount} step={1} min={1} />
             <p class="reg-form__hint">産卵 / 入荷時の個数</p>
           </div>
           <div class="reg-form__field">
@@ -335,6 +345,7 @@ export const CohortDetailForm = (props: Props) => {
           {submitting() ? "送信中…" : "作成する  ⏎"}
         </button>
       </div>
+
     </form>
   );
 };

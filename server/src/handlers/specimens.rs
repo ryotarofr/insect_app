@@ -15,7 +15,7 @@
 //!   - `specimen_logs` / `mating_records` 用の専用 endpoint
 //!   - 編集 (PATCH) endpoint
 
-use axum::{Extension, Json, extract::{Path, State}, http::StatusCode};
+use axum::{Extension, Json, extract::{Path, Query, State}, http::StatusCode};
 use chrono::NaiveDate;
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -229,6 +229,42 @@ pub async fn create_specimen(
         id: id.to_string(),
         public_id: req.public_id,
     }))
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// 親個体検索 typeahead (Cohort Phase 6)
+// ──────────────────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct SearchSpecimensQuery {
+    pub q: Option<String>,
+    pub sex: Option<String>,
+    pub species_id: Option<String>,
+    #[serde(default)]
+    pub include_deceased: Option<bool>,
+    pub limit: Option<i64>,
+}
+
+/// `GET /api/v1/specimens/search` — 親個体検索 (typeahead)。owner = current user に固定。
+pub async fn search_specimens(
+    State(state): State<AppState>,
+    Extension(session_id): Extension<SessionId>,
+    Query(q): Query<SearchSpecimensQuery>,
+) -> Result<Json<Vec<SpecimenView>>, AppError> {
+    let user_id = require_user_id(&state, session_id.0).await?;
+    let limit = q.limit.unwrap_or(20).clamp(1, 50);
+    let rows = specimens::search(
+        state.db(),
+        user_id,
+        q.q.as_deref(),
+        q.sex.as_deref(),
+        q.species_id.as_deref(),
+        q.include_deceased.unwrap_or(true),
+        limit,
+    )
+    .await
+    .map_err(|e| AppError::BadRequest(format!("specimens search: {e}")))?;
+    Ok(Json(rows.into_iter().map(SpecimenView::from).collect()))
 }
 
 /// `GET /api/v1/specimens/{public_id}` — public_id で 1 件取得 (= 公開閲覧 OK)。

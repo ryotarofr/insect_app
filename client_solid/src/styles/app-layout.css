@@ -435,7 +435,7 @@
   background: var(--bg-sunken);
   border-color: var(--line-strong);
 }
-.quicklog-btn:active { transform: scale(0.97); }
+/* Cohort UX フィードバック: 押下時のスケールを削除 */
 .quicklog-btn .ico {
   font-size: 18px;
   line-height: 1;

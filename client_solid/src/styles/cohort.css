@@ -137,6 +137,13 @@
     grid-template-columns: repeat(2, 1fr);
   }
 }
+/* ~380px (= iPhone SE 等) では 2 列でも 32px serif 数値が窮屈。1 列に畳む。 */
+@media (max-width: 420px) {
+  .cohort-kpi-row {
+    grid-template-columns: 1fr;
+    gap: 10px;
+  }
+}
 .cohort-kpi {
   padding: 14px 16px;
 }
@@ -332,6 +339,8 @@
   border-radius: var(--r-card);
   margin: 0 0 16px;
   color: var(--accent-forest);
+  flex-wrap: wrap;
+  gap: 6px 12px;
 }
 .promote-status__label {
   font-size: 12px;
@@ -455,6 +464,20 @@
 .promote-form__actions .btn.primary {
   padding: 10px 20px;
   font-size: 14px;
+}
+/* ~380px: 2 ボタン横並びだと「完了 → 次の 1 匹  ⏎」が折り返してしまうので縦積み。
+ * primary を上、secondary を下に並べてタップ動線を主従と一致させる。 */
+@media (max-width: 420px) {
+  .promote-form__actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .promote-form__actions .btn,
+  .promote-form__actions .btn.primary {
+    width: 100%;
+    justify-content: center;
+  }
 }
 
 /* SpecimenSpinner */
@@ -751,9 +774,23 @@
   justify-content: flex-end;
   gap: 8px;
   margin: 18px 0 0;
+  flex-wrap: wrap;
 }
 .reg-form__actions .btn.primary {
   padding: 9px 18px;
+}
+/* ~380px: 3 ボタン (キャンセル / 続けて登録 / 作成する) が並ばないので縦積み。
+ * primary を上に並べ替え。 */
+@media (max-width: 420px) {
+  .reg-form__actions {
+    flex-direction: column-reverse;
+    align-items: stretch;
+    gap: 8px;
+  }
+  .reg-form__actions .btn {
+    width: 100%;
+    justify-content: center;
+  }
 }
 
 /* segmented control (性別 / 由来 / ステージ) */

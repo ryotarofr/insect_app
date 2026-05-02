@@ -9,7 +9,9 @@
 // 「個体化推奨」「観察推奨」などの状態テキストは現状を表す簡易ヒント (mock)。
 
 import { A } from "@solidjs/router";
+import { Show } from "solid-js";
 import { CohortStageChip } from "./CohortStageChip";
+import { findSpeciesById } from "../../store/species";
 import type { CohortView } from "../../types/cohort";
 import { cohortUrl } from "../../router";
 
@@ -26,12 +28,12 @@ const daysSince = (iso: string): number => {
   return Math.max(0, Math.round(diffMs / (1000 * 60 * 60 * 24)));
 };
 
-const statusHint = (cohort: CohortView): string => {
+const statusHint = (cohort: CohortView): string | null => {
   if (cohort.archivedAt) return "完了";
   if (cohort.stage === "larva_l3") return "個体化推奨";
   if (cohort.stage === "pupa") return "観察推奨";
   if (cohort.stage === "egg" && cohort.currentCount === 0) return "孵化前";
-  return "—";
+  return null;
 };
 
 const statusTone = (cohort: CohortView): "amber" | "indigo" | "mute" => {
@@ -54,11 +56,10 @@ export const CohortCard = (props: Props) => {
         <CohortStageChip stage={c().stage} />
       </div>
       <p class="cohort-card__species ser">
-        {c().speciesName ?? c().speciesId}
+        {c().speciesName ?? findSpeciesById(c().speciesId)?.name ?? c().speciesId}
       </p>
       <p class="cohort-card__sub">
-        {c().bloodlineName ?? "—"}
-        {" · "}
+        {c().bloodlineName ? `${c().bloodlineName} · ` : ""}
         {daysSince(c().startDate)} 日経過
       </p>
       <div class="cohort-card__count-row">
@@ -67,9 +68,11 @@ export const CohortCard = (props: Props) => {
           / {c().initialCount} 匹
         </span>
       </div>
-      <p class={`cohort-card__hint cohort-hint--${statusTone(c())}`}>
-        {statusHint(c())}
-      </p>
+      <Show when={statusHint(c())}>
+        <p class={`cohort-card__hint cohort-hint--${statusTone(c())}`}>
+          {statusHint(c())}
+        </p>
+      </Show>
     </A>
   );
 };

@@ -112,8 +112,9 @@ export class SduiFetchError extends Error {
   }
 }
 
-/** 共通 JSON fetch (内部用)。 */
-const fetchJson = async <T>(path: string, init?: RequestInit): Promise<T> => {
+/** 共通 JSON fetch。Cohort Phase 7 で `api/cohorts.ts` 等からも使うため export。
+ *  path は `/cohorts/me` のように先頭スラッシュ付き、API_BASE が前置される。 */
+export const fetchJson = async <T>(path: string, init?: RequestInit): Promise<T> => {
   let res: Response;
   try {
     res = await fetch(`${API_BASE}${path}`, {

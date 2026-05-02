@@ -2,6 +2,7 @@ pub mod auth;
 pub mod cards;
 pub mod cart;
 pub mod checkout;
+pub mod cohorts;
 pub mod events;
 pub mod health;
 pub mod hello;

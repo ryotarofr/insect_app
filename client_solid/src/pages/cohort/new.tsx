@@ -1,28 +1,17 @@
 // pages/cohort/new.tsx — 群を作成ページ
 //
 // **エントリ**: 飼育一覧の「+ 群を作成」 / マイページ「+ 新規 ▾」 / ⌘K
-// **保存処理**: api/cohorts.ts の createCohort (= mock) を呼ぶ。成功で /cohorts/:newPublicId へ。
+// **保存処理**: api/cohorts.ts の createCohort を呼ぶ。成功で /cohorts/:newPublicId へ。
+//
+// **LOT ID**: 空送信で server 側 (= handlers::cohorts::generate_lot_id) が
+//   `LOT-{YYYY}-NNNN` を採番する。FE では「(自動採番)」placeholder を表示するだけ。
 
 import { useNavigate } from "@solidjs/router";
 import { CohortDetailForm } from "../../components/cohort/CohortDetailForm";
 import { createCohort } from "../../store/cohorts";
 import { showToast } from "../../store/toast";
-import { LS_KEYS, readJSON } from "../../api/storage";
 import { cohortUrl } from "../../router";
-import type { CohortInsert, CohortView } from "../../types/cohort";
-
-const todayYearLotPrefix = (): string => `LOT-${new Date().getFullYear()}-`;
-
-const suggestLotId = (cohorts: CohortView[]): string => {
-  const prefix = todayYearLotPrefix();
-  let max = 0;
-  for (const c of cohorts) {
-    if (!c.publicId.startsWith(prefix)) continue;
-    const n = parseInt(c.publicId.slice(prefix.length), 10);
-    if (Number.isFinite(n) && n > max) max = n;
-  }
-  return `${prefix}${String(max + 1).padStart(4, "0")}`;
-};
+import type { CohortInsert } from "../../types/cohort";
 
 // mock 親交配選択肢 (Phase 1 mock では mating_records 統合は未対応)
 const MATING_OPTIONS = [
@@ -43,11 +32,13 @@ const MATING_OPTIONS = [
 export const CohortNewPage = () => {
   const navigate = useNavigate();
 
-  const cohorts = readJSON<CohortView[]>(LS_KEYS.cohorts, []);
-  const suggested = suggestLotId(cohorts);
-
   const handleSubmit = async (input: CohortInsert): Promise<void> => {
-    const created = await createCohort(input);
+    // publicId が空文字なら server 採番に任せる (= undefined にして送信しない)
+    const payload = {
+      ...input,
+      publicId: input.publicId?.trim() ? input.publicId : undefined,
+    };
+    const created = await createCohort(payload);
     showToast({
       tone: "success",
       message: `${created.publicId} を作成しました`,
@@ -61,7 +52,7 @@ export const CohortNewPage = () => {
 
   return (
     <CohortDetailForm
-      suggestedPublicId={suggested}
+      suggestedPublicId="(自動採番)"
       matingOptions={MATING_OPTIONS}
       onSubmit={handleSubmit}
       onCancel={handleCancel}

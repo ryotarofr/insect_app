@@ -119,6 +119,7 @@ pub fn api_v1(state: AppState) -> Router {
         // Phase 9.D: 個体カルテ (specimens) 用 endpoint。
         // - /specimens/me と POST / archive は login 必須 (401)、GET /{public_id} は public 閲覧 OK。
         .route("/specimens/me", get(handlers::specimens::list_my_specimens))
+        .route("/specimens/search", get(handlers::specimens::search_specimens))
         .route("/specimens", post(handlers::specimens::create_specimen))
         .route("/specimens/{public_id}", get(handlers::specimens::get_specimen))
         .route(
@@ -168,6 +169,25 @@ pub fn api_v1(state: AppState) -> Router {
         .route(
             "/mating_records/{id}/egg_count",
             post(handlers::mating_records::update_egg_count_handler),
+        )
+        // Cohort Phase 6: 群飼育 (= /cohorts)。
+        .route("/cohorts/me", get(handlers::cohorts::list_my_cohorts))
+        .route("/cohorts", post(handlers::cohorts::create_cohort))
+        .route(
+            "/cohorts/{public_id}",
+            get(handlers::cohorts::get_cohort),
+        )
+        .route(
+            "/cohorts/{public_id}/promote",
+            post(handlers::cohorts::promote_cohort),
+        )
+        .route(
+            "/cohorts/{public_id}/archive",
+            post(handlers::cohorts::archive_cohort),
+        )
+        .route(
+            "/cohorts/{public_id}/cohort_logs",
+            post(handlers::cohorts::add_cohort_log),
         )
         // Phase 9.E: C2C marketplace (= listings / bids / listing_watches)。
         .route("/listings", get(handlers::listings::list_active))

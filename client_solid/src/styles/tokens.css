@@ -191,8 +191,8 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
   white-space: nowrap;
 }
 .btn:hover { background: var(--bg-sunken); border-color: var(--ink-mute); }
-/* P3-3: 押下時の軽微なスケール (accessibility: reduced-motion 時は解除) */
-.btn:active { transform: scale(0.98); }
+/* Cohort UX フィードバック: 押下時のスケール (押し込み感) を削除。
+ *   active 状態は現状ブラウザ既定の visual feedback (focus ring 等) に委ねる。 */
 /* P3-11: primary を森緑 (forest) に。CTA に自然な緑が主役として登場 */
 .btn.primary {
   background: var(--accent-forest);
@@ -291,24 +291,19 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
   margin-bottom: 6px;
 }
 
-/* P3-2: 極薄シャドウ + hover で 1px 浮く (accessible な押下感)
- * P3-3: :active で 0.98 スケール (:where() 低 specificity なので btn 等でも有効)
+/* P3-2 → Cohort UX フィードバック: 押下時の縮小 / hover lift を廃止。
+ *   transform を一切使わず、シャドウの濃淡だけで hover を示す。
  * P3-12: radius は semantic --r-card */
 .card {
   background: var(--bg-raised);
   border: 1px solid var(--line);
   border-radius: var(--r-card);
   box-shadow: 0 1px 2px oklch(0 0 0 / 0.03);
-  transition: box-shadow 0.18s ease, transform 0.18s ease;
+  transition: box-shadow 0.18s ease;
 }
-/* hover は「クリック可能に見える」場合のみ lift する (cursor:pointer 目安) */
 .card:hover {
   box-shadow: 0 2px 6px oklch(0 0 0 / 0.06);
-  transform: translateY(-1px);
 }
-/* クリック可能でない staticなカードは hover しない方が良いが、
-   Solid の style 属性 (cursor:pointer) が付く前提で広めに適用する */
-.card:active { transform: translateY(0) scale(0.995); }
 
 /* スクリーンリーダー専用 */
 .visually-hidden {

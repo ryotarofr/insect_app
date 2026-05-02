@@ -191,9 +191,12 @@ export function recordPromotion(
 ): void {
   const cur = session();
   if (!cur) return;
+  // server は session 情報を持たないので FE 側でカウンタを加算する。
+  // res.session.promotedCountInSession は存在しないので FE のローカル値 +1 を使う。
+  const nextCount = cur.promotedCount + 1;
   setSession({
     ...cur,
-    promotedCount: res.session.promotedCountInSession,
+    promotedCount: nextCount,
     recentlyPromoted: [
       {
         publicId: res.specimen.publicId,
@@ -220,5 +223,20 @@ export function markSessionInterrupted(): void {
 }
 
 export function endPromoteSession(): void {
+  setSession(null);
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// テスト専用: signal を全て空に戻す
+// ──────────────────────────────────────────────────────────────────────
+
+/** Vitest beforeEach で並列テスト間の漏れを防ぐためのリセット。 */
+export function resetCohortStoreForTest(): void {
+  setCohorts(null);
+  setIsListLoading(false);
+  setListError(null);
+  setDetail(null);
+  setDetailLoading(false);
+  setDetailError(null);
   setSession(null);
 }

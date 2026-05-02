@@ -114,9 +114,9 @@ export interface PromoteCohortResponse {
   specimen: PromotedSpecimen;
   /** current_count -1 反映後の cohort 状態 (current_count = 0 なら archivedAt も入る) */
   cohort: CohortView;
-  /** このセッションの統計 */
+  /** このセッションの統計 (BE は累積ではなく群側の残数 + 完了フラグだけを返す。
+   *  「セッションで何件個体化したか」は FE 側 store でローカルに加算する。) */
   session: {
-    promotedCountInSession: number;
     remainingInCohort: number;
     completed: boolean;          // current_count = 0 → true (= cohort も archived)
   };

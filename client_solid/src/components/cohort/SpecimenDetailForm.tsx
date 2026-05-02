@@ -18,6 +18,7 @@ import { LS_KEYS } from "../../api/storage";
 import { writeJSON, readJSON } from "../../api/storage";
 import { ParentSpecimenSelector } from "./ParentSpecimenSelector";
 import { SpecimenSpinner } from "../recording/SpecimenSpinner";
+import { serverSpecies } from "../../store/species";
 import type { SpecimenDraft } from "../../types/cohort";
 
 interface Props {
@@ -61,17 +62,17 @@ const STAGE_OPTIONS: Array<{
   { value: "adult", label: "成虫" },
 ];
 
-const SPECIES_OPTIONS = [
-  { id: "sp_dorcus_hopei", name: "国産オオクワガタ" },
-  { id: "sp_tarandus", name: "タランドゥス" },
-  { id: "sp_prosopocoilus", name: "国産ノコギリ" },
+/** server から取得できなかった場合のフォールバック (= 1 件だけ表示) */
+const FALLBACK_SPECIES = [
+  { id: "dhh", name: "ヘラクレスオオカブト" },
 ];
 
 export const SpecimenDetailForm = (props: Props) => {
   // 連続登録時のコンテキスト復元
   const initialCtx = readJSON<ContextDraft>(CTX_KEY, {});
 
-  const [publicId, setPublicId] = createSignal(props.suggestedPublicId ?? "");
+  // publicId は空 = server 自動採番に任せる。`suggestedPublicId` は placeholder のヒント表示用。
+  const [publicId, setPublicId] = createSignal("");
   const [name, setName] = createSignal("");
   const [sex, setSex] = createSignal<"male" | "female" | "unknown">("unknown");
   const [generation, setGeneration] = createSignal<number | undefined>(
@@ -81,8 +82,16 @@ export const SpecimenDetailForm = (props: Props) => {
   const [fatherLabel, setFatherLabel] = createSignal<string | null>(initialCtx.fatherLabel ?? null);
   const [motherId, setMotherId] = createSignal<string | null>(initialCtx.motherId ?? null);
   const [motherLabel, setMotherLabel] = createSignal<string | null>(initialCtx.motherLabel ?? null);
+  // 種マスタは store から取得、空ならフォールバック 1 件
+  const speciesOptions = createMemo(() => {
+    const list = serverSpecies();
+    if (list.length > 0) {
+      return list.map((s) => ({ id: s.id, name: s.name }));
+    }
+    return FALLBACK_SPECIES;
+  });
   const [speciesId, setSpeciesId] = createSignal<string>(
-    props.defaultSpeciesId ?? initialCtx.speciesId ?? SPECIES_OPTIONS[0].id,
+    props.defaultSpeciesId ?? initialCtx.speciesId ?? speciesOptions()[0]?.id ?? "dhh",
   );
   const [weight, setWeight] = createSignal<number | undefined>(undefined);
   const [length, setLength] = createSignal<number | undefined>(undefined);
@@ -274,11 +283,11 @@ export const SpecimenDetailForm = (props: Props) => {
         <div class="reg-form__grid reg-form__grid--3">
           <div class="reg-form__field">
             <label class="reg-form__label">体重 <span class="reg-form__unit">(g)</span></label>
-            <SpecimenSpinner value={weight()} onChange={setWeight} step={0.1} />
+            <SpecimenSpinner value={weight()} onChange={setWeight} step={0.1} decimals={2} min={0} />
           </div>
           <div class="reg-form__field">
             <label class="reg-form__label">体長 <span class="reg-form__unit">(mm)</span></label>
-            <SpecimenSpinner value={length()} onChange={setLength} step={1} />
+            <SpecimenSpinner value={length()} onChange={setLength} step={1} min={0} />
           </div>
           <div class="reg-form__field">
             <label class="reg-form__label">ステージ</label>
