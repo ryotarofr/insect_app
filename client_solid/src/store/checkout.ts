@@ -96,6 +96,25 @@ export const resetShipping = () => {
   setShippingAddr(defaultAddress.addr);
 };
 
+/**
+ * logout / アカウント切替時に PII (= name / tel / zip / pref / addr) を
+ * 完全に消すための明示的クリア。
+ *
+ * 共有端末で別 user が login した時に前 user の住所が prefill されないよう、
+ * `localStorage` キー (`kochu:shipping`) を物理削除し、メモリ上の signal も
+ * 既定値に戻す。auth flow の logout 完了時に呼ぶこと。
+ *
+ * 失敗 (= QuotaExceededError 等) は握りつぶす (永続化は best-effort)。
+ */
+export const clearShippingPersistence = () => {
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+  } catch {
+    /* private mode / quota は無視 */
+  }
+  resetShipping();
+};
+
 /** 入力が完全に揃っているか (空白だけの値は不足とみなす) */
 export const isShippingComplete = (): boolean => {
   const a = shippingAddress();

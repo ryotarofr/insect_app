@@ -62,9 +62,6 @@ fn map_cohort_err(e: cohorts::CohortRepoError) -> AppError {
         NotFound(_) => AppError::NotFound,
         AlreadyArchived(_) => AppError::BadRequest("cohort already archived".to_string()),
         Empty(_) => AppError::BadRequest("cohort is empty (current_count = 0)".to_string()),
-        VersionConflict { expected } => {
-            AppError::BadRequest(format!("version conflict (expected {expected})"))
-        }
     }
 }
 
@@ -125,6 +122,9 @@ pub struct CohortLogView {
     pub cohort_id: String,
     pub log_type: String,
     pub count_delta: Option<i32>,
+    /// 任意 JSON object として表現するため `HashMap<String, serde_json::Value>` を value_type に指定
+    /// (utoipa 5 は `serde_json::Value` を直接スキーマ化できないため / specimen_logs と同じ規律)。
+    #[schema(value_type = std::collections::HashMap<String, serde_json::Value>)]
     pub metrics: Option<JsonValue>,
     pub body: Option<String>,
     pub logged_at: DateTime<Utc>,
@@ -207,6 +207,7 @@ pub struct PromoteSpecimenPayload {
 #[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct PromoteLogPayload {
+    #[schema(value_type = std::collections::HashMap<String, serde_json::Value>)]
     pub metrics: Option<JsonValue>,
     pub body: Option<String>,
 }
@@ -253,6 +254,7 @@ pub struct PromoteSessionState {
 pub struct CreateCohortLogRequest {
     pub log_type: String,
     pub count_delta: Option<i32>,
+    #[schema(value_type = std::collections::HashMap<String, serde_json::Value>)]
     pub metrics: Option<JsonValue>,
     pub body: Option<String>,
 }
@@ -261,6 +263,18 @@ pub struct CreateCohortLogRequest {
 // handlers
 // ──────────────────────────────────────────────────────────────────────
 
+#[utoipa::path(
+    get,
+    path = "/cohorts/me",
+    tag = "cohorts",
+    params(
+        ("archived" = Option<bool>, Query, description = "true で archived 込み (default false = active のみ)"),
+    ),
+    responses(
+        (status = 200, description = "自分の cohort 一覧", body = Vec<CohortView>),
+        (status = 401, description = "anonymous", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn list_my_cohorts(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
@@ -274,6 +288,17 @@ pub async fn list_my_cohorts(
     Ok(Json(rows.into_iter().map(CohortView::from).collect()))
 }
 
+#[utoipa::path(
+    post,
+    path = "/cohorts",
+    tag = "cohorts",
+    request_body = CreateCohortRequest,
+    responses(
+        (status = 200, description = "作成成功", body = CreateCohortResponse),
+        (status = 400, description = "入力 invalid (= species / origin_kind / count 等)", body = crate::openapi::ErrorResponse),
+        (status = 401, description = "anonymous", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn create_cohort(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
@@ -311,6 +336,19 @@ pub async fn create_cohort(
     }))
 }
 
+#[utoipa::path(
+    get,
+    path = "/cohorts/{public_id}",
+    tag = "cohorts",
+    params(
+        ("public_id" = String, Path, description = "cohort.public_id (= LOT-YYYY-NNNN)"),
+    ),
+    responses(
+        (status = 200, description = "詳細 + 直近ログ + 個体化済み件数", body = CohortDetailView),
+        (status = 401, description = "anonymous", body = crate::openapi::ErrorResponse),
+        (status = 404, description = "他人の cohort または不存在", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn get_cohort(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
@@ -344,6 +382,21 @@ pub async fn get_cohort(
     }))
 }
 
+#[utoipa::path(
+    post,
+    path = "/cohorts/{public_id}/promote",
+    tag = "cohorts",
+    params(
+        ("public_id" = String, Path, description = "cohort.public_id"),
+    ),
+    request_body = PromoteCohortRequest,
+    responses(
+        (status = 200, description = "個体化成功 (= 1 specimen 生成 + cohort.current_count -1)", body = PromoteCohortResponse),
+        (status = 400, description = "入力 invalid / cohort empty / archived 等", body = crate::openapi::ErrorResponse),
+        (status = 401, description = "anonymous", body = crate::openapi::ErrorResponse),
+        (status = 404, description = "他人の cohort または不存在", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn promote_cohort(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
@@ -445,6 +498,19 @@ pub async fn promote_cohort(
     }))
 }
 
+#[utoipa::path(
+    post,
+    path = "/cohorts/{public_id}/archive",
+    tag = "cohorts",
+    params(
+        ("public_id" = String, Path, description = "cohort.public_id"),
+    ),
+    responses(
+        (status = 200, description = "archive 成功 (= archived_at 確定)", body = CohortView),
+        (status = 401, description = "anonymous", body = crate::openapi::ErrorResponse),
+        (status = 404, description = "他人の cohort または不存在", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn archive_cohort(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
@@ -462,6 +528,21 @@ pub async fn archive_cohort(
     Ok(Json(updated.into()))
 }
 
+#[utoipa::path(
+    post,
+    path = "/cohorts/{public_id}/cohort_logs",
+    tag = "cohorts",
+    params(
+        ("public_id" = String, Path, description = "cohort.public_id"),
+    ),
+    request_body = CreateCohortLogRequest,
+    responses(
+        (status = 200, description = "log 追加成功", body = CohortLogView),
+        (status = 400, description = "log_type / metrics 形式 invalid", body = crate::openapi::ErrorResponse),
+        (status = 401, description = "anonymous", body = crate::openapi::ErrorResponse),
+        (status = 404, description = "他人の cohort または不存在", body = crate::openapi::ErrorResponse),
+    ),
+)]
 pub async fn add_cohort_log(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,

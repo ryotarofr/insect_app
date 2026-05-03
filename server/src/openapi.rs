@@ -148,6 +148,14 @@ pub struct ErrorResponse {
         crate::handlers::cards::get_product_detail_card,
         crate::handlers::cards::get_cart_card,
         crate::handlers::cards::list_product_cards,
+        // PR O-14: cohorts (= 群飼育 6 endpoint)。`/cohorts/me` 一覧 / 作成 / 詳細 /
+        //   個体化 (promote) / archive / cohort_log 追加。詳細 DTO は handlers::cohorts。
+        crate::handlers::cohorts::list_my_cohorts,
+        crate::handlers::cohorts::create_cohort,
+        crate::handlers::cohorts::get_cohort,
+        crate::handlers::cohorts::promote_cohort,
+        crate::handlers::cohorts::archive_cohort,
+        crate::handlers::cohorts::add_cohort_log,
         // ── ここまでで A1 / OpenAPI 完全化シリーズは終結 ──
         // 非掲載 endpoint と rationale は本ファイルの module doc コメントを参照。
     ),
@@ -219,6 +227,19 @@ pub struct ErrorResponse {
             crate::sdui::analytics::AnalyticsEventType,
             // PR O-12: watch DTO
             crate::handlers::watch::WatchToggleResponse,
+            // PR O-14: cohorts DTO (= 群飼育)
+            crate::handlers::cohorts::CohortView,
+            crate::handlers::cohorts::CohortLogView,
+            crate::handlers::cohorts::CohortDetailView,
+            crate::handlers::cohorts::CreateCohortRequest,
+            crate::handlers::cohorts::CreateCohortResponse,
+            crate::handlers::cohorts::PromoteSpecimenPayload,
+            crate::handlers::cohorts::PromoteLogPayload,
+            crate::handlers::cohorts::PromoteCohortRequest,
+            crate::handlers::cohorts::PromoteCohortResponse,
+            crate::handlers::cohorts::PromotedSpecimenView,
+            crate::handlers::cohorts::PromoteSessionState,
+            crate::handlers::cohorts::CreateCohortLogRequest,
         )
     ),
     tags(
@@ -237,6 +258,7 @@ pub struct ErrorResponse {
         (name = "stripe", description = "Stripe webhook"),
         (name = "meta", description = "ヘルスチェック / メタ情報"),
         (name = "cards", description = "SDUI Card blocks (= /cards/*, opaque body)"),
+        (name = "cohorts", description = "群飼育 (= /cohorts/*)"),
     ),
 )]
 pub struct ApiDoc;

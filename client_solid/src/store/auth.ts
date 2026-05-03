@@ -27,6 +27,7 @@ import {
   postAuthLogout,
   postAuthRegister,
 } from "../sdui/api";
+import { clearShippingPersistence } from "./checkout";
 
 const [user, setUser] = createSignal<AuthUser | null>(null);
 
@@ -72,12 +73,16 @@ export const register = async (req: RegisterRequest): Promise<AuthUser> => {
 };
 
 /** `POST /auth/logout` で session の user_id を NULL に倒し、signal も `null` に。
- *  204 を期待。失敗してもクライアント state は anonymous に戻す (= UX 優先)。 */
+ *  204 を期待。失敗してもクライアント state は anonymous に戻す (= UX 優先)。
+ *
+ *  PII クリア: 共有端末対策で localStorage 上の配送先 (= name / tel / zip / pref / addr)
+ *  も併せて消す。`clearShippingPersistence` は失敗を握りつぶす best-effort。 */
 export const logout = async (): Promise<void> => {
   try {
     await postAuthLogout();
   } finally {
     setUser(null);
+    clearShippingPersistence();
   }
 };
 

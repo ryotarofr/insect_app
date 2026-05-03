@@ -38,6 +38,19 @@ fn email_from() -> String {
     std::env::var("KOCHU_EMAIL_FROM").unwrap_or_else(|_| "noreply@kochu.example".to_string())
 }
 
+/// `KOCHU_PUBLIC_BASE_URL` env を読む (= 本番 / staging / preview のサイト URL 基底)。
+/// default は "https://kochu.example" (= 本番) のまま。staging では `https://staging.kochu.example`
+/// 等を入れて password reset リンク等が正しい環境を指すようにする。
+///
+/// 末尾スラッシュは付けない方針 (= テンプレ側で `{base}/reset?token=...` と組み立てる)。
+fn public_base_url() -> String {
+    std::env::var("KOCHU_PUBLIC_BASE_URL")
+        .ok()
+        .map(|s| s.trim_end_matches('/').to_string())
+        .filter(|s| !s.is_empty())
+        .unwrap_or_else(|| "https://kochu.example".to_string())
+}
+
 /// relay loop 本体。`tokio::spawn` 越しに起動される想定。
 /// pool=None でも動く (= in-memory outbox を相手にする dev / test)。
 pub async fn run(pool: Option<PgPool>, mailer: Arc<dyn Mailer>) {
@@ -132,9 +145,10 @@ fn render_template(kind: &str, args: &Value) -> (String, String) {
                 .get("token")
                 .and_then(Value::as_str)
                 .unwrap_or("(missing token)");
+            let base = public_base_url();
             let subject = "【KOCHU】パスワード再設定のご案内".to_string();
             let body = format!(
-                "以下のリンクからパスワードを再設定してください (1 時間有効)。\n\nhttps://kochu.example/reset?token={token}\n\n心当たりがない場合は本メールを破棄してください。\n\n— KOCHU"
+                "以下のリンクからパスワードを再設定してください (1 時間有効)。\n\n{base}/reset?token={token}\n\n心当たりがない場合は本メールを破棄してください。\n\n— KOCHU"
             );
             (subject, body)
         }
@@ -232,5 +246,39 @@ mod tests {
         let (subj, body) = render_template("custom_kind", &json!({"foo": "bar"}));
         assert!(subj.contains("custom_kind"));
         assert!(body.contains("foo"));
+    }
+
+    /// `KOCHU_PUBLIC_BASE_URL` env を弄るテストを直列化する poison-tolerant guard。
+    fn base_url_guard() -> std::sync::MutexGuard<'static, ()> {
+        static G: std::sync::Mutex<()> = std::sync::Mutex::new(());
+        G.lock().unwrap_or_else(|p| p.into_inner())
+    }
+
+    #[test]
+    fn public_base_url_default_is_kochu_example() {
+        let _g = base_url_guard();
+        unsafe { std::env::remove_var("KOCHU_PUBLIC_BASE_URL"); }
+        assert_eq!(public_base_url(), "https://kochu.example");
+    }
+
+    #[test]
+    fn public_base_url_strips_trailing_slash() {
+        let _g = base_url_guard();
+        unsafe { std::env::set_var("KOCHU_PUBLIC_BASE_URL", "https://staging.kochu.example/"); }
+        assert_eq!(public_base_url(), "https://staging.kochu.example");
+        unsafe { std::env::remove_var("KOCHU_PUBLIC_BASE_URL"); }
+    }
+
+    #[test]
+    fn render_template_password_reset_uses_public_base_url() {
+        let _g = base_url_guard();
+        unsafe { std::env::set_var("KOCHU_PUBLIC_BASE_URL", "https://staging.kochu.example"); }
+        let (_subj, body) =
+            render_template("password_reset", &json!({"token": "tok-123"}));
+        assert!(
+            body.contains("https://staging.kochu.example/reset?token=tok-123"),
+            "body should contain env-driven base url; got: {body}"
+        );
+        unsafe { std::env::remove_var("KOCHU_PUBLIC_BASE_URL"); }
     }
 }

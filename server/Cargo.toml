@@ -14,7 +14,6 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"
 thiserror = "2"
-combp = "2.0.0"
 
 # SDUI: 型のシリアライズ + バリデーション + スキーマ生成
 schemars = { version = "0.8", features = ["chrono"] }

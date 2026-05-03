@@ -394,6 +394,102 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/cohorts": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["create_cohort"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cohorts/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["list_my_cohorts"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cohorts/{public_id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get: operations["get_cohort"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cohorts/{public_id}/archive": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["archive_cohort"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cohorts/{public_id}/cohort_logs": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["add_cohort_log"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/cohorts/{public_id}/promote": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        post: operations["promote_cohort"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/events": {
         parameters: {
             query?: never;
@@ -1053,6 +1149,55 @@ export interface components {
             orderId: string;
             sessionUrl: string;
         };
+        CohortDetailView: components["schemas"]["CohortView"] & {
+            /** Format: int64 */
+            promotedSpecimensCount: number;
+            recentLogs: components["schemas"]["CohortLogView"][];
+        };
+        CohortLogView: {
+            authorUserId: string;
+            body?: string | null;
+            cohortId: string;
+            /** Format: int32 */
+            countDelta?: number | null;
+            id: string;
+            logType: string;
+            /** Format: date-time */
+            loggedAt: string;
+            /**
+             * @description 任意 JSON object として表現するため `HashMap<String, serde_json::Value>` を value_type に指定
+             *     (utoipa 5 は `serde_json::Value` を直接スキーマ化できないため / specimen_logs と同じ規律)。
+             */
+            metrics: {
+                [key: string]: unknown;
+            };
+        };
+        CohortView: {
+            /** Format: date-time */
+            archivedAt?: string | null;
+            bloodlineName?: string | null;
+            /** Format: date-time */
+            createdAt: string;
+            /** Format: int32 */
+            currentCount: number;
+            id: string;
+            /** Format: int32 */
+            initialCount: number;
+            name?: string | null;
+            notes?: string | null;
+            originKind: string;
+            ownerUserId: string;
+            parentMatingId?: string | null;
+            publicId: string;
+            speciesId: string;
+            stage: string;
+            /** Format: date */
+            startDate: string;
+            /** Format: date-time */
+            updatedAt: string;
+            /** Format: int32 */
+            version: number;
+        };
         CompleteRequest: {
             assetId: string;
         };
@@ -1060,6 +1205,35 @@ export interface components {
             assetId: string;
             /** @description クライアントが `<img src=...>` で表示するための URL。 */
             publicUrl: string;
+        };
+        CreateCohortLogRequest: {
+            body?: string | null;
+            /** Format: int32 */
+            countDelta?: number | null;
+            logType: string;
+            metrics: {
+                [key: string]: unknown;
+            };
+        };
+        CreateCohortRequest: {
+            bloodlineName?: string | null;
+            /** Format: int32 */
+            initialCount: number;
+            name?: string | null;
+            notes?: string | null;
+            originKind: string;
+            /** Format: uuid */
+            parentMatingId?: string | null;
+            /** @description 省略時は handler 側で LOT-{YYYY}-NNNN を採番 */
+            publicId?: string | null;
+            speciesId: string;
+            stage: string;
+            /** Format: date */
+            startDate: string;
+        };
+        CreateCohortResponse: {
+            id: string;
+            publicId: string;
         };
         CreateListingRequest: {
             description?: string | null;
@@ -1353,6 +1527,61 @@ export interface components {
             title: string;
             /** @description 配色トーン (= フロント CSS 用)。`forest` / `amber`。 */
             tone: string;
+        };
+        PromoteCohortRequest: {
+            log?: null | components["schemas"]["PromoteLogPayload"];
+            specimen: components["schemas"]["PromoteSpecimenPayload"];
+        };
+        PromoteCohortResponse: {
+            cohort: components["schemas"]["CohortView"];
+            session: components["schemas"]["PromoteSessionState"];
+            specimen: components["schemas"]["PromotedSpecimenView"];
+        };
+        PromoteLogPayload: {
+            body?: string | null;
+            metrics: {
+                [key: string]: unknown;
+            };
+        };
+        PromoteSessionState: {
+            completed: boolean;
+            /** Format: int32 */
+            remainingInCohort: number;
+        };
+        PromoteSpecimenPayload: {
+            /** Format: uuid */
+            fatherId?: string | null;
+            fatherLabel?: string | null;
+            /** Format: int32 */
+            generation?: number | null;
+            /** Format: uuid */
+            motherId?: string | null;
+            motherLabel?: string | null;
+            name?: string | null;
+            notes?: string | null;
+            /** @description 省略時は handler 側で 種prefix-{YYYY}-NNNN を採番 */
+            publicId?: string | null;
+            sex?: string | null;
+            /** Format: double */
+            sizeMm?: number | null;
+            stage?: string | null;
+            /** Format: double */
+            weightG?: number | null;
+        };
+        PromotedSpecimenView: {
+            cohortId: string;
+            id: string;
+            name?: string | null;
+            notes?: string | null;
+            /** Format: date-time */
+            promotedFromCohortAt: string;
+            publicId: string;
+            sex?: string | null;
+            /** Format: double */
+            sizeMm?: number | null;
+            stage: string;
+            /** Format: double */
+            weightG?: number | null;
         };
         RegisterRequest: {
             avatarInitial: string;
@@ -2097,6 +2326,270 @@ export interface operations {
             };
             /** @description cart 空 / shipping 未入力 / 商品不正 / Stripe session 失敗 */
             400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    create_cohort: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCohortRequest"];
+            };
+        };
+        responses: {
+            /** @description 作成成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CreateCohortResponse"];
+                };
+            };
+            /** @description 入力 invalid (= species / origin_kind / count 等) */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description anonymous */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    list_my_cohorts: {
+        parameters: {
+            query?: {
+                /** @description true で archived 込み (default false = active のみ) */
+                archived?: boolean;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 自分の cohort 一覧 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CohortView"][];
+                };
+            };
+            /** @description anonymous */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_cohort: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description cohort.public_id (= LOT-YYYY-NNNN) */
+                public_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 詳細 + 直近ログ + 個体化済み件数 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CohortDetailView"];
+                };
+            };
+            /** @description anonymous */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 他人の cohort または不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    archive_cohort: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description cohort.public_id */
+                public_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description archive 成功 (= archived_at 確定) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CohortView"];
+                };
+            };
+            /** @description anonymous */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 他人の cohort または不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    add_cohort_log: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description cohort.public_id */
+                public_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CreateCohortLogRequest"];
+            };
+        };
+        responses: {
+            /** @description log 追加成功 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CohortLogView"];
+                };
+            };
+            /** @description log_type / metrics 形式 invalid */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description anonymous */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 他人の cohort または不存在 */
+            404: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    promote_cohort: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description cohort.public_id */
+                public_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["PromoteCohortRequest"];
+            };
+        };
+        responses: {
+            /** @description 個体化成功 (= 1 specimen 生成 + cohort.current_count -1) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PromoteCohortResponse"];
+                };
+            };
+            /** @description 入力 invalid / cohort empty / archived 等 */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description anonymous */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 他人の cohort または不存在 */
+            404: {
                 headers: {
                     [name: string]: unknown;
                 };

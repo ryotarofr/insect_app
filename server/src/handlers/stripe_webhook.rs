@@ -2,28 +2,31 @@
 //!
 //! Stripe からの webhook を受け取って orders.status を更新する。
 //!
-//! **Phase 9.1 (現状)**:
-//!   - mock provider 用に「テストから直接 trigger できる JSON body」だけ受け付ける
-//!     (= async-stripe の `stripe::Event` を deserialize しない)。
-//!   - HMAC 検証 (`Stripe-Signature` header) は **scaffolding のみ**。env の
-//!     `STRIPE_WEBHOOK_SECRET` が空なら検証スキップ、Some なら HMAC-SHA256 を計算。
-//!     mock では空のままで OK。
+//! **責務 (現状)**:
+//!   - HMAC-SHA256 検証 (= `Stripe-Signature` header の `v1=<hex>`) を `subtle::ConstantTimeEq`
+//!     で実施。env `STRIPE_WEBHOOK_SECRET` が空なら scaffolding mode (= dev / test) で skip。
+//!     production では `lib.rs::ensure_production_env_or_panic` で必須化済。
+//!   - **Replay 対策**: `Stripe-Signature` の `t=<unix>` を抽出し、`|now - t| <= tolerance`
+//!     (default 300 秒 / `KOCHU_STRIPE_TOLERANCE_SEC` env で上書き) を超えたら 401。
+//!   - **Idempotency**: 受信 event_id を `stripe_webhook_events` テーブルに `record_if_new`
+//!     で記録し、同じ event の重複受信は 200 で no-op に倒す。後続 handler ロジック
+//!     (= `update_status` / `fulfill_paid_order`) が失敗した場合は `delete_by_id` で
+//!     idempotency マーカーを best-effort rollback し、Stripe の retry を許す。
+//!   - mock provider 用に `MockStripeEvent` (= camelCase JSON) を受け付ける。本番の
+//!     `async-stripe` 経由 `stripe::Event` への移行は別 PR で行う。
 //!   - 受信 event_type を見て orders.status を遷移:
 //!       checkout.session.completed → paid
 //!       payment_intent.payment_failed → failed
 //!       checkout.session.expired → canceled
 //!     未知 event_type は 200 で no-op (= Stripe は 2xx を期待)。
+//!   - `paid` 遷移時のみ `specimen_fulfillment::fulfill_paid_order` を呼び、live 商品の
+//!     `specimens` を自動生成する。行レベル冪等性 (`order_items.fulfilled_specimen_id IS NULL`)
+//!     で二重生成を防ぐ。
 //!
-//! **Phase 9.2 (将来)**:
-//!   - `async_stripe::Webhook::construct_event` で正規の検証 + parse に切り替え
-//!   - Idempotency: 同じ event_id を 2 回受信した時に 1 回だけ処理する store を追加
-//!   - Dead-letter queue: 処理失敗時に SQS / DLQ に詰む
-//!
-//! **冪等性 (idempotency)**:
-//!   現状の `update_status_db` は `WHERE id = $1` で 1 行だけ更新する。
-//!   同じ event を 2 回受け取っても結果は同じ (= status が paid → paid に上書き)。
-//!   ただし「pending → paid → failed」のような誤遷移は防げないので、Phase 9.2 で
-//!   `WHERE id = $1 AND status NOT IN ('paid', 'canceled')` を追加する想定。
+//! **将来検討 (= 別 PR)**:
+//!   - `async_stripe::Webhook::construct_event` での正規 parse 移行
+//!   - 失敗時の SQS / DLQ 詰込 (= 現状は warn / error log のみ)
+//!   - status 遷移ガード (`WHERE status NOT IN ('paid', 'canceled')`) の追加
 
 use axum::{
     body::Bytes,

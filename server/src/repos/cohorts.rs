@@ -6,7 +6,9 @@
 //!   - DB 不在時 (= pool=None) は in-memory fallback で動く
 //!
 //! **設計判断**:
-//!   - `version` で楽観的並行制御 (UPDATE ... WHERE version = ?)
+//!   - 並行制御は **悲観ロック** (`SELECT ... FOR UPDATE`) で行う (= `promote_one` 参照)。
+//!     `version` 列は監査 / 履歴ヒントとしてインクリメントするが `UPDATE ... WHERE version = ?`
+//!     の楽観 CAS は採用していない (= 実装コスト > MVP 規模での効果)。
 //!   - current_count = 0 になった瞬間は application 層 (= promote 内) で archived_at をセット
 //!   - parent_mating_id 由来の親情報継承は handler 層で別途解決 (repo は cohort 自身のみ扱う)
 
@@ -65,8 +67,6 @@ pub enum CohortRepoError {
     AlreadyArchived(Uuid),
     #[error("cohort empty (current_count = 0): {0}")]
     Empty(Uuid),
-    #[error("version conflict: expected {expected}, current changed")]
-    VersionConflict { expected: i32 },
 }
 
 const ALLOWED_ORIGIN: &[&str] = &["egg_lay", "purchase", "field_collected"];

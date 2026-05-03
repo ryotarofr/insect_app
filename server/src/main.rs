@@ -1,6 +1,10 @@
 use std::net::SocketAddr;
 
-use axum::{Router, routing::get};
+use axum::{
+    Router,
+    http::{HeaderValue, Method, header},
+    routing::get,
+};
 use tower_http::{cors::CorsLayer, trace::TraceLayer};
 use tracing_subscriber::{EnvFilter, layer::SubscriberExt, util::SubscriberInitExt};
 
@@ -83,6 +87,52 @@ fn build_app(state: AppState) -> Router {
         // 本番では reverse proxy で外部公開を絞る運用想定。
         .merge(openapi::router())
         .nest("/api/v1", routes::api_v1(state))
-        .layer(CorsLayer::permissive())
+        .layer(build_cors_layer())
         .layer(TraceLayer::new_for_http())
+}
+
+/// CORS layer を `KOCHU_ALLOWED_ORIGINS` ベースで構築する (review fix: minor)。
+///
+/// - production: env が CSV で設定されていれば、そこに含まれる origin だけ許可。
+///   CSRF middleware (Origin 照合) と allowlist を一致させる二重防御。
+/// - dev / 未設定: `permissive()` で開発体験を壊さない (= localhost / file:// 等)。
+///
+/// `Allow-Credentials: true` は cookie ベース session に必須。`allow_methods` は
+/// REST 標準 + `OPTIONS` (preflight) を許可、`allow_headers` は `Content-Type`
+/// (= JSON body) と `Accept` を許可する。
+fn build_cors_layer() -> CorsLayer {
+    let methods = [
+        Method::GET,
+        Method::POST,
+        Method::PUT,
+        Method::PATCH,
+        Method::DELETE,
+        Method::OPTIONS,
+        Method::HEAD,
+    ];
+    let allow_headers = [header::CONTENT_TYPE, header::ACCEPT];
+
+    match std::env::var("KOCHU_ALLOWED_ORIGINS") {
+        Ok(csv) if !csv.trim().is_empty() => {
+            let origins: Vec<HeaderValue> = csv
+                .split(',')
+                .map(str::trim)
+                .filter(|s| !s.is_empty())
+                .filter_map(|s| s.parse::<HeaderValue>().ok())
+                .collect();
+            if origins.is_empty() {
+                tracing::warn!(
+                    "KOCHU_ALLOWED_ORIGINS={csv:?} にパース可能な origin が無いので permissive にフォールバック"
+                );
+                CorsLayer::permissive()
+            } else {
+                CorsLayer::new()
+                    .allow_origin(origins)
+                    .allow_credentials(true)
+                    .allow_methods(methods)
+                    .allow_headers(allow_headers)
+            }
+        }
+        _ => CorsLayer::permissive(),
+    }
 }

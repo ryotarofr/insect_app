@@ -246,12 +246,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "combp"
-version = "2.0.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9109012cfecb58fafbed7e2915363e8522ac9d39529ff1e14f35475c8cc74c6b"
-
-[[package]]
 name = "concurrent-queue"
 version = "2.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -920,7 +914,6 @@ dependencies = [
  "async-trait",
  "axum",
  "chrono",
- "combp",
  "dotenvy",
  "hex",
  "hmac",

@@ -57,10 +57,12 @@ describe("E2E: route navigation via keyboard", () => {
 
   it("reflects numeric shortcut in URL pathname", async () => {
     const { container } = render(() => <AppInRouter />);
-    // UX-1: "3" → log (個体カルテのショートカットは廃止)
+    // Cohort Phase 1: SHORTCUT_MAP["3"] は旧 "log" から "cohort" に再割当てされ、
+    // RouteKey "cohort" は router.ts::ROUTES で "/cohorts" にマップされる。
+    // (UX-1: 個体カルテのショートカットは廃止 → 飼育 (cohort) に統合)
     fireKey("3");
     await waitFor(10);
-    expect(window.location.pathname).toBe("/log");
+    expect(window.location.pathname).toBe("/cohorts");
     void container;
   });
 });
