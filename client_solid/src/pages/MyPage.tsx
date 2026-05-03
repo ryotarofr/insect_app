@@ -1,26 +1,27 @@
-// MyPage.tsx — マイページ（所有個体一覧 + サマリー）
+// MyPage.tsx — マイページ（KPI + 次のケア + 羽化レーダー）
 //
 // P2-6: Hero 4 枚の KPI カードを api.getUserMetrics() + createMemo で算出。
 //   - 従来はハードコード (今月のログ 28 件 / 血統ライン 4 等)。
 //   - 実データからのカウントに変更し、ログ追加 / メモ更新に reactive に追従。
 //
-// Phase 9.D 連携: login user の所有個体は **server (= /api/v1/specimens/me) を優先**。
-//   anonymous / 取得前 / 取得失敗時は mock (`listSpecimens()`) にフォールバックする。
-//   切り替えはカード描画用に `OwnedSpecimenCard` の最小 shape へ正規化してから
-//   1 つの `<For>` に流し込む方式で、render 部の差分を出さない。
+// **所有個体カードについて**:
+//   旧 §02「所有個体」セクションは飼育画面 (/cohorts) に集約済み。
+//   マイページは KPI / 羽化レーダー / 次のケア にフォーカスし、個別の specimen
+//   カードは表示しない。所有個体の閲覧は飼育画面 → 個体カルテ から行う。
 import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { A } from "@solidjs/router";
 import { type RouteKey } from "../data";
 import {
   getUpcomingActions,
   getUserMetrics,
-  listSpecimens,
   listUrgentEclosion,
   type ActionKind,
   type UpcomingAction,
 } from "../api";
 import { Icons } from "../components/Icons";
 import { Tooltip } from "../components/Tooltip";
-import { currentUser, isLoggedIn } from "../store/auth";
+import { ROUTE_PATHS } from "../router";
+import { currentUser } from "../store/auth";
 
 /** ISO 8601 (= "2024-03-15T00:00:00Z") を「2024.03」形式に整形。
  *  「登録 YYYY.MM より」の表示用。`joinedAt` 未取得時は "—" を返す。 */
@@ -32,8 +33,6 @@ const formatJoinedAt = (iso: string | undefined): string => {
   const m = String(d.getMonth() + 1).padStart(2, "0");
   return `${y}.${m}`;
 };
-import { serverSpecimens, serverSpecimensError } from "../store/specimens";
-import type { SpecimenView } from "../sdui/api";
 
 interface MyPageProps {
   setRoute: (r: RouteKey) => void;
@@ -163,13 +162,6 @@ const NewDropdown = (props: NewDropdownProps) => {
   );
 };
 
-const stageColor = (stage: string): string => {
-  if (stage.includes("幼虫")) return "forest";
-  if (stage.includes("蛹") || stage.includes("前蛹")) return "amber";
-  if (stage.includes("成虫")) return "indigo";
-  return "ink";
-};
-
 /** P4-9: UpcomingAction 表示用メタ。kind ごとに視覚トーンとアイコンを決める。 */
 const ACTION_META: Record<
   ActionKind,
@@ -188,78 +180,9 @@ const formatDue = (a: UpcomingAction): string => {
   return `あと ${a.dueInDays}日`;
 };
 
-/** 所有個体カードに描画するための最小フィールド集合。
- *  mock (`Specimen`) と server (`SpecimenView`) の両方をこの形に揃えてから render に渡す。 */
-interface OwnedSpecimenCard {
-  id: string;
-  /** click 時に setSelectedSpecimen に渡す URL/state 用の id (= mock では Specimen.id、
-   *  server では publicId)。 */
-  selectId: string;
-  name: string;
-  species: string;
-  sex: string;
-  stage: string;
-  sizeMm: number | string;
-  weightG: number | string;
-  generation: string;
-  eclosionInDays: number | null;
-  /** italic で表示する学名 / 補助テキスト。server には無いので speciesId を出す。 */
-  sci: string;
-}
-
-/** server の SpecimenView をカード表示用の最小形に正規化する。 */
-const fromServer = (v: SpecimenView): OwnedSpecimenCard => ({
-  id: v.publicId,
-  selectId: v.publicId,
-  name: v.name,
-  // 軽量 view: species 表示は speciesId をそのまま (= server に翻訳テーブル無し).
-  // 翻訳が必要になったら repos::species::find_translation で埋める。
-  species: v.speciesId,
-  sex: v.sex,
-  stage: v.stage,
-  sizeMm: v.sizeMm ?? "—",
-  weightG: v.weightG ?? "—",
-  generation: v.generation ?? "—",
-  // server は eclosionInDays を持たないので eclosionEta から逆算するのが正しいが、
-  // MyPage の「羽化レーダー」は別 section で mock 起点、ここでは null に倒す。
-  eclosionInDays: null,
-  sci: v.speciesId,
-});
-
 export const MyPage = (props: MyPageProps) => {
   // reactive 版 — ログ追加や所有個体の変動に連動してカードが更新される
   const metrics = createMemo(() => getUserMetrics());
-
-  // mock 起点の個体一覧 (= 羽化レーダー / 上部 KPI が依存)。
-  const mockSpecs = createMemo(() => listSpecimens());
-
-  // server-driven な所有個体一覧 (= login 中のみ存在)。
-  // anonymous / ロード前 / 取得失敗時は null → 下部「所有個体」一覧は mock にフォールバック。
-  // server 値が来たら **そちらを優先** してカードを描画する (= APP_DATA seed は使わない)。
-  const ownedCards = createMemo<OwnedSpecimenCard[]>(() => {
-    const sv = serverSpecimens();
-    if (isLoggedIn() && sv) {
-      return sv.map(fromServer);
-    }
-    return mockSpecs().map((s) => ({
-      id: s.id,
-      selectId: s.id,
-      name: s.name,
-      species: s.species,
-      sex: s.sex,
-      stage: s.stage,
-      sizeMm: s.sizeMm,
-      weightG: s.weightG,
-      generation: s.generation,
-      eclosionInDays: s.eclosionInDays,
-      sci: s.sci,
-    }));
-  });
-
-  /** 「サーバ取得済み」バッジを出すかの判定。 */
-  const isServerBacked = createMemo(
-    () => isLoggedIn() && serverSpecimens() !== null,
-  );
 
   const eclosionSoon = createMemo(() =>
     listUrgentEclosion(60).sort((a, b) => a.eclosionInDays - b.eclosionInDays),
@@ -300,7 +223,8 @@ export const MyPage = (props: MyPageProps) => {
         label: "血統ライン",
         value: m.bloodlineCount,
         unit: "本",
-        sub: `最深 ${m.deepestGeneration}`,
+        // 0本のときは「最深 —」を出さない (= 冗長な空バッジを抑制)。
+        sub: m.bloodlineCount > 0 ? `最深 ${m.deepestGeneration}` : null,
         tone: "indigo",
         help: "所有個体の累代 (CBFn / WILD) のユニーク数。\n最深は CBF 数値の最大値。",
       },
@@ -318,20 +242,41 @@ export const MyPage = (props: MyPageProps) => {
   return (
     <>
       <div class="page-head">
-        <div>
-          <div class="cat">
-            マイページ · 登録 {formatJoinedAt(currentUser()?.joinedAt)} より
-          </div>
-          <h1>{currentUser()?.name ?? "—"}</h1>
-        </div>
-        <div class="page-actions">
-          {/* Cohort Phase 1: 「+ ログを記録」を「+ 新規 ▾」dropdown に置換。
-              「+ 新しい個体を探す」(EC 動線) は別ボタンとして残す。 */}
-          <NewDropdown setRoute={props.setRoute} />
-          <button class="btn primary" onClick={() => props.setRoute("products")}>
-            {Icons.plus()} 新しい個体を探す
-          </button>
-        </div>
+        <Show
+          when={currentUser()}
+          fallback={
+            <>
+              <div>
+                <div class="cat">マイページ</div>
+                <h1>ようこそ KOCHŪ へ</h1>
+              </div>
+              <div class="page-actions">
+                <A class="btn primary" href={ROUTE_PATHS.login}>
+                  ログイン / 新規登録
+                </A>
+              </div>
+            </>
+          }
+        >
+          {(u) => (
+            <>
+              <div>
+                <div class="cat">
+                  マイページ · 登録 {formatJoinedAt(u().joinedAt)} より
+                </div>
+                <h1>{u().name}</h1>
+              </div>
+              <div class="page-actions">
+                {/* Cohort Phase 1: 「+ ログを記録」を「+ 新規 ▾」dropdown に置換。
+                    「+ 新しい個体を探す」(EC 動線) は別ボタンとして残す。 */}
+                <NewDropdown setRoute={props.setRoute} />
+                <button class="btn primary" onClick={() => props.setRoute("products")}>
+                  {Icons.plus()} 新しい個体を探す
+                </button>
+              </div>
+            </>
+          )}
+        </Show>
       </div>
 
       <div style={{ display: "grid", "grid-template-columns": "repeat(4, 1fr)", gap: "16px", "margin-bottom": "28px" }}>
@@ -349,9 +294,11 @@ export const MyPage = (props: MyPageProps) => {
                 <span class="kpi-num" data-unit={s.unit}>
                   {s.value}
                 </span>
-                <span class="chip" style={{ "margin-left": "4px" }}>
-                  {s.sub}
-                </span>
+                <Show when={s.sub}>
+                  <span class="chip" style={{ "margin-left": "4px" }}>
+                    {s.sub}
+                  </span>
+                </Show>
               </div>
             </div>
           )}
@@ -490,108 +437,6 @@ export const MyPage = (props: MyPageProps) => {
         </div>
       </Show>
 
-      <div class="sec-head">
-        <span class="num">§02</span>
-        <h2>所有個体</h2>
-        <span class="meta">
-          {ownedCards().length}
-          {" 体"}
-          <Show when={isServerBacked()}>
-            {" · "}
-            <span class="mono">サーバ取得済み</span>
-          </Show>
-          <Show when={!isServerBacked()}>
-            {" / 最終更新 今日 21:40"}
-          </Show>
-        </span>
-      </div>
-
-      <Show when={serverSpecimensError() !== null}>
-        <div
-          class="card"
-          style={{
-            padding: "12px 16px",
-            "margin-bottom": "16px",
-            background: "var(--accent-rose-soft, #fde8e8)",
-            "font-size": "13px",
-          }}
-          role="alert"
-        >
-          {`サーバから所有個体を取得できませんでした (${serverSpecimensError()})。下記は前回値 / mock 表示です。`}
-        </div>
-      </Show>
-
-      <div style={{ display: "grid", "grid-template-columns": "repeat(3, 1fr)", gap: "16px" }}>
-        <For each={ownedCards()}>
-          {(s) => (
-            <div
-              class="card"
-              style={{ cursor: "pointer", overflow: "hidden", transition: "transform 0.15s ease, box-shadow 0.15s ease" }}
-              onClick={() => {
-                props.setSelectedSpecimen(s.selectId);
-                props.setRoute("specimen");
-              }}
-            >
-              <div
-                class="ph forest"
-                style={{ height: "140px", "border-radius": 0, "border-left": 0, "border-right": 0, "border-top": 0 }}
-                role="img"
-                aria-label={`${s.species} ${s.sex} ${s.name} 俯瞰 (プレースホルダ)`}
-              >
-                <span class="ph-label">
-                  {s.species} · {s.sex}
-                </span>
-              </div>
-              <div style={{ padding: "14px" }}>
-                <div style={{ display: "flex", "justify-content": "space-between", "align-items": "center" }}>
-                  <span class="mono" style={{ "font-size": "10px", color: "var(--ink-faint)" }}>
-                    {s.id}
-                  </span>
-                  <span class={`chip ${stageColor(s.stage)}`}>
-                    <span class="dot" />
-                    {s.stage}
-                  </span>
-                </div>
-                <div style={{ "font-weight": 600, "font-size": "15px", "margin-top": "4px" }}>{s.name}</div>
-                <div
-                  class="mono"
-                  style={{ "font-size": "10px", color: "var(--ink-faint)", "font-style": "italic", "margin-top": "2px" }}
-                >
-                  {s.sci}
-                </div>
-                <div style={{ display: "flex", gap: "18px", "margin-top": "12px", "font-size": "12px" }}>
-                  <div>
-                    <div style={{ "font-size": "10px", color: "var(--ink-faint)" }}>サイズ</div>
-                    <div class="mono">
-                      <b>{s.sizeMm}</b>mm
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ "font-size": "10px", color: "var(--ink-faint)" }}>体重</div>
-                    <div class="mono">
-                      <b>{s.weightG}</b>g
-                    </div>
-                  </div>
-                  <div>
-                    <div style={{ "font-size": "10px", color: "var(--ink-faint)" }}>累代</div>
-                    <div class="mono">
-                      <b>{s.generation}</b>
-                    </div>
-                  </div>
-                  <Show when={s.eclosionInDays !== null}>
-                    <div style={{ "margin-left": "auto", "text-align": "right" }}>
-                      <div style={{ "font-size": "10px", color: "var(--ink-faint)" }}>羽化</div>
-                      <div class="mono">
-                        <b>{s.eclosionInDays}</b>日
-                      </div>
-                    </div>
-                  </Show>
-                </div>
-              </div>
-            </div>
-          )}
-        </For>
-      </div>
     </>
   );
 };

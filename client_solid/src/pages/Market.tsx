@@ -25,7 +25,14 @@ export const deriveListingState = (l: Listing): ListingState => {
   return l.endsIn.includes("日") ? "auction" : "ending-soon";
 };
 
-const MarketBrowse = () => (
+interface MarketBrowseProps {
+  /** 出品0件時のCTA: 「出品する」タブに切替 */
+  onSwitchToSell: () => void;
+}
+
+const MarketBrowse = (props: MarketBrowseProps) => {
+  const listings = listMarketListings();
+  return (
   <>
     <div
       class="card"
@@ -48,8 +55,32 @@ const MarketBrowse = () => (
       </span>
     </div>
 
+    <Show
+      when={listings.length > 0}
+      fallback={
+        <div
+          class="card"
+          style={{
+            padding: "32px 24px",
+            "text-align": "center",
+            color: "var(--ink-mute)",
+            "font-size": "13px",
+          }}
+        >
+          <div style={{ "font-weight": 600, color: "var(--ink)", "margin-bottom": "6px" }}>
+            現在出品中の個体はありません
+          </div>
+          <div style={{ "margin-bottom": "16px" }}>
+            あなたの所有個体を C2C マーケットに出品することができます。
+          </div>
+          <button class="btn primary" onClick={() => props.onSwitchToSell()}>
+            出品する
+          </button>
+        </div>
+      }
+    >
     <div class="grid-cards-2">
-      <For each={listMarketListings()}>
+      <For each={listings}>
         {(l) => (
           <div
             class="card market-card"
@@ -154,8 +185,10 @@ const MarketBrowse = () => (
         )}
       </For>
     </div>
+    </Show>
   </>
-);
+  );
+};
 
 /**
  * カルテ情報から出品ドラフト本文を生成する。
@@ -465,7 +498,7 @@ export const MarketPage = () => {
       </div>
 
       <Show when={tab() === "browse"} fallback={<MarketSell />}>
-        <MarketBrowse />
+        <MarketBrowse onSwitchToSell={() => setTab("sell")} />
       </Show>
     </>
   );

@@ -143,19 +143,36 @@ export const EclosionPage = (props: EclosionPageProps) => {
               );
             }}
           </For>
-          <div
-            style={{
-              position: "absolute",
-              left: 0,
-              top: 0,
-              bottom: 0,
-              width: `${(30 / HORIZON) * 100}%`,
-              background: "var(--accent-amber-soft)",
-              "border-left": "2px solid var(--accent-amber)",
-            }}
-          />
+          <Show when={all.length > 0}>
+            <div
+              style={{
+                position: "absolute",
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: `${(30 / HORIZON) * 100}%`,
+                background: "var(--accent-amber-soft)",
+                "border-left": "2px solid var(--accent-amber)",
+              }}
+            />
+          </Show>
         </div>
 
+        <Show
+          when={all.length > 0}
+          fallback={
+            <div
+              style={{
+                padding: "32px 16px",
+                "text-align": "center",
+                color: "var(--ink-mute)",
+                "font-size": "13px",
+              }}
+            >
+              予測対象の個体がありません。蛹化済みの個体を登録すると羽化日が予測されます。
+            </div>
+          }
+        >
         <div style={{ position: "relative", height: `${all.length * 44 + 10}px`, "padding-top": "10px" }}>
           <For each={all}>
             {(s, i) => {
@@ -242,6 +259,7 @@ export const EclosionPage = (props: EclosionPageProps) => {
             }}
           </For>
         </div>
+        </Show>
       </div>
 
       <For each={sections}>

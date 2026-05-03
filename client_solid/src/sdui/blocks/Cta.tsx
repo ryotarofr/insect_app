@@ -256,7 +256,10 @@ export const CtaBlockView = (props: { block: CtaBlock }) => {
       aria-busy={pending()}
       aria-label={labelText()}
       onClick={onClick}
-        >
+      // P9.x: <a> 経路と同じ INTENT_STYLE を適用 (= primary が transparent に
+      // 落ちるバグ修正)。border-radius / padding 等のレイアウトも <a> と揃える。
+      style={style()}
+    >
       <L value={props.block.label} />
     </button>
   );

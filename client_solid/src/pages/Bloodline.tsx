@@ -20,7 +20,7 @@
 //   `getBloodlineIndividual` を後方互換として残す。中身は本ファイルの NODES / PAIRS から
 //   合成する (= MatingRecordModal は import 元を変えずに動く)。
 
-import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createEffect, createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
 import { useLocation, useNavigate } from "@solidjs/router";
 import type { RouteKey } from "../data";
 import { specimenExists, type LifeStatus } from "../api";
@@ -28,6 +28,10 @@ import { specimenUrl } from "../router";
 import { showToast } from "../store/toast";
 import { MatingRecordModal } from "../components/bloodline/MatingRecordModal";
 import { SpecimenCarteModal } from "../components/bloodline/SpecimenCarteModal";
+import { isLoggedIn } from "../store/auth";
+import { serverSpecimens } from "../store/specimens";
+import { findSpeciesById } from "../store/species";
+import type { SpecimenView } from "../sdui/api";
 import "../styles/bloodline.css";
 
 // ─── 後方互換 type 定義 (= MatingRecordModal が import する) ────────────
@@ -350,9 +354,132 @@ const extractIdFromPath = (pathname: string): string | undefined => {
   }
 };
 
+// ─── データソース判定 ───────────────────────────────────────────
+// 「実データがあれば実データ」「なければ fixture」のスイッチ。
+// SpecimenView には親子情報が無いため (= 系図エッジは Phase 9.D 待ち)、
+// server data 時はエッジなしの「所有個体グリッド」に切替える。fixture 時は
+// 既存の panzoom canvas をそのまま出す。
+//
+// banner copy で必ずユーザにデータソースを明示する。
+const useServerBloodline = (): boolean => {
+  if (!isLoggedIn()) return false;
+  const sv = serverSpecimens();
+  return sv !== null && sv.length > 0;
+};
+
+// ─── Server-data 用シンプルビュー ────────────────────────────
+// 親子エッジは未取得なのでグループ表示のみ。各グループは speciesId で集約し、
+// 表示順は SP_LIST + その他末尾。各セルは BlNode に近い見た目を維持して
+// fixture mode から切替えても操作感が大きく変わらないようにする。
+interface OwnedBloodlineViewProps {
+  specimens: SpecimenView[];
+  selectedPublicId: string;
+  onSelect: (publicId: string) => void;
+}
+
+const OwnedBloodlineView = (props: OwnedBloodlineViewProps) => {
+  const grouped = createMemo(() => {
+    const m = new Map<string, SpecimenView[]>();
+    for (const sv of props.specimens) {
+      const key = sv.speciesId || "other";
+      const list = m.get(key) ?? [];
+      list.push(sv);
+      m.set(key, list);
+    }
+    // SP_LIST 順を先に並べ、未知の speciesId は末尾に追加。
+    const ordered: Array<{ sp: string; items: SpecimenView[] }> = [];
+    for (const sp of SP_LIST) {
+      const items = m.get(sp);
+      if (items && items.length > 0) ordered.push({ sp, items });
+    }
+    for (const [sp, items] of m.entries()) {
+      if (!(SP_LIST as readonly string[]).includes(sp)) {
+        ordered.push({ sp, items });
+      }
+    }
+    return ordered;
+  });
+
+  const labelFor = (speciesId: string): string => {
+    if ((SP_LIST as readonly string[]).includes(speciesId)) {
+      return DEFAULT_SP_LABELS[speciesId as Sp];
+    }
+    return findSpeciesById(speciesId)?.name ?? speciesId;
+  };
+
+  return (
+    <div class="bl-owned" style={{ padding: "20px 24px", "overflow-y": "auto" }}>
+      <For each={grouped()}>
+        {(group) => (
+          <section style={{ "margin-bottom": "28px" }}>
+            <div class="sec-head" style={{ "margin-bottom": "12px" }}>
+              <span class="num">·</span>
+              <h2>{labelFor(group.sp)}</h2>
+              <span class="meta">{group.items.length} 体</span>
+            </div>
+            <div
+              style={{
+                display: "grid",
+                "grid-template-columns": "repeat(auto-fill, minmax(168px, 1fr))",
+                gap: "10px",
+              }}
+            >
+              <For each={group.items}>
+                {(sv) => {
+                  const isSelected = () => props.selectedPublicId === sv.publicId;
+                  return (
+                    <button
+                      type="button"
+                      class={`card${isSelected() ? " bl-selected" : ""}`}
+                      onClick={() => props.onSelect(sv.publicId)}
+                      style={{
+                        padding: "10px 12px",
+                        "text-align": "left",
+                        cursor: "pointer",
+                        "border-color": isSelected() ? "var(--ink)" : "var(--line)",
+                        "border-width": isSelected() ? "2px" : "1px",
+                        background: "var(--bg-raised)",
+                      }}
+                    >
+                      <div
+                        class="mono"
+                        style={{ "font-size": "10px", color: "var(--ink-faint)" }}
+                      >
+                        {sv.generation ?? "—"}
+                      </div>
+                      <div style={{ "font-weight": 600, "margin-top": "2px" }}>
+                        {sv.name}
+                      </div>
+                      <div
+                        class="mono"
+                        style={{
+                          "font-size": "10px",
+                          color: "var(--ink-faint)",
+                          "margin-top": "2px",
+                        }}
+                      >
+                        {sv.publicId}
+                        {sv.sizeMm != null ? ` · ${sv.sizeMm}mm` : ""}
+                      </div>
+                    </button>
+                  );
+                }}
+              </For>
+            </div>
+          </section>
+        )}
+      </For>
+    </div>
+  );
+};
+
 export const BloodlinePage = (_props: BloodlinePageProps) => {
   const navigate = useNavigate();
   const location = useLocation();
+
+  // データソース (= 実データ vs fixture) を 1 つの memo で握る。
+  // useServerBloodline() の結果を BloodlinePage 全体で共有する。
+  const isServerView = createMemo(() => useServerBloodline());
 
   // 初期選択: URL に id が乗っていればそれを優先、無ければ "黒曜" (= 設計の主役個体)。
   const initialId = extractIdFromPath(location.pathname) ?? "#DHH-0271";
@@ -771,14 +898,78 @@ export const BloodlinePage = (_props: BloodlinePageProps) => {
   const elbowPath = (x1: number, y1: number, x2: number, y2: number, midY: number) =>
     `M ${x1} ${y1} V ${midY} H ${x2} V ${y2}`;
 
+  // 実データビューで選択中の SpecimenView (= 右側パネルの表示元)。
+  // selectedId は publicId ("#DHH-0271" 等) なので serverSpecimens から線形検索する。
+  const selectedServerSpec = createMemo<SpecimenView | undefined>(() => {
+    if (!isServerView()) return undefined;
+    const list = serverSpecimens() ?? [];
+    return list.find((s) => s.publicId === selectedId()) ?? list[0];
+  });
+
+  // 実データビューに切替わった瞬間に selected が server に存在しなければ
+  // 先頭にフォールバックする (= URL 由来の fixture id を引きずらない)。
+  createEffect(() => {
+    if (!isServerView()) return;
+    const list = serverSpecimens() ?? [];
+    if (list.length === 0) return;
+    if (!list.some((s) => s.publicId === selectedId())) {
+      setSelectedId(list[0].publicId);
+    }
+  });
+
   return (
     <>
+      {/* ── データソース バナー ─────────────── */}
+      <div
+        class="card"
+        style={{
+          padding: "10px 16px",
+          margin: "0 0 12px 0",
+          "font-size": "12px",
+          background: isServerView()
+            ? "var(--accent-forest-soft)"
+            : "var(--bg-sunken)",
+          "border-color": "transparent",
+          color: "var(--ink-mute)",
+        }}
+        role="status"
+      >
+        <Show
+          when={isServerView()}
+          fallback={
+            <span>
+              <b style={{ color: "var(--ink)" }}>サンプル系図表示中</b>
+              {" — "}
+              所有個体を登録すると、ここにあなたの個体が表示されます。
+              系図エッジ (親子関係) の server-driven 化は Phase 9.D で対応予定です。
+            </span>
+          }
+        >
+          <span>
+            <b style={{ color: "var(--ink)" }}>実データ表示中</b>
+            {" — "}
+            あなたの所有個体 {(serverSpecimens() ?? []).length} 体を表示しています。
+            親子関係 (エッジ) の表示は Phase 9.D で対応予定です。
+          </span>
+        </Show>
+      </div>
+
       <div
         class="bl-app"
         data-bloodline-mindmap
         data-panel={panelCollapsed() ? "collapsed" : "expanded"}
       >
         {/* ── キャンバス (v2.1: ヘッダ無し / overlay は Filter + Panel toggle のみ) ── */}
+        <Show
+          when={!isServerView()}
+          fallback={
+            <OwnedBloodlineView
+              specimens={serverSpecimens() ?? []}
+              selectedPublicId={selectedId()}
+              onSelect={(id) => setSelectedId(id)}
+            />
+          }
+        >
         <div class="bl-canvas-wrap">
           {/* Species フィルタ — canvas 左上 floating */}
           <div
@@ -989,9 +1180,79 @@ export const BloodlinePage = (_props: BloodlinePageProps) => {
             {panelCollapsed() ? "‹" : "›"}
           </button>
         </div>
+        </Show>
 
         {/* ── サイドパネル ─────────────── */}
         <aside class="bl-panel">
+          <Show
+            when={!isServerView()}
+            fallback={
+              <Show
+                when={selectedServerSpec()}
+                fallback={<div class="bl-sub">個体が見つかりません</div>}
+              >
+                {(sv) => (
+                  <>
+                    <div class="bl-eyebrow">{`${
+                      findSpeciesById(sv().speciesId)?.name ?? sv().speciesId
+                    } · ${sv().generation ?? "—"}`}</div>
+                    <h3>{sv().name}</h3>
+                    <div class="bl-sub">{sv().publicId}</div>
+                    <div class="bl-specs" style={{ "margin-top": "12px" }}>
+                      <div class="bl-kv">
+                        <span class="bl-k">Sex</span>
+                        <span class="bl-leader" />
+                        <span class="bl-v">{sv().sex}</span>
+                      </div>
+                      <div class="bl-kv">
+                        <span class="bl-k">Stage</span>
+                        <span class="bl-leader" />
+                        <span class="bl-v">{sv().stage}</span>
+                      </div>
+                      <Show when={sv().sizeMm != null}>
+                        <div class="bl-kv">
+                          <span class="bl-k">Size</span>
+                          <span class="bl-leader" />
+                          <span class="bl-v bl-mono">{sv().sizeMm}mm</span>
+                        </div>
+                      </Show>
+                      <Show when={sv().weightG != null}>
+                        <div class="bl-kv">
+                          <span class="bl-k">Weight</span>
+                          <span class="bl-leader" />
+                          <span class="bl-v bl-mono">{sv().weightG}g</span>
+                        </div>
+                      </Show>
+                      <Show when={sv().eclosionEta}>
+                        <div class="bl-kv">
+                          <span class="bl-k">羽化予定</span>
+                          <span class="bl-leader" />
+                          <span class="bl-v bl-mono">{sv().eclosionEta}</span>
+                        </div>
+                      </Show>
+                    </div>
+                    <Show when={sv().notes}>
+                      <section class="bl-section">
+                        <div class="bl-section-heading">
+                          <span class="bl-num">·</span> メモ
+                        </div>
+                        <div class="bl-memo">{sv().notes}</div>
+                      </section>
+                    </Show>
+                    <div class="bl-actions">
+                      <button
+                        type="button"
+                        class="bl-btn-primary"
+                        onClick={() => navigate(specimenUrl(sv().publicId))}
+                      >
+                        カルテを開く
+                      </button>
+                    </div>
+                  </>
+                )}
+              </Show>
+            }
+          >
           <Show when={selectedNode()} fallback={<div class="bl-sub">個体が見つかりません</div>}>
             {(n) => {
               // sex==="u" (= 幼虫で性別未確定) は MatingRecordModal の親候補に
@@ -1096,6 +1357,7 @@ export const BloodlinePage = (_props: BloodlinePageProps) => {
                 </>
               );
             }}
+          </Show>
           </Show>
         </aside>
       </div>

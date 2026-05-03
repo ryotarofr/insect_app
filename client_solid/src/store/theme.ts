@@ -43,6 +43,29 @@ export const setTheme = (m: ThemeMode) => setThemeMode(m);
 export const toggleNightRed = () =>
   setThemeMode((m) => (m === "night-red" ? "auto" : "night-red"));
 
+// ─── 初回オンボーディング Toast 用フラグ ──────────────────────
+//
+// ナイトモード (赤色) は一般的なダークモードと混同されやすいので、初回 ON 時に
+// 1 度だけ「これは暗順応保護用の赤色モードです」と説明トーストを出す。
+// ユーザが気付けば以後は出さない。localStorage で永続化する。
+const ONBOARDING_KEY = "kochu:theme:night-red-onboarded";
+
+export const hasSeenNightRedOnboarding = (): boolean => {
+  try {
+    return localStorage.getItem(ONBOARDING_KEY) === "1";
+  } catch {
+    return false;
+  }
+};
+
+export const markNightRedOnboardingSeen = (): void => {
+  try {
+    localStorage.setItem(ONBOARDING_KEY, "1");
+  } catch {
+    /* quota / private mode は無視 — 出ても再度出るだけ */
+  }
+};
+
 // document.documentElement に data-theme を反映し、localStorage に保存する。
 // SSR なし前提 (typeof document の判定はテスト環境用)。
 createRoot(() => {

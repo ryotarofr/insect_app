@@ -30,26 +30,10 @@ export interface CartItem {
   tone: "forest" | "amber";
 }
 
-const INITIAL: CartItem[] = [
-  {
-    id: "i1",
-    title: "ヘラクレスオオカブト ♂ 142mm",
-    meta: "CBF2 · #DHH-0271",
-    price: 48000,
-    qty: 1,
-    kind: "生体",
-    tone: "forest",
-  },
-  {
-    id: "i2",
-    title: "高栄養ゼリー 17g × 50個",
-    meta: "消耗品",
-    price: 1480,
-    qty: 2,
-    kind: "用品",
-    tone: "amber",
-  },
-];
+// Phase 9.1 Strangler Fig 完了後: /cart は server-driven (CartSduiPage) に切替済。
+// 初期種データは「サイドバーバッジが server cart と乖離する」UI バグを生むため空で起動する。
+// 追加は addItem* 経由 (= POST /api/v1/cart 成功後の local mirror 反映) のみ。
+const INITIAL: CartItem[] = [];
 
 const [items, setItems] = createSignal<CartItem[]>(INITIAL);
 

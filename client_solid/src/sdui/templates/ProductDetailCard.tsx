@@ -26,6 +26,52 @@ import { RegionRenderer } from "../RegionRenderer";
 
 type ProductDetailCardBlock = Extract<CardBlock, { template: "product_detail" }>;
 type MediaBlock = Extract<Block, { type: "media" }>;
+type BadgeBlock = Extract<Block, { type: "badge" }>;
+
+/**
+ * Hero region 専用レイアウト。
+ *
+ * 親が `flex-direction: column` の flex container だと、`.chip` (= inline-flex) が
+ * blockify されて 100% 幅に伸びる (= align-items: stretch のデフォルト挙動)。
+ * 結果、badge が「横幅いっぱいの色帯」になり価格/CTA より視覚重みが勝ってしまう。
+ *
+ * 対策: badge 系 block を非 badge 系と分離し、badges だけ
+ * `display: flex; flex-wrap: wrap` の inline 行で並べる。非 badge は従来通り column。
+ *
+ * テスト fixture (= ProductDetailCard.test.tsx) では badge は hero の末尾に並ぶため
+ * 「非 badge を先に → badges を後に」で順序が崩れない。 */
+const ProductHero = (props: { blocks: Block[] }) => {
+  const split = createMemo(() => {
+    const nonBadges: Block[] = [];
+    const badges: BadgeBlock[] = [];
+    for (const b of props.blocks) {
+      if (b.type === "badge") badges.push(b);
+      else nonBadges.push(b);
+    }
+    return { nonBadges, badges };
+  });
+  return (
+    <div style={{ display: "flex", "flex-direction": "column", gap: "8px" }}>
+      <For each={split().nonBadges}>
+        {(block) => <BlockRenderer block={block} />}
+      </For>
+      <Show when={split().badges.length > 0}>
+        <div
+          style={{
+            display: "flex",
+            "flex-wrap": "wrap",
+            gap: "6px",
+            "margin-top": "4px",
+          }}
+        >
+          <For each={split().badges}>
+            {(block) => <BlockRenderer block={block} />}
+          </For>
+        </div>
+      </Show>
+    </div>
+  );
+};
 
 /**
  * Gallery sub-component — hero + thumbnail strip。
@@ -169,10 +215,7 @@ export const ProductDetailCard = (props: { card: ProductDetailCardBlock }) => {
       {/* ── 右カラム: hero / pricing / cta / promise / spec を縦に積む ── */}
       <div style={{ display: "flex", "flex-direction": "column", gap: "20px" }}>
         <Show when={regions().hero.length > 0}>
-          <RegionRenderer
-            blocks={regions().hero}
-            style={{ display: "flex", "flex-direction": "column", gap: "8px" }}
-          />
+          <ProductHero blocks={regions().hero} />
         </Show>
 
         <Show when={regions().pricing.length > 0}>

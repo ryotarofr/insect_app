@@ -17,7 +17,13 @@ import { BottomTabBar } from "./BottomTabBar";
 import { Breadcrumb, type Crumb } from "./Breadcrumb";
 import { ROUTE_PATHS, sidebarRouteKey } from "../router";
 import { openCommandPalette } from "../store/commandPalette";
-import { getThemeMode, toggleNightRed } from "../store/theme";
+import {
+  getThemeMode,
+  hasSeenNightRedOnboarding,
+  markNightRedOnboardingSeen,
+  toggleNightRed,
+} from "../store/theme";
+import { showToast } from "../store/toast";
 import { currentUser, logout as authLogout } from "../store/auth";
 
 interface NavEntry {
@@ -232,24 +238,41 @@ export const Shell = (props: ShellProps) => {
               ⌘K
             </span>
           </button>
-          {/* P4-8: 夜間赤色テーマ トグル */}
+          {/* P4-8: 夜間赤色テーマ トグル
+              §4 改善: 一般的なダークモードと混同されないように
+                - アイコンに赤い「ドット」を併置 (= active 時は赤丸塗り潰し)
+                - tooltip に「暗順応保護用」を明記
+                - 初回 ON 時に1度だけ説明トースト */}
           <button
             type="button"
             class={
               "theme-toggle" +
               (getThemeMode() === "night-red" ? " is-active" : "")
             }
-            onClick={toggleNightRed}
+            onClick={() => {
+              const willTurnOn = getThemeMode() !== "night-red";
+              toggleNightRed();
+              // 初回 ON 時のみ、混同防止のオンボーディングを出す。
+              if (willTurnOn && !hasSeenNightRedOnboarding()) {
+                showToast({
+                  message:
+                    "夜間赤色モードをオン: これは暗順応保護用 (天体観測・夜間飼育) の赤テーマで、一般的なダークモードではありません。",
+                  tone: "info",
+                  duration: 6000,
+                });
+                markNightRedOnboardingSeen();
+              }
+            }}
             aria-pressed={getThemeMode() === "night-red"}
             aria-label={
               getThemeMode() === "night-red"
-                ? "夜間赤色モードをオフ"
-                : "夜間赤色モードをオン"
+                ? "夜間赤色モード (暗順応保護用) をオフ"
+                : "夜間赤色モード (暗順応保護用) をオン"
             }
             title={
               getThemeMode() === "night-red"
-                ? "夜間赤色モード: オン"
-                : "夜間赤色モード: オフ (自動)"
+                ? "夜間赤色モード (暗順応保護用) — オン"
+                : "夜間赤色モード (暗順応保護用) — オフ (自動)"
             }
           >
             <svg
@@ -264,6 +287,17 @@ export const Shell = (props: ShellProps) => {
               aria-hidden="true"
             >
               <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z" />
+              {/* 赤色モードであることを示す赤いドット (active=塗り / off=線) */}
+              <circle
+                cx="17"
+                cy="7"
+                r="2.4"
+                fill={
+                  getThemeMode() === "night-red" ? "oklch(0.55 0.2 25)" : "none"
+                }
+                stroke="oklch(0.55 0.2 25)"
+                stroke-width="1.4"
+              />
             </svg>
           </button>
           {props.topActions}
