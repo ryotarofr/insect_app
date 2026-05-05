@@ -21,7 +21,6 @@ use super::regions::{CartRegions, ProductDetailRegions, ProductFeatureRegions};
 /// リージョン名。テンプレートが許容する集合は `<Template>Regions` 側で表現する。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-#[ts(export)]
 pub enum RegionName {
     Header,
     Media,
@@ -34,7 +33,6 @@ pub enum RegionName {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-#[ts(export)]
 pub enum TextRole {
     Eyebrow,
     Headline,
@@ -47,7 +45,6 @@ pub enum TextRole {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-#[ts(export)]
 pub enum CtaIntent {
     Primary,
     Secondary,
@@ -57,7 +54,6 @@ pub enum CtaIntent {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-#[ts(export)]
 pub enum MediaKind {
     Image,
     Video,
@@ -67,7 +63,6 @@ pub enum MediaKind {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-#[ts(export)]
 pub enum BadgeRole {
     Status,
     Evidence,
@@ -77,7 +72,6 @@ pub enum BadgeRole {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-#[ts(export)]
 pub enum MetaLineItemRole {
     Id,
     Shop,
@@ -88,7 +82,6 @@ pub enum MetaLineItemRole {
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-#[ts(export)]
 pub enum MetaItemAlign {
     Start,
     End,
@@ -169,14 +162,25 @@ impl I18nKey {
 /// - `raw` : サーバ側で組み立て済みの最終文字列。商品名・人名など翻訳しない値
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(tag = "source", rename_all = "snake_case")]
-#[ts(export)]
+// ts-rs v9 は serde の internally-tagged enum (= tag = "...") をデフォルトで尊重しないため
+// 明示的に #[ts(...)] でも同じ tag / rename_all を指定する。これが無いと client の
+// generated/sdui.ts に external tagging (= `{ "I18n": { ... } }`) が出力されて
+// branded.ts の Extract<G.Localizable, { source: "..." }> 等が壊れる。
+#[ts(
+    export,
+    tag = "source",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum Localizable {
+    #[ts(rename_all = "camelCase")]
     I18n {
         key: I18nKey,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
         params: Option<std::collections::BTreeMap<String, ParamValue>>,
     },
+    #[ts(rename_all = "camelCase")]
     Raw {
         text: String,
     },
@@ -184,7 +188,6 @@ pub enum Localizable {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(untagged)]
-#[ts(export)]
 pub enum ParamValue {
     Str(String),
     Int(i64),
@@ -196,7 +199,6 @@ pub enum ParamValue {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-#[ts(export)]
 pub struct MetricItem {
     pub key: String,
     pub label: Localizable,
@@ -205,7 +207,6 @@ pub struct MetricItem {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-#[ts(export)]
 pub struct MetaItem {
     pub key: String,
     pub role: MetaLineItemRole,
@@ -242,7 +243,13 @@ pub struct MetaItem {
     rename_all = "snake_case",
     rename_all_fields = "camelCase"
 )]
-#[ts(export)]
+// ts-rs v9 は serde の internally-tagged enum を尊重しないため、明示指定が必要。
+#[ts(
+    export,
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum CtaAction {
     /// 商品をカートに追加。`/api/v1/cart` に POST する想定。
     /// `qty` は MVP では常に 1 で送られるが、将来 +/- ピッカーから渡せるよう外に出す。
@@ -280,10 +287,16 @@ pub enum CtaAction {
     rename_all = "snake_case",
     rename_all_fields = "camelCase"
 )]
-#[ts(export)]
+#[ts(
+    export,
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum LineItemAction {
     /// このトークンが指す cart line の qty を `qty` に置き換える。
     /// `qty = 0` を投げるなら Remove を使う (= UI 側で自然に分岐できる)。
+    #[ts(rename_all = "camelCase")]
     SetQty {
         token: String,
         #[ts(type = "number")]
@@ -319,7 +332,12 @@ pub enum LineItemAction {
     rename_all = "snake_case",
     rename_all_fields = "camelCase"
 )]
-#[ts(export)]
+#[ts(
+    export,
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum CheckoutFieldAction {
     /// この field の値を `value` に置き換える。
     /// PATCH `/api/v1/checkout/shipping_field/{field_name}` body `{ value }`。
@@ -333,7 +351,12 @@ pub enum CheckoutFieldAction {
     rename_all = "snake_case",
     rename_all_fields = "camelCase"
 )]
-#[ts(export)]
+#[ts(
+    export,
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum CheckoutMethodAction {
     /// 配送方法を選択した option の `id` に置き換える。
     /// PATCH `/api/v1/checkout/shipping_method` body `{ id }`。
@@ -359,7 +382,6 @@ pub enum CheckoutMethodAction {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(deny_unknown_fields)]
-#[ts(export)]
 pub struct SelectOption {
     /// 一意な値 (= <option value=>)。Select の現在値はこれと比較される。
     pub id: String,
@@ -380,7 +402,12 @@ pub struct SelectOption {
     rename_all = "snake_case",
     rename_all_fields = "camelCase"
 )]
-#[ts(export)]
+#[ts(
+    export,
+    tag = "inputType",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum FormFieldKind {
     /// 通常テキスト入力 (氏名、住所など)。
     Text,
@@ -401,7 +428,7 @@ pub enum FormFieldKind {
 
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-#[ts(export)]
+#[ts(export, rename_all = "camelCase")]
 pub struct ShippingMethodOption {
     /// 一意な ID (= radio の value)。例: "cold" / "normal"。
     pub id: String,
@@ -430,8 +457,18 @@ pub struct ShippingMethodOption {
     rename_all_fields = "camelCase",
     deny_unknown_fields
 )]
-#[ts(export)]
+// ts-rs v9 は serde の internally-tagged enum / rename_all_fields を尊重しないため、
+// 明示指定が必須。ここを忘れると generated/sdui.ts が `{ "Text": { ... } }` (= external
+// tagging) や snake_case fields (= `tax_included`) になり、branded.ts や使用側の
+// `Extract<G.Block, { type: "text" }>` が壊れる。
+#[ts(
+    export,
+    tag = "type",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum Block {
+    #[ts(rename_all = "camelCase")]
     Text {
         key: String,
         role: TextRole,
@@ -440,6 +477,7 @@ pub enum Block {
         #[ts(optional)]
         analytics_id: Option<String>,
     },
+    #[ts(rename_all = "camelCase")]
     Cta {
         key: String,
         intent: CtaIntent,
@@ -454,6 +492,7 @@ pub enum Block {
         #[ts(optional)]
         analytics_id: Option<String>,
     },
+    #[ts(rename_all = "camelCase")]
     Media {
         key: String,
         kind: MediaKind,
@@ -470,6 +509,7 @@ pub enum Block {
         #[ts(optional)]
         analytics_id: Option<String>,
     },
+    #[ts(rename_all = "camelCase")]
     Badge {
         key: String,
         role: BadgeRole,
@@ -478,6 +518,7 @@ pub enum Block {
         #[ts(optional)]
         analytics_id: Option<String>,
     },
+    #[ts(rename_all = "camelCase")]
     MetricList {
         key: String,
         items: Vec<MetricItem>,
@@ -485,6 +526,7 @@ pub enum Block {
         #[ts(optional)]
         analytics_id: Option<String>,
     },
+    #[ts(rename_all = "camelCase")]
     MetaLine {
         key: String,
         items: Vec<MetaItem>,
@@ -492,6 +534,7 @@ pub enum Block {
         #[ts(optional)]
         analytics_id: Option<String>,
     },
+    #[ts(rename_all = "camelCase")]
     Price {
         key: String,
         // ts-rs は `i64` をデフォルトで `bigint` にマップするが、
@@ -506,6 +549,7 @@ pub enum Block {
         #[ts(optional)]
         analytics_id: Option<String>,
     },
+    #[ts(rename_all = "camelCase")]
     EclosionForecast {
         key: String,
         days_ahead: i32,
@@ -516,6 +560,7 @@ pub enum Block {
         #[ts(optional)]
         analytics_id: Option<String>,
     },
+    #[ts(rename_all = "camelCase")]
     Divider {
         key: String,
     },
@@ -528,6 +573,7 @@ pub enum Block {
     ///   - LineItemAction を 3 つ (decrement / increment / remove) フラットに持てる
     /// 将来 "ギフトラッピング" のような行内追加要素が出たら sub-block を内包する形に
     /// リファクタする (= 今は YAGNI)。
+    #[ts(rename_all = "camelCase")]
     LineItem {
         key: String,
         /// 表示テキスト用 product id。クライアント側で「商品ページに飛ぶ」リンク等に使う。
@@ -585,6 +631,7 @@ pub enum Block {
     ///   - `key`  : ValidateKeys 用 ("ff-name" / "ff-tel" など)。block の identity。
     ///   - `name` : URL path に乗る field 名 (= "addressName" / "addressTel")。
     ///     PatchAction.field_name と 1 文字も違わず一致させる契約。
+    #[ts(rename_all = "camelCase")]
     FormField {
         key: String,
         /// PATCH URL `/checkout/shipping_field/{name}` の最後のセグメントになる識別子。
@@ -630,6 +677,7 @@ pub enum Block {
     ///   `<label>` の縦並びで描画したい (= a11y / 見やすさ)。
     ///   渡される PATCH endpoint も `/checkout/shipping_method` (単一値) で、
     ///   `/checkout/shipping_field/{name}` とは別系統。block と endpoint を 1:1 で揃える。
+    #[ts(rename_all = "camelCase")]
     ShippingMethodPicker {
         key: String,
         /// 全候補 (空配列なら client 側で「配送方法が登録されていません」を出す)。
@@ -650,6 +698,7 @@ pub enum Block {
     ///   MetricList は「k/v ラベル+値」の汎用部品で、合計行の階層 (subtotal は明細、
     ///   total は強調) を表現できない。OrderSummary は専用 block にして renderer 側で
     ///   total 行を太字 / 大きめに描く意味的契約を作る。
+    #[ts(rename_all = "camelCase")]
     OrderSummary {
         key: String,
         /// 行数 (= LineItem の件数)。
@@ -717,7 +766,6 @@ impl Block {
 /// `Experiment.bucket` (A/B テスト) とは独立 (§11.3)。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-#[ts(export)]
 pub enum ProductFeatureVariant {
     Default,
     Featured,
@@ -729,7 +777,6 @@ pub enum ProductFeatureVariant {
 /// バリアントで切り替える可能性に備えて enum で型を切っておく。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-#[ts(export)]
 pub enum ProductDetailVariant {
     Default,
 }
@@ -742,7 +789,6 @@ pub enum ProductDetailVariant {
 ///   コストが増える。empty state の見た目分岐は client 側で 1 行 (= Show when=) で完結。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-#[ts(export)]
 pub enum CartVariant {
     Default,
 }
@@ -757,9 +803,15 @@ pub enum CartVariant {
     rename_all_fields = "camelCase",
     deny_unknown_fields
 )]
-#[ts(export)]
+#[ts(
+    export,
+    tag = "template",
+    rename_all = "snake_case",
+    rename_all_fields = "camelCase"
+)]
 pub enum CardBlock {
     /// Phase 1: 商品ハイライトカード。
+    #[ts(rename_all = "camelCase")]
     ProductFeature {
         /// §4.6 の規約に従う不変 ID (データ主キー / 構造化 ID / 複合 ID のいずれか)。
         id: String,
@@ -778,6 +830,7 @@ pub enum CardBlock {
     /// Phase 2 (MVP): 商品詳細ページ。一覧カード (`product_feature`) と同じ商品でも、
     /// 詳細はリージョン構成が違う (gallery / hero / spec / pricing / cta) ため別 variant。
     /// 1 つの id に対して `product_feature` と `product_detail` が並立しうる。
+    #[ts(rename_all = "camelCase")]
     ProductDetail {
         id: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -794,6 +847,7 @@ pub enum CardBlock {
     /// Phase 7: カート画面。1 ユーザにつき 1 枚 (server 側 cart store の現状を
     /// snapshot して返す)。`id` は固定で "cart" (= 単一カートしかないので一意)。
     /// 将来 multi-cart (= ギフトリスト等) を持つなら id を分ける。
+    #[ts(rename_all = "camelCase")]
     Cart {
         id: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -814,44 +868,27 @@ pub enum CardBlock {
 impl CardBlock {
     pub fn id(&self) -> &str {
         match self {
-            CardBlock::ProductFeature { id, .. }
-            | CardBlock::ProductDetail { id, .. }
-            | CardBlock::Cart { id, .. } => id,
+            CardBlock::ProductFeature { id, .. } => id,
+            CardBlock::ProductDetail { id, .. } => id,
+            CardBlock::Cart { id, .. } => id,
         }
     }
 
-    /// `analytics_id` が未指定なら `id` を流用 (§11.4)。
-    pub fn effective_analytics_id(&self) -> &str {
-        match self {
-            CardBlock::ProductFeature {
-                id, analytics_id, ..
-            }
-            | CardBlock::ProductDetail {
-                id, analytics_id, ..
-            }
-            | CardBlock::Cart {
-                id, analytics_id, ..
-            } => analytics_id.as_deref().unwrap_or(id),
-        }
-    }
-
-    /// このカード内の全ブロックを順次返すイテレータ。
-    /// `ValidateKeys` で `Block.key` の一意性検証に利用する。
-    pub fn iter_blocks(&self) -> Box<dyn Iterator<Item = &Block> + '_> {
-        match self {
-            CardBlock::ProductFeature { regions, .. } => Box::new(regions.iter_blocks()),
-            CardBlock::ProductDetail { regions, .. } => Box::new(regions.iter_blocks()),
-            CardBlock::Cart { regions, .. } => Box::new(regions.iter_blocks()),
-        }
-    }
-
-    /// テンプレート名 (= `template` discriminator の値)。
-    /// `ValidateA11y` のエラー文に template を含めて debug 容易にする用途。
+    /// テンプレート名 (= serde tag value 相当)。`validate_a11y` のエラーメッセージで使う。
     pub fn template_name(&self) -> &'static str {
         match self {
             CardBlock::ProductFeature { .. } => "product_feature",
             CardBlock::ProductDetail { .. } => "product_detail",
             CardBlock::Cart { .. } => "cart",
+        }
+    }
+
+    /// 全 region の Block を平らに iterate する (= validate_keys / validate_a11y で使用)。
+    pub fn iter_blocks(&self) -> Box<dyn Iterator<Item = &Block> + '_> {
+        match self {
+            CardBlock::ProductFeature { regions, .. } => Box::new(regions.iter_blocks()),
+            CardBlock::ProductDetail { regions, .. } => Box::new(regions.iter_blocks()),
+            CardBlock::Cart { regions, .. } => Box::new(regions.iter_blocks()),
         }
     }
 }

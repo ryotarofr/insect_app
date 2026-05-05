@@ -83,8 +83,10 @@ const PAGE_ITEMS: ReadonlyArray<
   { label: "個体を登録", sub: "単独個体", href: ROUTE_PATHS["specimen-new"], tags: "specimen new 個体 register" },
   { label: "羽化予測", sub: "予定一覧", href: ROUTE_PATHS.eclosion, tags: "eclosion 羽化" },
   { label: "血統系図", sub: "系統ツリー", href: ROUTE_PATHS.bloodline, tags: "bloodline 血統 family" },
-  { label: "ショップ管理", sub: "売上・在庫", href: ROUTE_PATHS.shop, tags: "shop 売上 売り上げ" },
-  { label: "C2Cマーケット", sub: "ユーザー間取引", href: ROUTE_PATHS.market, tags: "market c2c マーケット" },
+  // C2C pivot: 旧 "shop" (= ショップ管理) / "market" (= C2Cマーケット 単独画面) は廃止。
+  //   /products が C2C 出品一覧に統合された。
+  { label: "出品中の生体", sub: "C2C マーケット", href: ROUTE_PATHS.products, tags: "products listings market c2c マーケット 出品" },
+  { label: "出品する", sub: "個体を選んで出品", href: ROUTE_PATHS["listing-new"], tags: "listing new sell 出品" },
   { label: "カート", sub: "購入手続き", href: ROUTE_PATHS.cart, tags: "cart 決済 checkout" },
   { label: "安心保証", sub: "24h 死着補償", href: ROUTE_PATHS.warranty, tags: "warranty 補償 返金 help" },
 ] as const;

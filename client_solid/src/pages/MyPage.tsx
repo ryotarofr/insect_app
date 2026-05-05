@@ -22,6 +22,11 @@ import { Icons } from "../components/Icons";
 import { Tooltip } from "../components/Tooltip";
 import { ROUTE_PATHS } from "../router";
 import { currentUser } from "../store/auth";
+import {
+  myListingsByStatus,
+  myListingsKpi,
+} from "../store/myListings";
+import type { ListingViewWithCounts } from "../sdui/api";
 
 /** ISO 8601 (= "2024-03-15T00:00:00Z") を「2024.03」形式に整形。
  *  「登録 YYYY.MM より」の表示用。`joinedAt` 未取得時は "—" を返す。 */
@@ -173,6 +178,270 @@ const ACTION_META: Record<
   eclosion: { tone: "rose", emoji: "⏳" },
 };
 
+// ──────────────────────────────────────────────────────────────────────
+// Phase 2: マイ出品サマリ (= §01 マイページ統合)
+// ──────────────────────────────────────────────────────────────────────
+//
+// **責務**:
+//   - store/myListings の派生 (`myListingsByStatus`) からタブ別の listings 配列を取り、
+//     アクティブタブ 1 つの直近 3 件を表示する。
+//   - 詳細 CRUD は Phase 3 で `/listings/me` に追加するため、本コンポーネントは
+//     「サマリ」のみ。「すべて見る」リンクは Phase 3 まで disabled (= `aria-disabled`).
+//
+// **設計判断**:
+//   - タブの種類は `active / bidding / sold / canceledOrExpired` の 4 つ。
+//     mockup の「出品中 / 入札中 / 売却済 / 取消・期限切れ」と一致。
+//   - 各タブの件数バッジは store 派生 (`myListingsByStatus`) の length をそのまま表示。
+//   - 出品が 0 件のときは「まだ出品がありません + 出品するリンク」を inline で出す。
+
+type MyListingsTab = "active" | "bidding" | "sold" | "canceledOrExpired";
+
+const TAB_LABEL: Record<MyListingsTab, string> = {
+  active: "出品中",
+  bidding: "入札中",
+  sold: "売却済",
+  canceledOrExpired: "取消・期限切れ",
+};
+
+const formatPrice = (l: ListingViewWithCounts): string => {
+  // auction で入札がついていれば現在価格、それ以外は開始価格
+  if (l.isAuction && l.currentPriceJpy != null) {
+    return `¥${l.currentPriceJpy.toLocaleString("ja-JP")}`;
+  }
+  const base = `¥${l.startingPriceJpy.toLocaleString("ja-JP")}`;
+  return l.isAuction ? `${base}〜` : base;
+};
+
+const STATUS_BADGE: Record<string, { label: string; tone: string }> = {
+  active: { label: "出品中", tone: "forest" },
+  sold: { label: "売却済", tone: "indigo" },
+  canceled: { label: "取消", tone: "ink" },
+  expired: { label: "期限切れ", tone: "ink" },
+};
+
+const MyListingsSummary = () => {
+  const [tab, setTab] = createSignal<MyListingsTab>("active");
+  const grp = myListingsByStatus;
+
+  const activeRows = createMemo(() => grp()[tab()]);
+  const totalCount = createMemo(() => grp().all.length);
+
+  const tabs: MyListingsTab[] = ["active", "bidding", "sold", "canceledOrExpired"];
+
+  return (
+    <>
+      <div class="sec-head">
+        <span class="num">§01</span>
+        <h2>マイ出品 と 取引</h2>
+        <span class="meta" style={{ "margin-left": "auto" }}>
+          {/* Phase 3 完了: /listings/me (= MyListingsPage) への導線を有効化。 */}
+          <A
+            href={ROUTE_PATHS["my-listings"]}
+            style={{
+              color: "var(--accent-forest, oklch(0.45 0.08 150))",
+              "font-size": "12px",
+              "text-decoration": "none",
+              "font-weight": 600,
+            }}
+          >
+            すべて見る →
+          </A>
+        </span>
+      </div>
+
+      <div class="card" style={{ padding: 0, "margin-bottom": "28px", overflow: "hidden" }}>
+        {/* タブ */}
+        <div
+          role="tablist"
+          aria-label="マイ出品のステータスタブ"
+          style={{
+            display: "flex",
+            gap: "4px",
+            padding: "8px 14px 0",
+            "border-bottom": "1px solid var(--line)",
+            "overflow-x": "auto",
+          }}
+        >
+          <For each={tabs}>
+            {(t) => {
+              const count = () => grp()[t].length;
+              const isActive = () => tab() === t;
+              return (
+                <button
+                  role="tab"
+                  aria-selected={isActive()}
+                  onClick={() => setTab(t)}
+                  style={{
+                    border: "none",
+                    background: "transparent",
+                    padding: "8px 12px",
+                    "font-size": "13px",
+                    "font-weight": 500,
+                    "border-bottom": isActive()
+                      ? "2px solid var(--accent-forest, oklch(0.45 0.08 150))"
+                      : "2px solid transparent",
+                    color: isActive()
+                      ? "var(--accent-forest, oklch(0.45 0.08 150))"
+                      : "var(--ink-mute)",
+                    cursor: "pointer",
+                    "white-space": "nowrap",
+                    display: "inline-flex",
+                    "align-items": "center",
+                    gap: "6px",
+                    "font-family": "inherit",
+                  }}
+                >
+                  {TAB_LABEL[t]}
+                  <span
+                    class="mono"
+                    style={{
+                      "font-size": "10px",
+                      padding: "0 6px",
+                      "border-radius": "99px",
+                      border: "1px solid var(--line)",
+                      color: isActive() ? "var(--accent-forest)" : "var(--ink-faint)",
+                      background: isActive()
+                        ? "var(--accent-forest-soft, oklch(0.93 0.03 150))"
+                        : "transparent",
+                    }}
+                  >
+                    {count()}
+                  </span>
+                </button>
+              );
+            }}
+          </For>
+        </div>
+
+        {/* リスト本体 */}
+        <Show
+          when={activeRows().length > 0}
+          fallback={
+            <div
+              style={{
+                padding: "26px 20px",
+                "text-align": "center",
+                color: "var(--ink-mute)",
+                "font-size": "13px",
+              }}
+            >
+              <Show
+                when={totalCount() > 0}
+                fallback={
+                  <>
+                    まだ出品がありません。
+                    <A
+                      href="/listings/new"
+                      style={{
+                        "margin-left": "8px",
+                        color: "var(--accent-forest, oklch(0.45 0.08 150))",
+                        "text-decoration": "none",
+                        "font-weight": 600,
+                      }}
+                    >
+                      出品する →
+                    </A>
+                  </>
+                }
+              >
+                このステータスの出品はありません
+              </Show>
+            </div>
+          }
+        >
+          <For each={activeRows().slice(0, 3)}>
+            {(l) => {
+              const badge = STATUS_BADGE[l.status] ?? { label: l.status, tone: "ink" };
+              return (
+                <A
+                  href={`/products/${encodeURIComponent(l.publicId)}`}
+                  style={{
+                    display: "grid",
+                    "grid-template-columns": "1fr auto auto auto",
+                    gap: "12px",
+                    "align-items": "center",
+                    padding: "12px 18px",
+                    "border-top": "1px solid var(--line)",
+                    "text-decoration": "none",
+                    color: "inherit",
+                  }}
+                >
+                  <div style={{ "min-width": 0 }}>
+                    <div
+                      style={{
+                        "font-weight": 600,
+                        "font-size": "13.5px",
+                        "white-space": "nowrap",
+                        overflow: "hidden",
+                        "text-overflow": "ellipsis",
+                      }}
+                    >
+                      {l.title}
+                    </div>
+                    <div
+                      class="mono"
+                      style={{
+                        "font-size": "11px",
+                        color: "var(--ink-faint)",
+                        "margin-top": "2px",
+                      }}
+                    >
+                      {l.publicId}
+                      <Show when={l.isVerified}>
+                        <span
+                          style={{
+                            "margin-left": "8px",
+                            color: "var(--accent-forest)",
+                            "font-weight": 600,
+                          }}
+                        >
+                          血統認証
+                        </span>
+                      </Show>
+                    </div>
+                  </div>
+                  <div class="serif" style={{ "font-size": "15px", "font-weight": 600 }}>
+                    {formatPrice(l)}
+                  </div>
+                  <div
+                    style={{ "font-size": "11.5px", color: "var(--ink-mute)", "text-align": "right" }}
+                  >
+                    <div>
+                      <b>{l.bidCount}</b> 入札
+                    </div>
+                    <div>
+                      <b>{l.watcherCount}</b> watcher
+                    </div>
+                  </div>
+                  <span class={`chip ${badge.tone}`}>{badge.label}</span>
+                </A>
+              );
+            }}
+          </For>
+
+          <Show when={activeRows().length > 3}>
+            <A
+              href={ROUTE_PATHS["my-listings"]}
+              style={{
+                display: "block",
+                padding: "10px 18px",
+                "text-align": "center",
+                color: "var(--accent-forest, oklch(0.45 0.08 150))",
+                "font-size": "11.5px",
+                "text-decoration": "none",
+                "border-top": "1px solid var(--line)",
+                "font-weight": 600,
+              }}
+            >
+              ほか {activeRows().length - 3} 件をマイ出品ページで見る →
+            </A>
+          </Show>
+        </Show>
+      </div>
+    </>
+  );
+};
+
 /** 残り日数を短くローカライズ ("超過 2日", "今日", "あと 3日") */
 const formatDue = (a: UpcomingAction): string => {
   if (a.dueInDays < 0) return `超過 ${Math.abs(a.dueInDays)}日`;
@@ -197,15 +466,22 @@ export const MyPage = (props: MyPageProps) => {
   const formatDelta = (n: number): string =>
     n === 0 ? "±0" : n > 0 ? `+${n}` : `${n}`;
 
+  /** KPI の見せ方:
+   *  - **飼育系 (forest/amber/indigo/ink)**: 既存 4 枚をそのまま維持。anonymous でも表示可。
+   *  - **販売系 (shop)**: Phase 2 で追加。login user のみ表示し、anonymous は枚数 0 にする
+   *    (= `cards()` の filter で除外)。
+   *  - 表示順は飼育 → 販売の左→右。grid は md 以上で 4 列、xl で 6 列を目安。
+   */
   const cards = createMemo(() => {
     const m = metrics();
-    return [
+    const baseBreedCards = [
       {
         label: "所有個体",
         value: m.specimenCount,
         unit: "体",
         sub: "生存中",
-        tone: "forest",
+        tone: "forest" as const,
+        category: "breed" as const,
         help: "所有個体 (生存中) の合計。\n死亡 / 譲渡済はカウント外。",
       },
       {
@@ -216,16 +492,17 @@ export const MyPage = (props: MyPageProps) => {
           m.eclosionUrgentCount > 0
             ? `うち7日以内 ${m.eclosionUrgentCount}体`
             : "直近7日内なし",
-        tone: "amber",
+        tone: "amber" as const,
+        category: "breed" as const,
         help: "今日から 60 日以内に羽化予定の個体数。\n日数は eclosionETA フィールド基準 (蛹化後経過日から推定)。",
       },
       {
         label: "血統ライン",
         value: m.bloodlineCount,
         unit: "本",
-        // 0本のときは「最深 —」を出さない (= 冗長な空バッジを抑制)。
         sub: m.bloodlineCount > 0 ? `最深 ${m.deepestGeneration}` : null,
-        tone: "indigo",
+        tone: "indigo" as const,
+        category: "breed" as const,
         help: "所有個体の累代 (CBFn / WILD) のユニーク数。\n最深は CBF 数値の最大値。",
       },
       {
@@ -233,10 +510,51 @@ export const MyPage = (props: MyPageProps) => {
         value: m.monthlyLogCount,
         unit: "件",
         sub: `${formatDelta(m.monthlyLogDelta)} vs 前月`,
-        tone: "ink",
+        tone: "ink" as const,
+        category: "breed" as const,
         help: "当月 (暦月) 1 日 00:00 〜 現在までに記録された飼育ログ件数。\n前月比は先月同期間との差。",
       },
     ];
+
+    // 販売系は login user のみ表示。anonymous は store/myListings の cache が空なので
+    // 追加しても 0 が並ぶだけだが、視覚的ノイズを避けるため currentUser() で gating する。
+    if (!currentUser()) return baseBreedCards;
+
+    const k = myListingsKpi();
+    const shopCards = [
+      {
+        label: "出品中",
+        value: k.activeCount,
+        unit: "件",
+        sub:
+          k.auctionActiveCount > 0
+            ? `うちオークション ${k.auctionActiveCount}`
+            : null,
+        tone: "shop" as const,
+        category: "shop" as const,
+        help: "現在 active な自分の出品件数。\n売却 / 取消 / 期限切れはカウント外。",
+      },
+      {
+        label: "入札・ウォッチ",
+        value: k.biddingCount,
+        unit: "件",
+        sub: k.watcherTotal > 0 ? `watcher 合計 ${k.watcherTotal}` : null,
+        tone: "shop" as const,
+        category: "shop" as const,
+        help: "入札がある active 出品の件数。\nサブ表示は active 全体のウォッチャー合計。",
+      },
+      {
+        label: "売却済",
+        value: k.soldCount,
+        unit: "件",
+        sub: null,
+        tone: "shop" as const,
+        category: "shop" as const,
+        help: "ステータスが sold の出品件数 (= 過去の販売実績)。\n金額集計は Phase 4 (販売側 orders) で追加予定。",
+      },
+    ];
+
+    return [...baseBreedCards, ...shopCards];
   });
 
   return (
@@ -279,10 +597,43 @@ export const MyPage = (props: MyPageProps) => {
         </Show>
       </div>
 
-      <div style={{ display: "grid", "grid-template-columns": "repeat(4, 1fr)", gap: "16px", "margin-bottom": "28px" }}>
+      {/* Phase 2: KPI grid を `auto-fit` 化して 4 枚 (anonymous) / 7 枚 (login) どちらでも
+          自然に折り返すようにした。`minmax(176px, 1fr)` は localhost 1568px で 7 枚 1 行に
+          収まり、~1280px 未満で 4+3 / 3+3+1 と段階的に折り返す。 */}
+      <div
+        style={{
+          display: "grid",
+          "grid-template-columns": "repeat(auto-fit, minmax(176px, 1fr))",
+          gap: "16px",
+          "margin-bottom": "28px",
+        }}
+      >
         <For each={cards()}>
           {(s) => (
-            <div class="card" style={{ padding: "18px" }}>
+            <div class="card" style={{ padding: "18px", display: "flex", "flex-direction": "column", gap: "4px" }}>
+              {/* カテゴリ識別の小さい chip。飼育 (= forest/amber/indigo/ink) は灰系、
+                  販売 (= shop) は primary tone で塗り分けて視線で分離する。 */}
+              <span
+                class="chip"
+                data-category={s.category}
+                style={{
+                  "align-self": "flex-start",
+                  "font-size": "10px",
+                  "letter-spacing": "0.06em",
+                  padding: "1px 7px",
+                  ...(s.category === "shop"
+                    ? {
+                        background: "var(--accent-forest-soft, oklch(0.93 0.03 150))",
+                        color: "var(--accent-forest, oklch(0.45 0.08 150))",
+                      }
+                    : {
+                        background: "var(--bg-soft, oklch(0.96 0.006 80))",
+                        color: "var(--ink-mute, oklch(0.48 0.01 80))",
+                      }),
+                }}
+              >
+                {s.category === "shop" ? "販売" : "飼育"}
+              </span>
               <div
                 class="label"
                 style={{ display: "flex", "align-items": "center", gap: "6px" }}
@@ -372,8 +723,15 @@ export const MyPage = (props: MyPageProps) => {
         </div>
       </Show>
 
+      {/* Phase 2: マイ出品サマリ。login user 限定で表示し、anonymous は丸ごと非表示。
+          詳細 CRUD は Phase 3 で追加する `/listings/me` (= MyListingsPage) に逃がし、
+          ここではタブ + 直近 3 件 + 「すべて見る」リンクのみ。 */}
+      <Show when={currentUser()}>
+        <MyListingsSummary />
+      </Show>
+
       <div class="sec-head">
-        <span class="num">§01</span>
+        <span class="num">§02</span>
         <h2>次のケア</h2>
         <span class="meta">
           <Show when={upcoming().length > 0} fallback="今週の予定なし">

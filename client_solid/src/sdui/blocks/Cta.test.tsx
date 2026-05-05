@@ -108,7 +108,9 @@ describe("CtaBlockView (add_to_cart)", () => {
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(url).toBe("/api/v1/cart");
     expect(init.method).toBe("POST");
-    expect(init.body).toBe(JSON.stringify({ productId: "p-x", qty: 2 }));
+    // C2C pivot (migration 0021): cart_items.product_id → listing_id に変更。
+    // request body のキーも productId → listingId。
+    expect(init.body).toBe(JSON.stringify({ listingId: "p-x", qty: 2 }));
 
     // local store にも mirror されている
     expect(cartItems().some((i) => i.id === "p-x")).toBe(true);

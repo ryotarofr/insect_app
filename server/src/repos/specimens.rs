@@ -359,6 +359,59 @@ pub async fn update_notes(
     }
 }
 
+/// `owner_user_id` を `new_owner_user_id` に書き換える (= C2C 取引確定時の譲渡)。
+///
+/// **C2C pivot Step B**: stripe webhook → specimen_fulfillment::fulfill_paid_order が
+/// 注文確定時に呼ぶ。listing.specimen_id で指される specimen の owner を seller →
+/// buyer に書き換えるのが本質。
+///
+/// **副作用**:
+///   - `version` を +1 (= 楽観ロック)
+///   - `updated_at` は trigger で自動更新
+///   - life_status は変更しない (= "active" のまま、新オーナのもとで生存継続)
+///   - specimen_status_history への INSERT は行わない (= life_status 履歴とは別概念)
+///
+/// **冪等性**: 同じ (specimen_id, new_owner_user_id) を 2 度呼んでも結果は同じだが、
+///   version は 2 回 +1 されてしまう。fulfillment 側の `mark_item_fulfilled` の
+///   行レベルガード (= fulfilled_specimen_id IS NULL) によって 2 度目の呼び出しは
+///   そもそも起きないので、本関数は idempotent ガードを内蔵しない。
+pub async fn transfer_owner(
+    pool: Option<&PgPool>,
+    id: Uuid,
+    new_owner_user_id: Uuid,
+) -> Result<(), SpecimenRepoError> {
+    match pool {
+        Some(p) => {
+            let res = sqlx::query(
+                r#"
+                UPDATE specimens
+                SET owner_user_id = $2,
+                    version       = version + 1
+                WHERE id = $1
+                "#,
+            )
+            .bind(id)
+            .bind(new_owner_user_id)
+            .execute(p)
+            .await
+            .map_err(SpecimenRepoError::Db)?;
+            if res.rows_affected() == 0 {
+                return Err(SpecimenRepoError::NotFound(id));
+            }
+            Ok(())
+        }
+        None => {
+            let mut store = memory_store_lock_mut();
+            let row = store
+                .iter_mut()
+                .find(|r| r.id == id)
+                .ok_or(SpecimenRepoError::NotFound(id))?;
+            row.owner_user_id = new_owner_user_id;
+            Ok(())
+        }
+    }
+}
+
 /// archive フラグを true にして表示から除外する。physical DELETE はしない方針。
 pub async fn archive(
     pool: Option<&PgPool>,

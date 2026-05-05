@@ -119,6 +119,81 @@ pub struct ListingWithCounts {
     pub watcher_count: i64,
 }
 
+/// public_id で 1 件取得 + bid/watcher counts と seller name を埋めた拡張版。
+///
+/// **詳細ページ用** (= GET /api/v1/listings/{public_id})。
+/// 一覧 (`find_active_with_counts`) と同じ shape で 1 件返すので FE は単一 type で扱える。
+pub async fn find_by_public_id_with_counts(
+    pool: Option<&PgPool>,
+    public_id: &str,
+) -> Result<Option<ListingWithCounts>, ListingRepoError> {
+    match pool {
+        Some(p) => sqlx::query_as::<_, ListingWithCounts>(
+            r#"
+            SELECT
+                v.id, v.public_id, v.seller_user_id,
+                u.name AS seller_name,
+                v.specimen_id, v.title, v.description,
+                v.is_auction, v.starting_price_jpy, v.current_price_jpy,
+                v.ends_at, v.status, v.is_verified,
+                v.bid_count, v.watcher_count
+            FROM v_listings_with_counts v
+            JOIN users u ON u.id = v.seller_user_id
+            WHERE v.public_id = $1
+            LIMIT 1
+            "#,
+        )
+        .bind(public_id)
+        .fetch_optional(p)
+        .await
+        .map_err(ListingRepoError::Db),
+        None => {
+            // in-memory: status は問わず public_id で 1 件引く。counts / seller_name は
+            // find_active_with_counts と同じ cross-module 解決を再利用。
+            let row = memory_lock()
+                .iter()
+                .find(|r| r.public_id == public_id)
+                .cloned();
+            match row {
+                Some(r) => {
+                    let seller_name = crate::repos::users::find_by_id(None, r.seller_user_id)
+                        .await
+                        .ok()
+                        .flatten()
+                        .map(|u| u.name)
+                        .unwrap_or_default();
+                    let bid_count = crate::repos::bids::list_by_listing(None, r.id)
+                        .await
+                        .map(|v| v.len() as i64)
+                        .unwrap_or(0);
+                    let watcher_count =
+                        crate::repos::listing_watches::count_by_listing(None, r.id)
+                            .await
+                            .unwrap_or(0);
+                    Ok(Some(ListingWithCounts {
+                        id: r.id,
+                        public_id: r.public_id,
+                        seller_user_id: r.seller_user_id,
+                        seller_name,
+                        specimen_id: r.specimen_id,
+                        title: r.title,
+                        description: r.description,
+                        is_auction: r.is_auction,
+                        starting_price_jpy: r.starting_price_jpy,
+                        current_price_jpy: r.current_price_jpy,
+                        ends_at: r.ends_at,
+                        status: r.status,
+                        is_verified: r.is_verified,
+                        bid_count,
+                        watcher_count,
+                    }))
+                }
+                None => Ok(None),
+            }
+        }
+    }
+}
+
 pub async fn find_active_with_counts(
     pool: Option<&PgPool>,
 ) -> Result<Vec<ListingWithCounts>, ListingRepoError> {
@@ -141,53 +216,108 @@ pub async fn find_active_with_counts(
         .fetch_all(p)
         .await
         .map_err(ListingRepoError::Db),
-        None => {
-            // in-memory fallback: 各 cross-module store から counts と seller name を解決。
-            // unit test (= handler 経由 / DB 不在) で create_listing → list_active が動くために必要。
-            let active_rows: Vec<ListingRow> = memory_lock()
-                .iter()
-                .filter(|r| r.status == "active")
-                .cloned()
-                .collect();
+        None => fallback_collect_with_counts(|r| r.status == "active").await,
+    }
+}
 
-            let mut out = Vec::with_capacity(active_rows.len());
-            for r in active_rows {
-                let seller_name = crate::repos::users::find_by_id(None, r.seller_user_id)
-                    .await
-                    .ok()
-                    .flatten()
-                    .map(|u| u.name)
-                    .unwrap_or_default();
-                let bid_count = crate::repos::bids::list_by_listing(None, r.id)
-                    .await
-                    .map(|v| v.len() as i64)
-                    .unwrap_or(0);
-                let watcher_count = crate::repos::listing_watches::count_by_listing(None, r.id)
-                    .await
-                    .unwrap_or(0);
-                out.push(ListingWithCounts {
-                    id: r.id,
-                    public_id: r.public_id,
-                    seller_user_id: r.seller_user_id,
-                    seller_name,
-                    specimen_id: r.specimen_id,
-                    title: r.title,
-                    description: r.description,
-                    is_auction: r.is_auction,
-                    starting_price_jpy: r.starting_price_jpy,
-                    current_price_jpy: r.current_price_jpy,
-                    ends_at: r.ends_at,
-                    status: r.status,
-                    is_verified: r.is_verified,
-                    bid_count,
-                    watcher_count,
-                });
-            }
-            // id 降順 (= DB クエリと同じ並び)
-            out.sort_by(|a, b| b.id.cmp(&a.id));
-            Ok(out)
+/// 自分の出品 (seller_user_id 指定) を返す。`status_filter=None` なら全 status、
+/// `Some("active")` 等を渡すと CHECK 制約と同じ集合 (`active|sold|canceled|expired`) で絞る。
+///
+/// **Phase 1 / マイ出品**: GET /api/v1/listings/me が叩く。bid_count / watcher_count /
+/// seller_name 込みの `ListingWithCounts` を返し、FE 側 (= `MyListings.tsx`) でタブ
+/// (`入札中` = active && bid_count > 0 等) は派生計算する。
+///
+/// 並びは created_at の代理として `id DESC` (UUID v7 ではないが、insert 順とほぼ一致)。
+pub async fn find_by_seller(
+    pool: Option<&PgPool>,
+    seller_user_id: Uuid,
+    status_filter: Option<&str>,
+) -> Result<Vec<ListingWithCounts>, ListingRepoError> {
+    // 防御的 validation: CHECK 制約と同じ集合のみ許可。それ以外は invalid。
+    if let Some(s) = status_filter {
+        if !["active", "sold", "canceled", "expired"].contains(&s) {
+            return Err(ListingRepoError::Invalid(format!("invalid status: {s}")));
         }
     }
+
+    match pool {
+        Some(p) => sqlx::query_as::<_, ListingWithCounts>(
+            r#"
+            SELECT
+                v.id, v.public_id, v.seller_user_id,
+                u.name AS seller_name,
+                v.specimen_id, v.title, v.description,
+                v.is_auction, v.starting_price_jpy, v.current_price_jpy,
+                v.ends_at, v.status, v.is_verified,
+                v.bid_count, v.watcher_count
+            FROM v_listings_with_counts v
+            JOIN users u ON u.id = v.seller_user_id
+            WHERE v.seller_user_id = $1
+              AND ($2::TEXT IS NULL OR v.status = $2)
+            ORDER BY v.id DESC
+            "#,
+        )
+        .bind(seller_user_id)
+        .bind(status_filter)
+        .fetch_all(p)
+        .await
+        .map_err(ListingRepoError::Db),
+        None => {
+            fallback_collect_with_counts(|r| {
+                r.seller_user_id == seller_user_id
+                    && status_filter.map(|s| r.status == s).unwrap_or(true)
+            })
+            .await
+        }
+    }
+}
+
+/// in-memory store からフィルタ → counts / seller_name を解決する共通ヘルパ。
+/// `find_active_with_counts` / `find_by_seller` の None 分岐から再利用する。
+async fn fallback_collect_with_counts(
+    pred: impl Fn(&ListingRow) -> bool,
+) -> Result<Vec<ListingWithCounts>, ListingRepoError> {
+    let rows: Vec<ListingRow> = memory_lock()
+        .iter()
+        .filter(|r| pred(r))
+        .cloned()
+        .collect();
+
+    let mut out = Vec::with_capacity(rows.len());
+    for r in rows {
+        let seller_name = crate::repos::users::find_by_id(None, r.seller_user_id)
+            .await
+            .ok()
+            .flatten()
+            .map(|u| u.name)
+            .unwrap_or_default();
+        let bid_count = crate::repos::bids::list_by_listing(None, r.id)
+            .await
+            .map(|v| v.len() as i64)
+            .unwrap_or(0);
+        let watcher_count = crate::repos::listing_watches::count_by_listing(None, r.id)
+            .await
+            .unwrap_or(0);
+        out.push(ListingWithCounts {
+            id: r.id,
+            public_id: r.public_id,
+            seller_user_id: r.seller_user_id,
+            seller_name,
+            specimen_id: r.specimen_id,
+            title: r.title,
+            description: r.description,
+            is_auction: r.is_auction,
+            starting_price_jpy: r.starting_price_jpy,
+            current_price_jpy: r.current_price_jpy,
+            ends_at: r.ends_at,
+            status: r.status,
+            is_verified: r.is_verified,
+            bid_count,
+            watcher_count,
+        });
+    }
+    out.sort_by(|a, b| b.id.cmp(&a.id));
+    Ok(out)
 }
 
 pub async fn insert(

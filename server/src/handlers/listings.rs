@@ -1,6 +1,7 @@
 //! `/api/v1/listings/*` (Phase 9.E / C2C marketplace HTTP API)
 //!
 //! - `GET    /api/v1/listings`                  → active な出品一覧 (= 公開閲覧)
+//! - `GET    /api/v1/listings/me`               → 自分の出品 (= login 必須 / status filter 可)
 //! - `POST   /api/v1/listings`                  → 新規出品 (= login 必須 / seller = current user)
 //! - `GET    /api/v1/listings/{public_id}`      → 公開閲覧
 //! - `POST   /api/v1/listings/{id}/cancel`      → 出品取消 (= 所有者のみ)
@@ -8,10 +9,10 @@
 //! - `POST   /api/v1/listings/{id}/watch`       → ウォッチトグル (= login 必須)
 //!
 //! **Auth**:
-//!   - 公開系 (GET) は anonymous で OK。
-//!   - 状態変更系 (POST) は login 必須 (= 401 を返す)。
+//!   - 公開系 (GET /, GET /{public_id}) は anonymous で OK。
+//!   - 自分系 (GET /me) と 状態変更系 (POST) は login 必須 (= 401 を返す)。
 
-use axum::{Extension, Json, extract::{Path, State}, http::StatusCode};
+use axum::{Extension, Json, extract::{Path, Query, State}, http::StatusCode};
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
@@ -137,6 +138,59 @@ pub async fn list_active(
     Ok(Json(rows.into_iter().map(ListingViewWithCounts::from).collect()))
 }
 
+/// `GET /api/v1/listings/me` の query parameters。
+#[derive(Debug, Clone, Deserialize, utoipa::IntoParams)]
+#[serde(rename_all = "camelCase")]
+pub struct ListMyListingsParams {
+    /// `active` / `sold` / `canceled` / `expired` / `all`。省略時は `all`。
+    pub status: Option<String>,
+}
+
+/// `GET /api/v1/listings/me?status=active|sold|canceled|expired|all` —
+/// 自分の出品一覧。
+///
+/// **Phase 1 / マイ出品**:
+/// - login 必須 (= 401)。session の user_id を `seller_user_id` として固定。
+/// - `?status=` 省略 or `all` で全 status、それ以外は schema CHECK と同じ集合のみ受け付ける。
+/// - 戻り値は `list_active` と同じ `ListingViewWithCounts` shape (= bid_count / watcher_count
+///   込み)。FE のタブ (= `入札中` = active && bid_count > 0) は派生計算する。
+#[utoipa::path(
+    get,
+    path = "/listings/me",
+    tag = "listings",
+    params(ListMyListingsParams),
+    responses(
+        (status = 200, description = "自分の出品 (= bid_count / watcher_count 込み)", body = Vec<ListingViewWithCounts>),
+        (status = 400, description = "invalid status", body = crate::openapi::ErrorResponse),
+        (status = 401, description = "未ログイン", body = crate::openapi::ErrorResponse),
+    ),
+)]
+pub async fn list_my_listings(
+    State(state): State<AppState>,
+    Extension(session_id): Extension<SessionId>,
+    Query(params): Query<ListMyListingsParams>,
+) -> Result<Json<Vec<ListingViewWithCounts>>, AppError> {
+    let user_id = require_user_id(&state, session_id.0).await?;
+
+    // "all" / 空文字 / None はフィルタ無し扱い。それ以外は repo 側の validation に委ねる。
+    let raw = params.status.as_deref().map(str::trim).filter(|s| !s.is_empty());
+    let status_filter = match raw {
+        None | Some("all") => None,
+        Some(s) => Some(s),
+    };
+
+    let rows = listings::find_by_seller(state.db(), user_id, status_filter)
+        .await
+        .map_err(|e| match e {
+            listings::ListingRepoError::Invalid(msg) => AppError::BadRequest(msg),
+            listings::ListingRepoError::Db(e) => {
+                AppError::BadRequest(format!("listings fetch: {e}"))
+            }
+            listings::ListingRepoError::NotFound(_) => AppError::NotFound,
+        })?;
+    Ok(Json(rows.into_iter().map(ListingViewWithCounts::from).collect()))
+}
+
 #[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ListingViewWithCounts {
@@ -237,6 +291,10 @@ pub async fn create_listing(
 }
 
 /// `GET /api/v1/listings/{public_id}` — public_id で 1 件取得 (= 公開閲覧 OK)。
+///
+/// 戻り値は seller_name / bid_count / watcher_count を JOIN で含めた `ListingViewWithCounts`
+/// (= 一覧 endpoint と同 shape)。FE の listings 詳細ページが seller 名を fallback 無しで
+/// 表示できるようにするのが目的。
 #[utoipa::path(
     get,
     path = "/listings/{public_id}",
@@ -245,19 +303,19 @@ pub async fn create_listing(
         ("public_id" = String, Path, description = "listing の public_id (= URL slug)"),
     ),
     responses(
-        (status = 200, description = "1 listing 詳細", body = ListingView),
+        (status = 200, description = "1 listing 詳細 (= seller_name / bid_count / watcher_count 同梱)", body = ListingViewWithCounts),
         (status = 404, description = "listing 不存在", body = crate::openapi::ErrorResponse),
     ),
 )]
 pub async fn get_listing(
     State(state): State<AppState>,
     Path(public_id): Path<String>,
-) -> Result<Json<ListingView>, AppError> {
-    let row = listings::find_by_public_id(state.db(), &public_id)
+) -> Result<Json<ListingViewWithCounts>, AppError> {
+    let row = listings::find_by_public_id_with_counts(state.db(), &public_id)
         .await
         .map_err(|e| AppError::BadRequest(format!("listing lookup: {e}")))?
         .ok_or(AppError::NotFound)?;
-    Ok(Json(ListingView::from(row)))
+    Ok(Json(ListingViewWithCounts::from(row)))
 }
 
 /// `POST /api/v1/listings/{id}/cancel` — 自分の出品を canceled に倒す。
@@ -677,6 +735,106 @@ mod tests {
         match toggle_watch_listing(st(), ext(session), Path(Uuid::new_v4().to_string())).await {
             Err(AppError::Unauthorized) => {}
             other => panic!("expected Unauthorized, got {other:?}"),
+        }
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // Phase 1: GET /listings/me
+    // ──────────────────────────────────────────────────────────────────
+
+    fn my_params(status: Option<&str>) -> Query<ListMyListingsParams> {
+        Query(ListMyListingsParams {
+            status: status.map(str::to_string),
+        })
+    }
+
+    /// 自分の active 出品だけ返り、別ユーザーのは混ざらない (cross-user リーク防止)。
+    #[tokio::test]
+    async fn list_my_listings_returns_only_own() {
+        let _g = lock_all();
+        reset_all();
+
+        let (s_a, _) = login_session().await;
+        create_listing(st(), ext(s_a), Json(create_req("L-A1", false, 1000)))
+            .await
+            .unwrap();
+        create_listing(st(), ext(s_a), Json(create_req("L-A2", false, 2000)))
+            .await
+            .unwrap();
+
+        let (s_b, _) = login_session().await;
+        create_listing(st(), ext(s_b), Json(create_req("L-B1", false, 3000)))
+            .await
+            .unwrap();
+
+        let mine = list_my_listings(st(), ext(s_a), my_params(None))
+            .await
+            .unwrap();
+        assert_eq!(mine.0.len(), 2);
+        assert!(mine.0.iter().all(|r| r.public_id.starts_with("L-A")));
+    }
+
+    /// `?status=active` / `?status=canceled` でフィルタが効くこと。
+    #[tokio::test]
+    async fn list_my_listings_filters_by_status() {
+        let _g = lock_all();
+        reset_all();
+
+        let (session, _) = login_session().await;
+        let r1 = create_listing(st(), ext(session), Json(create_req("L-S1", false, 1000)))
+            .await
+            .unwrap();
+        let _r2 = create_listing(st(), ext(session), Json(create_req("L-S2", false, 2000)))
+            .await
+            .unwrap();
+        // L-S1 を取消
+        cancel_listing(st(), ext(session), Path(r1.0.id.clone()))
+            .await
+            .unwrap();
+
+        let active = list_my_listings(st(), ext(session), my_params(Some("active")))
+            .await
+            .unwrap();
+        assert_eq!(active.0.len(), 1);
+        assert_eq!(active.0[0].public_id, "L-S2");
+
+        let canceled = list_my_listings(st(), ext(session), my_params(Some("canceled")))
+            .await
+            .unwrap();
+        assert_eq!(canceled.0.len(), 1);
+        assert_eq!(canceled.0[0].public_id, "L-S1");
+
+        // ?status=all (= None と同じ扱い) は両方返す
+        let all = list_my_listings(st(), ext(session), my_params(Some("all")))
+            .await
+            .unwrap();
+        assert_eq!(all.0.len(), 2);
+    }
+
+    /// anonymous (= attach_user していない session) は 401。
+    #[tokio::test]
+    async fn list_my_listings_requires_login() {
+        let _g = lock_all();
+        reset_all();
+
+        let session = Uuid::new_v4();
+        user_sessions::create_anonymous_for_test(None, session).await.unwrap();
+        match list_my_listings(st(), ext(session), my_params(None)).await {
+            Err(AppError::Unauthorized) => {}
+            other => panic!("expected Unauthorized, got {other:?}"),
+        }
+    }
+
+    /// invalid な status 値は 400。
+    #[tokio::test]
+    async fn list_my_listings_rejects_invalid_status() {
+        let _g = lock_all();
+        reset_all();
+
+        let (session, _) = login_session().await;
+        match list_my_listings(st(), ext(session), my_params(Some("weird"))).await {
+            Err(AppError::BadRequest(msg)) => assert!(msg.contains("invalid status")),
+            other => panic!("expected BadRequest, got {other:?}"),
         }
     }
 }

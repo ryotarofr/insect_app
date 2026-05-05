@@ -30,18 +30,22 @@ export type RouteKey =
   // 旧 飼育ログ (/log) は Cohort Phase 1 で削除。ロギングは群・個体の文脈内に内包。
   | "eclosion"
   | "bloodline"
-  | "shop"
-  | "market"
+  // C2C pivot: 旧 "shop" / "market" RouteKey は削除。
+  //   - "shop" (= ショップ管理) は B2C 概念のため C2C pivot で全廃
+  //   - "market" (= 旧 C2Cマーケット) は /products と統合済 (= /products が listings 一覧)
   // Phase 9.1 (Strangler Fig 段階 2 完了): "cart" は SDUI 駆動の CartSduiPage に統一。
-  //   旧 "cart-sdui" route は削除済み。/cart-sdui へのアクセスは router で /cart に正規化。
+  //   C2C pivot 後は cart_items が listing_id を持ち、出品の購入経路として再利用。
   | "cart"
   | "warranty"
   // Phase 9.G: login / register UI を表示する route
   | "login"
-  // Phase 9.G: 自分の注文履歴一覧 (= GET /api/v1/orders/me)
+  // Phase 9.G: 自分の注文履歴 / 詳細 (C2C pivot 後は「取引履歴」として運用)
   | "orders"
-  // Phase 9.G: 1 注文の詳細ページ (= GET /api/v1/orders/{id} で line_items 込み)
   | "order-detail"
+  // C2C pivot: 出品作成ページ (/listings/new)
+  | "listing-new"
+  // Phase 3: 自分の出品管理ページ (/listings/me) — タブ式の縦リスト全件表示
+  | "my-listings"
   // どの URL にもマッチしない時に使う擬似ルート (画面側で 404 を表示する)
   | "not-found";
 
@@ -125,4 +129,3 @@ export interface Listing {
   auction: boolean;
   verified: boolean;
 }
-

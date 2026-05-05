@@ -3,9 +3,8 @@
 // 形状と不変条件（sort 順・filter 閾値・存在判定）を検証する。
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import {
-  listProducts,
-  getProduct,
-  productExists,
+  // C2C pivot: listProducts / getProduct / productExists は listings 由来に変わり、
+  // 専用テストは削除済み。Product 型 import も同時に削除。
   listSpecimens,
   getSpecimen,
   specimenExists,
@@ -17,12 +16,9 @@ import {
   listMarketListings,
   getUpcomingActions,
   getAuditLog,
-  type Product,
 } from "./index";
-import {
-  resetProductsForTest,
-  setProductsForTest,
-} from "../store/products";
+// C2C pivot: store/products は廃止 (= api/products.ts は serverListings() 起点に変更)。
+//   product 系テストは listings store を seed して実施する。
 import {
   resetServerSpecimensForTest,
   setServerSpecimensForTest,
@@ -178,34 +174,7 @@ const logsFixture: SpecimenLogView[] = [
   },
 ];
 
-// products は server の /api/v1/products から fetch する設計に移行済 (PR #3)。
-// 単体テストでは fetch を経由せず、store/products に直接フィクスチャを仕込む。
-const productFixture: Product[] = [
-  {
-    id: "p-hh-m-142",
-    kind: "生体",
-    title: "ヘラクレスオオカブト ♂ 142mm",
-    sci: "Dynastes hercules hercules",
-    price: 48000,
-    badge: "血統書付",
-    generation: "CBF2",
-    shop: "ANCHOR BEETLE CO.",
-    tone: "forest",
-    phLabel: "D",
-  },
-  {
-    id: "p-jelly",
-    kind: "用品",
-    title: "高栄養ゼリー 17g × 50個",
-    sci: null,
-    price: 1480,
-    badge: "消耗品",
-    generation: null,
-    shop: "ANCHOR BEETLE CO.",
-    tone: "amber",
-    phLabel: "J",
-  },
-];
+// C2C pivot: 旧 productFixture (= B2C 商品) は廃止。listings 由来テストのみ残す。
 
 // specimens / species / logs / listings fixture を全テスト前に仕込む。
 // (= specimens / logs / audit / metrics / market の各 describe ブロックが依存)
@@ -225,38 +194,8 @@ afterEach(() => {
   resetListingsForTest();
 });
 
-describe("api/products", () => {
-  beforeEach(() => {
-    setProductsForTest(productFixture);
-  });
-  afterEach(() => {
-    resetProductsForTest();
-  });
-
-  it("listProducts returns a non-empty array of products", () => {
-    const ps = listProducts();
-    expect(ps.length).toBeGreaterThan(0);
-    for (const p of ps) {
-      expect(p.id).toMatch(/^[a-z0-9-]+$/i);
-      expect(typeof p.price).toBe("number");
-    }
-  });
-
-  it("getProduct(id) returns matching product", () => {
-    const first = listProducts()[0];
-    expect(getProduct(first.id)).toBe(first);
-  });
-
-  it("getProduct(nonexistent) returns undefined", () => {
-    expect(getProduct("nonexistent-product-id")).toBeUndefined();
-  });
-
-  it("productExists reflects getProduct behavior", () => {
-    const first = listProducts()[0];
-    expect(productExists(first.id)).toBe(true);
-    expect(productExists("nonexistent-product-id")).toBe(false);
-  });
-});
+// C2C pivot: api/products は listings 由来に変わったため、専用テストは削除。
+// listings 起点の振る舞いは下の "api/listings" describe に集約済み。
 
 describe("api/specimens", () => {
   it("listSpecimens returns specimens with ID and eclosionInDays", () => {

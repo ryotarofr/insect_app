@@ -40,8 +40,9 @@ import { CohortPromotePage } from "./pages/cohort/promote";
 import { CohortNewPage } from "./pages/cohort/new";
 import { EclosionPage } from "./pages/Eclosion";
 import { BloodlinePage } from "./pages/Bloodline";
-import { ShopPage } from "./pages/Shop";
-import { MarketPage } from "./pages/Market";
+// C2C pivot: ShopPage / MarketPage は削除済 (= Market は /products に統合)
+import { ListingNewPage } from "./pages/listings/new";
+import { MyListingsPage } from "./pages/listings/MyListings";
 import { CartSduiPage } from "./pages/CartSdui";
 import { LoginPage } from "./pages/Login";
 import { MyOrdersPage } from "./pages/MyOrders";
@@ -50,11 +51,12 @@ import { WarrantyPage } from "./pages/help/Warranty";
 import { NotFoundPage } from "./pages/NotFound";
 import { cartCount } from "./store/cart";
 import { currentUser, refreshMe } from "./store/auth";
-import { loadProducts } from "./store/products";
-import { loadProductBloodlines } from "./store/productBloodlines";
+// C2C pivot: store/products / store/productBloodlines は B2C 商品向けキャッシュなので削除済。
+//   出品 (listings) のキャッシュは store/listings.ts (= loadListings) が担当する。
 import { loadSpecies } from "./store/species";
 import { clearMyLogs, refreshMyLogs } from "./store/myLogs";
 import { loadListings } from "./store/listings";
+import { clearMyListings, refreshMyListings } from "./store/myListings";
 import {
   clearServerSpecimens,
   refreshMySpecimens,
@@ -70,18 +72,14 @@ import {
 import { saveScroll, consumeScroll } from "./store/scrollMemory";
 
 // UX-1: 個体カルテ (specimen) は詳細ビューなのでサイドバー / ショートカットから外す。
-// マイページの所有個体カード等から id 付きで開く設計に統一。
-// 数字キーは 1-8 で連番、9 は空き。
+// C2C pivot: 旧 "market" / "shop" は削除済。1-6 を再割当。
 const SHORTCUT_MAP: Record<string, RouteKey> = {
   "1": "mypage",
   "2": "products",
-  // Cohort Phase 1: 旧 "log" (= /log 飼育ログ) は削除。3 は飼育 (cohort) に再割当。
   "3": "cohort",
   "4": "eclosion",
   "5": "bloodline",
-  "6": "market",
-  "7": "shop",
-  "8": "cart",
+  "6": "cart",
 };
 
 /**
@@ -377,14 +375,9 @@ export const App = () => {
       // App 起動は止めず、login が必要な画面で 401 を見て対応する。
       console.warn("auth refresh failed:", err);
     });
-    // 商品マスタを 1 回 fetch して store/products.ts の signal に詰める。
-    // 失敗時は loadProducts 内で warn 済 (= 例外は伝播しない)。
-    void loadProducts();
-    // 商品血統情報を 1 回 fetch (= 商品詳細 / 一覧 chip / カートリマインダで参照)。
-    void loadProductBloodlines();
-    // 種マスタを 1 回 fetch (= specimens 表示時に speciesId → 和名/学名 を引くため)。
+    // C2C pivot: B2C の商品マスタ / 商品血統情報の起動時 fetch は廃止。
+    //   listings (= 出品一覧) を起動時に 1 回 fetch する (public 閲覧 OK / login 不要)。
     void loadSpecies();
-    // marketplace 出品一覧を 1 回 fetch (= public 閲覧 OK / login 不要)。
     void loadListings();
   });
 
@@ -403,9 +396,15 @@ export const App = () => {
       refreshMyLogs().catch((err: unknown) => {
         console.warn("logs refresh failed:", err);
       });
+      // Phase 2: マイ出品 cache を auth 連動で同期する。
+      // refreshMyListings は内部で 401 を空配列に倒すので login 直後 / 過渡期でも安全。
+      refreshMyListings().catch((err: unknown) => {
+        console.warn("my listings refresh failed:", err);
+      });
     } else {
       clearServerSpecimens();
       clearMyLogs();
+      clearMyListings();
     }
   });
 
@@ -520,11 +519,16 @@ export const App = () => {
             setSelectedSpecimen={setSelectedSpecimen}
           />
         </Show>
-        <Show when={route() === "shop"}>
-          <ShopPage />
+        {/* C2C pivot: ShopPage / MarketPage は削除済。
+            "listing-new" は /listings/new (= 出品作成ページ) を描画する。 */}
+        <Show when={route() === "listing-new"}>
+          <ListingNewPage />
         </Show>
-        <Show when={route() === "market"}>
-          <MarketPage />
+        <Show when={route() === "my-listings"}>
+          {/* Phase 3: 自分の出品管理ページ (= /listings/me)。
+              タブ式 (出品中 / 入札中 / 売却済 / 取消・期限切れ) で listings の縦リスト全件表示。
+              login 必須 (anonymous は inline で「ログインへ →」リンクを表示)。 */}
+          <MyListingsPage setRoute={setRoute} />
         </Show>
         <Show when={route() === "cart"}>
           {/* Phase 9.1: SDUI 駆動カートに統一 (Strangler Fig 段階 2 完了)。

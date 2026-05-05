@@ -29,7 +29,7 @@ pub struct CartItemRow {
     pub id: Uuid,
     pub session_id: Option<Uuid>,
     pub user_id: Option<Uuid>,
-    pub product_id: Uuid,
+    pub listing_id: Uuid,
     pub qty: i32,
 }
 
@@ -39,7 +39,7 @@ pub struct CartItemRow {
 pub struct CartItemInsert {
     pub session_id: Option<Uuid>,
     pub user_id: Option<Uuid>,
-    pub product_id: Uuid,
+    pub listing_id: Uuid,
     pub qty: i32,
 }
 
@@ -101,7 +101,7 @@ pub async fn insert(
                 id,
                 session_id: payload.session_id,
                 user_id: payload.user_id,
-                product_id: payload.product_id,
+                listing_id: payload.listing_id,
                 qty: payload.qty,
             });
             Ok(id)
@@ -223,7 +223,7 @@ async fn find_by_session_id_db(
 ) -> Result<Vec<CartItemRow>, CartItemRepoError> {
     sqlx::query_as::<_, CartItemRow>(
         r#"
-        SELECT id, session_id, user_id, product_id, qty
+        SELECT id, session_id, user_id, listing_id, qty
         FROM cart_items
         WHERE session_id = $1
         ORDER BY created_at, id
@@ -241,7 +241,7 @@ async fn find_by_user_id_db(
 ) -> Result<Vec<CartItemRow>, CartItemRepoError> {
     sqlx::query_as::<_, CartItemRow>(
         r#"
-        SELECT id, session_id, user_id, product_id, qty
+        SELECT id, session_id, user_id, listing_id, qty
         FROM cart_items
         WHERE user_id = $1
         ORDER BY created_at, id
@@ -259,14 +259,14 @@ async fn insert_db(
 ) -> Result<Uuid, CartItemRepoError> {
     let row: (Uuid,) = sqlx::query_as(
         r#"
-        INSERT INTO cart_items (session_id, user_id, product_id, qty)
+        INSERT INTO cart_items (session_id, user_id, listing_id, qty)
         VALUES ($1, $2, $3, $4)
         RETURNING id
         "#,
     )
     .bind(p.session_id)
     .bind(p.user_id)
-    .bind(p.product_id)
+    .bind(p.listing_id)
     .bind(p.qty)
     .fetch_one(pool)
     .await
@@ -407,7 +407,7 @@ mod tests {
             CartItemInsert {
                 session_id: None,
                 user_id: None,
-                product_id: product(),
+                listing_id: product(),
                 qty: 1,
             },
         )
@@ -427,7 +427,7 @@ mod tests {
                 CartItemInsert {
                     session_id: None,
                     user_id: Some(user()),
-                    product_id: product(),
+                    listing_id: product(),
                     qty: bad,
                 },
             )
@@ -448,7 +448,7 @@ mod tests {
             CartItemInsert {
                 session_id: None,
                 user_id: Some(user()),
-                product_id: product(),
+                listing_id: product(),
                 qty: 2,
             },
         )
@@ -478,7 +478,7 @@ mod tests {
             CartItemInsert {
                 session_id: None,
                 user_id: Some(user()),
-                product_id: product(),
+                listing_id: product(),
                 qty: 1,
             },
         )
@@ -505,7 +505,7 @@ mod tests {
             CartItemInsert {
                 session_id: Some(session),
                 user_id: None,
-                product_id: product(),
+                listing_id: product(),
                 qty: 1,
             },
         )
@@ -516,7 +516,7 @@ mod tests {
             CartItemInsert {
                 session_id: Some(session),
                 user_id: None,
-                product_id: product(),
+                listing_id: product(),
                 qty: 3,
             },
         )
@@ -545,7 +545,7 @@ mod tests {
             CartItemInsert {
                 session_id: Some(session_a),
                 user_id: None,
-                product_id: product(),
+                listing_id: product(),
                 qty: 1,
             },
         )
@@ -556,7 +556,7 @@ mod tests {
             CartItemInsert {
                 session_id: Some(session_a),
                 user_id: None,
-                product_id: product(),
+                listing_id: product(),
                 qty: 2,
             },
         )
@@ -567,7 +567,7 @@ mod tests {
             CartItemInsert {
                 session_id: Some(session_b),
                 user_id: None,
-                product_id: product(),
+                listing_id: product(),
                 qty: 5,
             },
         )

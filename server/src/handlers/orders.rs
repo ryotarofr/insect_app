@@ -7,14 +7,15 @@
 
 use axum::{
     Extension, Json,
-    extract::{Path, State},
+    extract::{Path, Query, State},
 };
 use chrono::{DateTime, Utc};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::AppError;
 use crate::repos::{orders, user_sessions};
+use crate::repos::orders::OrderRole;
 use crate::session::SessionId;
 use crate::state::AppState;
 
@@ -36,6 +37,12 @@ pub struct OrderView {
     pub shipping_jpy: Option<i64>,
     pub stripe_session_id: Option<String>,
     pub stripe_payment_intent_id: Option<String>,
+    /// Phase 4: 出品者 (= listings.seller_user_id 経由で paid 遷移時に書く)。
+    /// FE は role=seller タブで表示時に「あなたが売り手の取引」を識別するのに使う。
+    pub seller_user_id: Option<String>,
+    /// Phase 4: 買い手 (= orders.user_id 由来)。anonymous 注文で None。
+    /// 既存の `session_id` だけでは role=buyer 判定が UI 側で難しかったため明示する。
+    pub buyer_user_id: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }
@@ -50,28 +57,63 @@ impl From<orders::OrderRecord> for OrderView {
             shipping_jpy: r.shipping_jpy,
             stripe_session_id: r.stripe_session_id,
             stripe_payment_intent_id: r.stripe_payment_intent_id,
+            seller_user_id: r.seller_user_id.map(|u| u.to_string()),
+            buyer_user_id: r.user_id.map(|u| u.to_string()),
             created_at: r.created_at,
             updated_at: r.updated_at,
         }
     }
 }
 
-/// `GET /api/v1/orders/me` — 自分の注文一覧 (= created_at 降順)。
+/// Phase 4: GET /api/v1/orders/me?role=... の query parameters。
+///
+/// `role`:
+/// - `buyer` (= 既定): 自分が買った注文 (= orders.user_id = me)
+/// - `seller`: 自分が売った注文 (= orders.seller_user_id = me、paid 遷移済のみ)
+/// - `all`: 上記の OR (= 取引履歴の merged view 用)
+#[derive(Debug, Clone, Deserialize, utoipa::IntoParams)]
+#[serde(rename_all = "camelCase")]
+pub struct ListMyOrdersParams {
+    pub role: Option<String>,
+}
+
+/// `GET /api/v1/orders/me?role=buyer|seller|all` — 自分の取引履歴 (= created_at 降順)。
+///
+/// **Phase 4 / 取引履歴の販売側統合**:
+///   - `role=buyer` (= 既定): 自分が買った注文 (= orders.user_id = me)
+///   - `role=seller`: 自分が売った注文 (= orders.seller_user_id = me、paid 遷移済のみ)
+///   - `role=all`: 上記の OR (= 取引履歴の merged view 用)
 #[utoipa::path(
     get,
     path = "/orders/me",
     tag = "orders",
+    params(ListMyOrdersParams),
     responses(
-        (status = 200, description = "current user の注文一覧 (= created_at 降順)", body = Vec<OrderView>),
+        (status = 200, description = "current user の取引一覧 (= created_at 降順)", body = Vec<OrderView>),
+        (status = 400, description = "invalid role", body = crate::openapi::ErrorResponse),
         (status = 401, description = "未ログイン", body = crate::openapi::ErrorResponse),
     ),
 )]
 pub async fn list_my_orders(
     State(state): State<AppState>,
     Extension(session_id): Extension<SessionId>,
+    Query(params): Query<ListMyOrdersParams>,
 ) -> Result<Json<Vec<OrderView>>, AppError> {
     let user_id = require_user_id(&state, session_id.0).await?;
-    let rows = orders::list_by_user_id(state.db(), user_id)
+
+    let role = match params.role.as_deref().map(str::trim).filter(|s| !s.is_empty()) {
+        // 既定 (= 既存挙動互換): role 未指定は buyer 扱い
+        None | Some("buyer") => OrderRole::Buyer,
+        Some("seller") => OrderRole::Seller,
+        Some("all") => OrderRole::All,
+        Some(other) => {
+            return Err(AppError::BadRequest(format!(
+                "invalid role: {other} (expected buyer / seller / all)"
+            )));
+        }
+    };
+
+    let rows = orders::find_by_role(state.db(), user_id, role)
         .await
         .map_err(|e| AppError::BadRequest(format!("orders fetch: {e}")))?;
     Ok(Json(rows.into_iter().map(OrderView::from).collect()))
@@ -80,8 +122,9 @@ pub async fn list_my_orders(
 #[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct OrderLineView {
-    pub product_id: String,
-    pub product_uuid: Option<String>,
+    /// C2C pivot: 旧 product_id / product_uuid を listing_id に置換。
+    /// listings(id) UUID を文字列で返す (= ON DELETE SET NULL のため Option)。
+    pub listing_id: Option<String>,
     pub title: String,
     pub unit_price_jpy: i64,
     pub qty: i32,
@@ -91,8 +134,7 @@ pub struct OrderLineView {
 impl From<orders::OrderLineRow> for OrderLineView {
     fn from(r: orders::OrderLineRow) -> Self {
         Self {
-            product_id: r.product_id,
-            product_uuid: r.product_uuid.map(|u| u.to_string()),
+            listing_id: r.listing_id.map(|u| u.to_string()),
             title: r.title,
             unit_price_jpy: r.unit_price_jpy,
             qty: r.qty,
@@ -217,8 +259,7 @@ mod tests {
             amount_jpy: amount,
             shipping_jpy: Some(1800),
             line_items: vec![orders::OrderLineInsert {
-                product_id: "p-x".to_string(),
-                product_uuid: None,
+                listing_id: None, // C2C pivot test fixture: listing 解決スキップ
                 title: "Test".to_string(),
                 unit_price_jpy: amount,
                 qty: 1,
@@ -295,7 +336,9 @@ mod tests {
         assert_eq!(res.0.order.id, rec.id.to_string());
         assert_eq!(res.0.order.amount_jpy, 5000);
         assert_eq!(res.0.line_items.len(), 1);
-        assert_eq!(res.0.line_items[0].product_id, "p-x");
+        // C2C pivot: 旧 product_id 検証は廃止 (= test fixture では listing_id=None で投入)。
+        assert!(res.0.line_items[0].listing_id.is_none());
+        assert_eq!(res.0.line_items[0].title, "Test");
         assert_eq!(res.0.line_items[0].subtotal_jpy, 5000);
     }
 

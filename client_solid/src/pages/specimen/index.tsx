@@ -5,6 +5,7 @@
 // - 「＋ ログを追加」は QuickLogSheet を specimenId プリセットで起動。
 // - メモは SpecimenMemoCard (自動保存) に委譲。
 import { createMemo, createSignal, For, Show } from "solid-js";
+import { A } from "@solidjs/router";
 import { type RouteKey } from "../../data";
 import {
   getSpecimen,
@@ -314,7 +315,8 @@ export const SpecimenDetail = (props: SpecimenDetailProps) => {
           <h1>{s().name}</h1>
         </div>
         {/* UX-2: 所有個体一覧の前後個体へめくる stepper。
-            先頭 / 末尾では disabled。disabled 状態が「端にいる」サインになる。 */}
+            先頭 / 末尾では disabled。disabled 状態が「端にいる」サインになる。
+            C2C pivot: stepper の右に「この個体を出品」ボタンを並置 (= 自分の active 個体のみ)。 */}
         <div class="page-actions head-stepper" aria-label="個体ナビゲーション">
           <button
             type="button"
@@ -336,6 +338,23 @@ export const SpecimenDetail = (props: SpecimenDetailProps) => {
           >
             次 →
           </button>
+          {/* C2C pivot: 出品エントリ。
+                - serverView() がある = login 中 + 自分の所有個体
+                - lifeStatus === "active" のみ (= 既に死亡 / 譲渡 / 脱走 した個体は出品不可) */}
+          <Show
+            when={(() => {
+              const sv = serverView();
+              return sv && sv.lifeStatus === "active" && !sv.isArchived;
+            })()}
+          >
+            <A
+              href={`/listings/new?specimen=${encodeURIComponent(s().id)}`}
+              class="btn primary sm"
+              title="この個体をマーケットに出品します"
+            >
+              ＋ この個体を出品
+            </A>
+          </Show>
         </div>
       </div>
 

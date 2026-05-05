@@ -1,226 +1,142 @@
-// pages/products/index.tsx — ProductsList + ProductDetail コンテナ
+// pages/products/index.tsx — C2C 出品一覧 (旧 B2C 商品一覧から repurpose)
 //
-// **Strangler Fig 完成 (2026-04)**:
-//   ProductsList のグリッド部分を SDUI 経由に切り替え。
-//   - 旧: data.ts (`listProducts()`) → 静的 <ProductCard> の grid
-//   - 新: GET /api/v1/cards/products → CardRenderer の grid
+// **Pivot 後の役割**:
+//   B2C 「ショップが売っている商品」一覧から、C2C「ユーザが出品した個体」一覧へ。
+//   /products URL は維持 (= ブックマーク救済)、表示内容は serverListings() に切替。
 //
-//   詳細: docs/sdui-three-layer-model-v5.md §11 (移行戦略)
+//   旧 SDUI cards/products grid + Hero + BloodlineSummary は廃止。
 //
-// **TabSwitcher / SpeciesFilterBar の扱い**:
-//   旧フィルタは Product 型に対する predicate に依存していた。
-//   SDUI 側はまだ filter 用の query param を持たないため、フィルタ UI は一旦撤去。
-//   サーバ側に `GET /cards/products?kind=specimen|supply&species=...` を追加してから
-//   client-side で UI を復活させる予定 (Phase 2)。
+// **データ源**:
+//   store/listings.ts::serverListings() (= GET /api/v1/listings).
+//   起動時に App.tsx から loadListings() 済 (= public 閲覧 OK)。
 //
-// **クリック → 詳細遷移**:
-//   旧 ProductCard の onClick → setSelectedProduct + setRoute("product-detail") を維持。
-//   SDUI Card 自身は href を持たないので、ラップ div に onClick を載せる暫定対応。
-//   将来は Card 内の `cta` block (intent: "tertiary", href: productUrl(id)) で
-//   SDUI 駆動のナビゲーションに置き換える。
+// **CTA**:
+//   - login 中 → 「+ 出品する」 → /listings/new
+//   - anonymous → 「ログインして出品」 → /login
 //
-// **ProductDetail も SDUI 化 (2026-04 / Phase 2 MVP)**:
-//   GET /api/v1/cards/products/:id/detail → product_detail テンプレートを CardRenderer で描画。
-//   旧 ProductMediaGallery / ProductDetailContent は cleanup task #34 で TOMBSTONE 化済み
-//   (ファイルは git rm 待ち、import は無し)。
-//   保証 card / ウォッチボタン / カート連携は Phase 2.5 で復活させる。
+// **ProductDetail (= /products/:id)**:
+//   listing 1 件の詳細ページとして本実装。fetchListing で取得し、価格 / 出品者 /
+//   description を表示。即決 → カート追加、auction → 入札 / ウォッチをアクションとして提供。
+//   /listings/:publicId への URL リネームは別 PR (= ブックマーク救済のため URL は維持)。
 
-import { ErrorBoundary, For, Show, createMemo, createResource, createSignal } from "solid-js";
-import { useSearchParams } from "@solidjs/router";
+import { For, Show, createMemo, createResource, createSignal, onMount } from "solid-js";
+import { A, useNavigate } from "@solidjs/router";
 import type { RouteKey } from "../../data";
+import { listMarketListings } from "../../api";
+import { ListingCard } from "../../components/market/ListingCard";
+import { loadListings } from "../../store/listings";
+import { currentUser, isLoggedIn } from "../../store/auth";
 import {
-  fetchProductDetailCard,
-  fetchProductList,
+  fetchListing,
+  postCartAdd,
+  postListingBid,
+  postListingCancel,
   SduiFetchError,
-  type ProductListQuery,
+  type ListingViewWithCounts,
 } from "../../sdui/api";
-import { CardRenderer } from "../../sdui/CardRenderer";
-import { FilterBarView } from "../../sdui/FilterBar";
-import { SortBarView } from "../../sdui/SortBar";
-import { SearchBoxView } from "../../sdui/SearchBox";
-import { PaginationView } from "../../sdui/Pagination";
-import type { CardBlock } from "../../sdui/branded";
-import { Hero } from "./Hero";
-import { BloodlineSummary } from "../../components/products/BloodlineSummary";
-import { BloodlineLineageModal } from "../../components/products/BloodlineLineageModal";
-import { BloodlineCardChips } from "../../components/products/BloodlineCardChips";
-import "../../styles/bloodline.css";
-import "../../styles/product-bloodline.css";
+import { showToast } from "../../store/toast";
 
 interface ProductsListProps {
   setRoute: (r: RouteKey) => void;
   setSelectedProduct: (id: string) => void;
 }
 
-export const ProductsList = (props: ProductsListProps) => {
-  const [searchParams] = useSearchParams();
-
-  const query = createMemo<ProductListQuery>(() => {
-    const pickFirst = (v: string | string[] | undefined): string | undefined => {
-      if (!v) return undefined;
-      return Array.isArray(v) ? v[0] : v;
-    };
-    const pickPositiveInt = (
-      v: string | string[] | undefined,
-    ): number | undefined => {
-      const s = pickFirst(v);
-      if (s == null) return undefined;
-      const n = Number.parseInt(s, 10);
-      if (!Number.isFinite(n) || n <= 0) return undefined;
-      return n;
-    };
-    return {
-      category: pickFirst(searchParams.category),
-      difficulty: pickFirst(searchParams.difficulty),
-      sort: pickFirst(searchParams.sort),
-      q: pickFirst(searchParams.q),
-      page: pickPositiveInt(searchParams.page),
-      perPage: pickPositiveInt(searchParams.perPage),
-    };
+export const ProductsList = (_props: ProductsListProps) => {
+  // 起動時 1 回 fetch 済だが、画面復帰時に最新を取り直す。
+  onMount(() => {
+    void loadListings();
   });
 
-  const [list, { refetch }] = createResource(query, fetchProductList);
-
-  const onCardClick = (card: CardBlock) => {
-    props.setSelectedProduct(card.id);
-    props.setRoute("product-detail");
-  };
+  // listMarketListings() は serverListings() を normalize した legacy Listing[] を返す。
+  // 出品が 0 件のときの empty state を出すため createMemo で長さを取る。
+  const listings = createMemo(() => listMarketListings());
 
   return (
     <>
-      <Hero setRoute={props.setRoute} />
-
       <div class="page-head">
         <div>
-          <div class="cat">ショップ · ANCHOR BEETLE CO. + MIYAMA FARM</div>
-          <h1>生体と用品</h1>
+          <div class="cat">マーケット</div>
+          <h1>出品中の生体</h1>
+          <p class="page-head-sub">
+            飼育者が出品した個体 — 血統認証 + Stripe Connect エスクロー
+          </p>
         </div>
+        <div class="page-actions">
+          <Show
+            when={isLoggedIn()}
+            fallback={
+              <A class="btn" href="/login">
+                ログインして出品
+              </A>
+            }
+          >
+            <A class="btn primary" href="/listings/new">
+              + 出品する
+            </A>
+          </Show>
+        </div>
+      </div>
+
+      {/* 認証バッジ説明 (= 旧 MarketBrowse 上部のヒント) */}
+      <div
+        class="card"
+        style={{
+          padding: "16px",
+          "margin-bottom": "20px",
+          display: "flex",
+          "align-items": "center",
+          gap: "12px",
+          background: "var(--bg-sunken)",
+          "border-color": "transparent",
+        }}
+      >
+        <span class="chip indigo">血統認証</span>
+        <span style={{ "font-size": "13px", color: "var(--ink-mute)" }}>
+          このバッジは、イベントログで累代を検証済の個体に付与されます。
+        </span>
+        <span class="mono" style={{ "margin-left": "auto", "font-size": "11px", color: "var(--ink-faint)" }}>
+          Stripe Connect エスクロー適用
+        </span>
       </div>
 
       <Show
-        when={!list.loading}
+        when={listings().length > 0}
         fallback={
           <div
+            class="card"
             style={{
-              padding: "32px",
+              padding: "32px 24px",
               "text-align": "center",
               color: "var(--ink-mute)",
+              "font-size": "13px",
             }}
           >
-            読み込み中…
+            <div style={{ "font-weight": 600, color: "var(--ink)", "margin-bottom": "6px" }}>
+              現在出品中の個体はありません
+            </div>
+            <div style={{ "margin-bottom": "16px" }}>
+              所有個体を C2C マーケットに出品することができます。
+            </div>
+            <Show
+              when={isLoggedIn()}
+              fallback={
+                <A class="btn primary" href="/login">
+                  ログインして出品
+                </A>
+              }
+            >
+              <A class="btn primary" href="/listings/new">
+                出品する
+              </A>
+            </Show>
           </div>
         }
       >
-        <Show when={!list.error} fallback={<GridErrorView error={list.error} onRetry={refetch} />}>
-          <Show when={list()?.searchBox}>
-            {(box) => <SearchBoxView box={box()} />}
-          </Show>
-          <Show when={list()?.filterBar}>
-            {(bar) => <FilterBarView bar={bar()} />}
-          </Show>
-          <Show when={list()?.sortBar}>
-            {(bar) => <SortBarView bar={bar()} />}
-          </Show>
-
-          <Show
-            when={(list()?.cards ?? []).length > 0}
-            fallback={
-              <div
-                style={{
-                  padding: "32px",
-                  "text-align": "center",
-                  color: "var(--ink-mute)",
-                  border: "1px dashed var(--line)",
-                  "border-radius": "8px",
-                }}
-              >
-                表示できる商品がありません
-              </div>
-            }
-          >
-            <div class="grid-cards-3">
-              <For each={list()?.cards ?? []}>
-                {(card) => (
-                  <ErrorBoundary
-                    fallback={(err) => {
-                      console.error(`[/products] outer boundary id=${card.id}`, err);
-                      return null;
-                    }}
-                  >
-                    <div
-                      role="button"
-                      tabindex={0}
-                      class="pbl-card-wrap"
-                      style={{ cursor: "pointer" }}
-                      onClick={() => onCardClick(card)}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter" || e.key === " ") {
-                          e.preventDefault();
-                          onCardClick(card);
-                        }
-                      }}
-                    >
-                      <CardRenderer card={card} />
-                      {/* Phase 2: 血統バッジを右下に重ねる (= 血統 fixture がある生体カードのみ).
-                          pointer-events: none なのでカードクリックは透過する. */}
-                      <BloodlineCardChips productId={card.id} />
-                    </div>
-                  </ErrorBoundary>
-                )}
-              </For>
-            </div>
-          </Show>
-          <Show when={list()?.pagination}>
-            {(p) => <PaginationView pagination={p()} />}
-          </Show>
-        </Show>
+        <div class="grid-cards-2">
+          <For each={listings()}>{(l) => <ListingCard listing={l} />}</For>
+        </div>
       </Show>
     </>
-  );
-};
-
-const GridErrorView = (props: { error: unknown; onRetry: () => void }) => {
-  // review fix (minor / SolidJS): CODE_REVIEW_PROMPT §2.9 — `const e = props.error` で
-  // proxy getter を 1 度だけ評価するとリアクティビティが切れ、`<Show>` 経由で
-  // 同 fallback が再利用される時に「古い error が DOM に残る」(= 通信失敗 →
-  // 再試行で別エラー → 表示が初回のままになる) 事故が起きる。`props.error` を
-  // JSX 内で直接読む形にして、各アクセスを reactive な getter に保つ。
-  return (
-    <div
-      style={{
-        padding: "16px",
-        border: "1px solid var(--accent-rose)",
-        "border-radius": "8px",
-        color: "var(--accent-rose)",
-        display: "flex",
-        gap: "12px",
-        "align-items": "flex-start",
-      }}
-    >
-      <div style={{ flex: 1 }}>
-        <strong>商品一覧を取得できませんでした</strong>
-        <div style={{ "font-size": "12px", "margin-top": "4px" }}>
-          {props.error instanceof SduiFetchError
-            ? `HTTP ${props.error.status} — ${props.error.message}`
-            : `予期しないエラー: ${String(props.error)}`}
-        </div>
-      </div>
-      <button
-        type="button"
-        onClick={props.onRetry}
-        style={{
-          padding: "6px 12px",
-          border: "1px solid var(--accent-rose)",
-          background: "transparent",
-          color: "var(--accent-rose)",
-          "border-radius": "6px",
-          cursor: "pointer",
-          "font-size": "12px",
-        }}
-      >
-        再試行
-      </button>
-    </div>
   );
 };
 
@@ -229,115 +145,398 @@ interface ProductDetailProps {
   setRoute?: (r: RouteKey) => void;
 }
 
+/**
+ * `/products/:publicId` — listing 1 件の詳細ページ。
+ *
+ * **データ源**: `GET /api/v1/listings/{public_id}` (= 既存 fetchListing endpoint)。
+ *  起動時の loadListings() cache とは別に、本ページでは詳細を都度 fetch する
+ *  (= 価格 / 入札数 / 終了時刻のリアルタイム性を取るため)。
+ *
+ * **表示要素**:
+ *   - title (= "ヘラクレス♂ 142mm CBF2" 風)
+ *   - 価格 (= 即決価格 / 現在価格 + 開始価格)
+ *   - 出品者名 (= sellerName) + 認証マーク
+ *   - description (= 出品時の自由記述本文)
+ *   - 残時間 (= auction なら ends_at から計算)
+ *   - status (= active / sold / canceled / expired)
+ *
+ * **CTA** (= 自分の出品でない場合のみ表示):
+ *   - 即決出品 → 「カート追加」 (= postCartAdd)
+ *   - auction → 「入札」 (= postListingBid)
+ *
+ * **owner CTA** (= 自分の出品の場合):
+ *   - 「出品取消」 (= postListingCancel)
+ */
 export const ProductDetail = (props: ProductDetailProps) => {
-  const [card, { refetch }] = createResource(
+  const navigate = useNavigate();
+  // publicId から listing を取得。productId は legacy 名 (= router 由来) で実体は listings.public_id。
+  const [listing, { refetch }] = createResource(
     () => props.productId,
-    (id) => fetchProductDetailCard(id),
+    (publicId) => fetchListing(publicId),
   );
-  const [bloodlineModalOpen, setBloodlineModalOpen] = createSignal(false);
+  const [actionPending, setActionPending] = createSignal(false);
+  const [actionError, setActionError] = createSignal<string | null>(null);
+  const [bidAmountJpy, setBidAmountJpy] = createSignal<number>(0);
+
+  // 入札の最低額 = 現在価格 + 1 (= server 側 validation と整合)。auction 専用。
+  const minBid = (l: ListingViewWithCounts): number =>
+    (l.currentPriceJpy ?? l.startingPriceJpy) + 1;
+
+  // 自分が出品者なら CTA を「出品取消」だけにする。
+  // C2C pivot: AuthUser.userId は server users.id (UUID 文字列) と一致する。
+  const isOwner = (l: ListingViewWithCounts): boolean => {
+    const u = currentUser();
+    return !!u && u.userId === l.sellerUserId;
+  };
+
+  /** 残時間を「2日 14h」「14h 32m」「終了」形式で整形 (= ListingCard と同じロジック)。 */
+  const formatRemaining = (endsAt: string | null | undefined): string => {
+    if (!endsAt) return "—";
+    const ms = new Date(endsAt).getTime() - Date.now();
+    if (ms <= 0) return "終了";
+    const totalMin = Math.floor(ms / 60_000);
+    const days = Math.floor(totalMin / (60 * 24));
+    const hours = Math.floor((totalMin % (60 * 24)) / 60);
+    const minutes = totalMin % 60;
+    if (days > 0) return `${days}日 ${hours}h`;
+    if (hours > 0) return `${hours}h ${minutes}m`;
+    return `${minutes}m`;
+  };
+
+  const handleAddToCart = async (l: ListingViewWithCounts) => {
+    if (actionPending()) return;
+    setActionPending(true);
+    setActionError(null);
+    try {
+      await postCartAdd(l.publicId, 1);
+      showToast({ tone: "success", message: "カートに追加しました" });
+      navigate("/cart");
+    } catch (e) {
+      const msg =
+        e instanceof SduiFetchError
+          ? `HTTP ${e.status} — ${e.message}`
+          : e instanceof Error
+            ? e.message
+            : String(e);
+      setActionError(msg);
+    } finally {
+      setActionPending(false);
+    }
+  };
+
+  const handlePlaceBid = async (l: ListingViewWithCounts) => {
+    if (actionPending()) return;
+    const amount = bidAmountJpy();
+    if (amount < minBid(l)) {
+      setActionError(`入札額は ¥${minBid(l).toLocaleString()} 以上にしてください`);
+      return;
+    }
+    setActionPending(true);
+    setActionError(null);
+    try {
+      const res = await postListingBid(l.id, amount);
+      showToast({
+        tone: "success",
+        message: `入札しました (現在価格 ¥${res.currentPriceJpy.toLocaleString()})`,
+      });
+      // listing を再 fetch して現在価格を反映
+      void refetch();
+      void loadListings();
+    } catch (e) {
+      const msg =
+        e instanceof SduiFetchError
+          ? `HTTP ${e.status} — ${e.message}`
+          : e instanceof Error
+            ? e.message
+            : String(e);
+      setActionError(msg);
+    } finally {
+      setActionPending(false);
+    }
+  };
+
+  const handleCancel = async (l: ListingViewWithCounts) => {
+    if (actionPending()) return;
+    if (!confirm("この出品を取り消しますか? (= 取消後は復元できません)")) return;
+    setActionPending(true);
+    setActionError(null);
+    try {
+      await postListingCancel(l.id);
+      showToast({ tone: "success", message: "出品を取り消しました" });
+      void loadListings();
+      navigate("/products");
+    } catch (e) {
+      const msg =
+        e instanceof SduiFetchError
+          ? `HTTP ${e.status} — ${e.message}`
+          : e instanceof Error
+            ? e.message
+            : String(e);
+      setActionError(msg);
+    } finally {
+      setActionPending(false);
+    }
+  };
 
   return (
     <Show
-      when={!card.loading}
+      when={!listing.loading}
       fallback={
-        <div
-          style={{
-            padding: "32px",
-            "text-align": "center",
-            color: "var(--ink-mute)",
-          }}
-        >
+        <div style={{ padding: "32px", "text-align": "center", color: "var(--ink-mute)" }}>
           読み込み中…
         </div>
       }
     >
       <Show
-        when={!card.error && card()}
-        fallback={<DetailErrorView error={card.error} onRetry={refetch} />}
+        when={!listing.error && listing()}
+        fallback={<DetailErrorView error={listing.error} onRetry={refetch} />}
       >
-        <ErrorBoundary
-          fallback={(err) => {
-            console.error(`[/products/${props.productId}] outer boundary`, err);
-            return (
-              <div
-                style={{
-                  padding: "16px",
-                  border: "1px dashed var(--accent-rose)",
-                  color: "var(--accent-rose)",
-                  "font-size": "12px",
-                }}
-              >
-                <strong>詳細ページの描画に失敗しました</strong>
-              </div>
-            );
-          }}
-        >
+        {(l) => (
           <>
-            <CardRenderer card={card()!} />
-            <BloodlineSummary
-              productId={props.productId}
-              onOpenFull={() => setBloodlineModalOpen(true)}
-            />
-            <BloodlineLineageModal
-              open={bloodlineModalOpen()}
-              productId={props.productId}
-              onClose={() => setBloodlineModalOpen(false)}
-            />
+            <div class="page-head">
+              <div>
+                <div class="cat">マーケット · {l().publicId}</div>
+                <h1>{l().title}</h1>
+              </div>
+              <div class="page-actions">
+                <A class="btn" href="/products">
+                  ← 一覧に戻る
+                </A>
+              </div>
+            </div>
+
+            <div class="grid-detail-narrow">
+              {/* 左: 説明 / 出品者情報 */}
+              <div>
+                <div class="card" style={{ padding: "20px" }}>
+                  <div class="u-eyebrow" style={{ "margin-bottom": "8px" }}>
+                    出品者
+                  </div>
+                  <div style={{ display: "flex", "align-items": "center", gap: "8px" }}>
+                    <span style={{ "font-weight": 600 }}>{l().sellerName}</span>
+                    <Show when={l().isVerified}>
+                      <span class="chip indigo" style={{ "font-size": "10px", padding: "1px 6px" }}>
+                        ✓ 認証ブリーダー
+                      </span>
+                    </Show>
+                  </div>
+                </div>
+
+                <div class="card" style={{ padding: "20px", "margin-top": "14px" }}>
+                  <div class="u-eyebrow" style={{ "margin-bottom": "8px" }}>
+                    商品説明
+                  </div>
+                  <Show
+                    when={l().description}
+                    fallback={
+                      <p style={{ color: "var(--ink-mute)", "font-size": "13px" }}>
+                        商品説明は登録されていません。
+                      </p>
+                    }
+                  >
+                    <pre
+                      style={{
+                        "white-space": "pre-wrap",
+                        "font-family": "inherit",
+                        "font-size": "13px",
+                        "line-height": 1.7,
+                        margin: 0,
+                      }}
+                    >
+                      {l().description}
+                    </pre>
+                  </Show>
+                </div>
+
+                <div
+                  class="card"
+                  style={{
+                    padding: "16px 20px",
+                    "margin-top": "14px",
+                    background: "var(--bg-sunken)",
+                    "border-color": "transparent",
+                    "font-size": "12px",
+                    color: "var(--ink-mute)",
+                    "line-height": 1.7,
+                  }}
+                >
+                  <div style={{ "font-weight": 600, color: "var(--ink)", "margin-bottom": "4px" }}>
+                    取引保護
+                  </div>
+                  販売手数料 10% / Stripe Connect エスクロー / 死着自動返金 / 温度制御便対応
+                </div>
+              </div>
+
+              {/* 右: 価格 / CTA (sticky) */}
+              <div
+                class="card"
+                style={{ padding: "24px", position: "sticky", top: "72px", "align-self": "start" }}
+              >
+                <Show when={l().status !== "active"}>
+                  <div
+                    class="chip mute"
+                    style={{ "margin-bottom": "12px", padding: "4px 10px", "font-size": "11px" }}
+                  >
+                    状態: {l().status}
+                  </div>
+                </Show>
+
+                <div class="u-eyebrow">
+                  {l().isAuction ? "オークション 現在価格" : "即決価格"}
+                </div>
+                <div class="serif" style={{ "font-size": "32px", "font-weight": 600, "line-height": 1 }}>
+                  ¥{(l().currentPriceJpy ?? l().startingPriceJpy).toLocaleString()}
+                </div>
+
+                <Show when={l().isAuction}>
+                  <div style={{ "font-size": "11px", color: "var(--ink-mute)", "margin-top": "4px" }}>
+                    開始価格 ¥{l().startingPriceJpy.toLocaleString()} · 残 {formatRemaining(l().endsAt)}
+                  </div>
+                </Show>
+
+                <Show when={actionError()}>
+                  <div
+                    style={{
+                      "margin-top": "12px",
+                      padding: "10px 12px",
+                      background: "var(--accent-rose-soft, #fde8e8)",
+                      color: "var(--accent-rose-ink, #b91c1c)",
+                      "border-radius": "var(--r-md)",
+                      "font-size": "12px",
+                    }}
+                    role="alert"
+                  >
+                    {actionError()}
+                  </div>
+                </Show>
+
+                {/* CTA 出し分け: owner / auction / 即決 / status != active */}
+                <Show
+                  when={l().status === "active"}
+                  fallback={
+                    <div style={{ "margin-top": "16px", "font-size": "12px", color: "var(--ink-mute)" }}>
+                      この出品は既に終了しています。
+                    </div>
+                  }
+                >
+                  <Show
+                    when={isOwner(l())}
+                    fallback={
+                      <Show
+                        when={isLoggedIn()}
+                        fallback={
+                          <A
+                            class="btn primary lg block"
+                            style={{ "margin-top": "16px" }}
+                            href="/login"
+                          >
+                            ログインして購入
+                          </A>
+                        }
+                      >
+                        <Show
+                          when={l().isAuction}
+                          fallback={
+                            <button
+                              type="button"
+                              class="btn primary lg block"
+                              style={{ "margin-top": "16px" }}
+                              disabled={actionPending()}
+                              onClick={() => void handleAddToCart(l())}
+                            >
+                              {actionPending() ? "送信中…" : "カートに追加"}
+                            </button>
+                          }
+                        >
+                          <label class="label" style={{ "margin-top": "16px" }}>
+                            入札額 (最低 ¥{minBid(l()).toLocaleString()})
+                          </label>
+                          <input
+                            class="input mono"
+                            type="number"
+                            min={minBid(l())}
+                            step="100"
+                            value={bidAmountJpy() || minBid(l())}
+                            onInput={(e) => {
+                              const v = Number((e.currentTarget as HTMLInputElement).value);
+                              if (Number.isFinite(v) && v >= 0) setBidAmountJpy(v);
+                            }}
+                          />
+                          <button
+                            type="button"
+                            class="btn primary lg block"
+                            style={{ "margin-top": "10px" }}
+                            disabled={actionPending()}
+                            onClick={() => void handlePlaceBid(l())}
+                          >
+                            {actionPending() ? "送信中…" : "入札する"}
+                          </button>
+                        </Show>
+                      </Show>
+                    }
+                  >
+                    {/* owner: 出品取消ボタンだけ */}
+                    <div
+                      style={{
+                        "margin-top": "16px",
+                        padding: "10px 12px",
+                        background: "var(--bg-sunken)",
+                        "border-radius": "var(--r-md)",
+                        "font-size": "12px",
+                        color: "var(--ink-mute)",
+                      }}
+                    >
+                      これはあなたの出品です。
+                    </div>
+                    <button
+                      type="button"
+                      class="btn block"
+                      style={{ "margin-top": "10px" }}
+                      disabled={actionPending()}
+                      onClick={() => void handleCancel(l())}
+                    >
+                      {actionPending() ? "送信中…" : "出品を取り消す"}
+                    </button>
+                  </Show>
+                </Show>
+              </div>
+            </div>
           </>
-        </ErrorBoundary>
+        )}
       </Show>
     </Show>
   );
 };
 
 const DetailErrorView = (props: { error: unknown; onRetry: () => void }) => {
-  // review fix (minor / SolidJS): CODE_REVIEW_PROMPT §2.9 — props.error を一度だけ
-  // 取り出して `const e = ...` / `const isNotFound = ...` で固めると、`<Show>` で
-  // 同じ fallback が再評価される際に古いエラー文言が残ったまま 404 ↔ 500 が反映されない。
-  // 各 reactive read を JSX 内に閉じ込めるか、`createMemo` 化する必要がある。
-  // ここでは createMemo を使って 404 判定を再利用しつつ reactivity を維持する。
   const isNotFound = () =>
     props.error instanceof SduiFetchError && props.error.status === 404;
-
   return (
     <div
+      class="card"
       style={{
-        padding: "16px",
-        border: "1px solid var(--accent-rose)",
-        "border-radius": "8px",
-        color: "var(--accent-rose)",
-        display: "flex",
-        gap: "12px",
-        "align-items": "flex-start",
+        padding: "32px 24px",
+        "text-align": "center",
+        color: "var(--accent-rose-ink, #b91c1c)",
+        "font-size": "13px",
       }}
     >
-      <div style={{ flex: 1 }}>
-        <strong>
-          {isNotFound() ? "商品が見つかりませんでした" : "商品詳細を取得できませんでした"}
-        </strong>
-        <div style={{ "font-size": "12px", "margin-top": "4px" }}>
-          {props.error instanceof SduiFetchError
-            ? `HTTP ${props.error.status} — ${props.error.message}`
-            : `予期しないエラー: ${String(props.error)}`}
-        </div>
+      <div style={{ "font-weight": 600, "margin-bottom": "6px" }}>
+        {isNotFound() ? "出品が見つかりませんでした" : "出品詳細を取得できませんでした"}
       </div>
-      <Show when={!isNotFound}>
-        <button
-          type="button"
-          onClick={props.onRetry}
-          style={{
-            padding: "6px 12px",
-            border: "1px solid var(--accent-rose)",
-            background: "transparent",
-            color: "var(--accent-rose)",
-            "border-radius": "6px",
-            cursor: "pointer",
-            "font-size": "12px",
-          }}
-        >
+      <div style={{ color: "var(--ink-mute)", "margin-bottom": "16px", "font-size": "12px" }}>
+        {props.error instanceof SduiFetchError
+          ? `HTTP ${props.error.status} — ${props.error.message}`
+          : `予期しないエラー: ${String(props.error)}`}
+      </div>
+      <Show when={!isNotFound()}>
+        <button type="button" class="btn" onClick={props.onRetry}>
           再試行
         </button>
       </Show>
+          <A class="btn" href="/products" style={{ "margin-left": "8px" }}>
+        ← 一覧に戻る
+      </A>
     </div>
   );
 };

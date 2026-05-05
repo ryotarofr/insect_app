@@ -47,7 +47,8 @@ describe("E2E: route navigation via keyboard", () => {
     // "2" → products
     fireKey("2");
     await waitFor(10);
-    expect(container.querySelector(".cat")?.textContent).toMatch(/ショップ/);
+    // C2C pivot 後: ProductsList の cat ラベルは「ショップ」→「マーケット」。
+    expect(container.querySelector(".cat")?.textContent).toMatch(/マーケット/);
 
     // "4" → eclosion
     fireKey("4");

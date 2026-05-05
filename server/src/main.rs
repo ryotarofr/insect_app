@@ -31,15 +31,8 @@ async fn main() -> anyhow::Result<()> {
     // Phase 9.x: pool は AppState 経由で全 handler に届く (`State<AppState>` extractor)。
     //   pool=None でも個々の repo が in-memory fallback を持っているのでサーバは起動可能。
 
-    // Phase 9.B 段階 3: 商品マスタ (cards.rs::product_filter_meta) の DB 同期。
-    //   pool 不在時は in-memory fallback (= 0003_products.sql の seed と同値) で warm。
-    //   失敗してもサーバ起動は止めない (MVP) — fallback で読まれる。
-    if let Err(e) = repos::products::warm_meta_cache(db_pool.as_ref()).await {
-        tracing::warn!("warm_meta_cache failed: {e} (using in-memory fallback)");
-    }
-
-    // Phase 9.B 段階 6: shipping_methods / prefectures の DB 同期。
-    //   両方とも sort_order の確定された master data なので OnceLock 1 回 warm でよい。
+    // C2C pivot: products の warm cache は廃止 (= repos::products 自体が無い)。
+    //   shipping_methods / prefectures は配送先入力で引き続き使うため warm 維持。
     if let Err(e) = repos::shipping_methods::warm_methods_cache(db_pool.as_ref()).await {
         tracing::warn!("warm_methods_cache failed: {e} (using in-memory fallback)");
     }

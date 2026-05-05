@@ -46,8 +46,9 @@ describe("Shell", () => {
     expect(text).toContain("山田 徹"); // from currentUser() fixture
     expect(text).toContain("EC");
     expect(text).toContain("飼育");
-    expect(text).toContain("取引");
-    expect(text).toContain("運営");
+    // C2C pivot (migration 0021) で旧「取引 / 運営」セクションは廃止。
+    // 現在のサイドバーは「マーケット」と「飼育」の 2 セクション構成。
+    expect(text).toContain("マーケット");
   });
 
   it("marks the current route's nav item as active with aria-current", () => {
@@ -113,8 +114,9 @@ describe("Shell", () => {
       )),
     );
     const anchors = Array.from(container.querySelectorAll("a.nav-item"));
+    // C2C pivot 後: 旧「生体・用品」は「出品中の生体」にリネーム。
     const productsAnchor = anchors.find((a) =>
-      a.textContent?.includes("生体・用品"),
+      a.textContent?.includes("出品中の生体"),
     ) as HTMLAnchorElement | undefined;
     expect(productsAnchor).toBeTruthy();
     expect(productsAnchor!.tagName).toBe("A");

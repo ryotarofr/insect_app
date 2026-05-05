@@ -273,18 +273,19 @@ export const fetchProductCardList = async (): Promise<CardBlock[]> => {
 // レスポンスは camelCase JSON。サーバ側 DTO と完全に対応している。
 // ──────────────────────────────────────────────────────────────────────
 
-/** `POST /api/v1/cart` — カートに商品を追加し、Undo トークンを取得する。
+/** `POST /api/v1/cart` — listing をカートに追加し、Undo トークンを取得する。
  *
+ *  - C2C pivot: server は `{ listingId, qty }` を受ける (= cart_items.listing_id FK to listings)。
  *  - 失敗時は `SduiFetchError` を throw。
- *  - body は `{ productId, qty }` の camelCase JSON。`qty` 省略時 1。 */
+ *  - body の `listingId` は listings.public_id (= "L-0421") の形式で送る (server 側で UUID 解決)。 */
 export const postCartAdd = async (
-  productId: string,
+  listingId: string,
   qty = 1,
 ): Promise<AddToCartResponse> => {
   return fetchJson<AddToCartResponse>(`/cart`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ productId, qty }),
+    body: JSON.stringify({ listingId, qty }),
   });
 };
 
@@ -660,6 +661,24 @@ export const fetchListings = async (): Promise<ListingViewWithCounts[]> => {
   return fetchJson<ListingViewWithCounts[]>(`/listings`);
 };
 
+/** `GET /api/v1/listings/me?status=...` — 自分の出品一覧 (= login 必須)。
+ *
+ *  Phase 1 で server に追加。`status` 省略 (= undefined) または `'all'` で全 status、
+ *  `'active' | 'sold' | 'canceled' | 'expired'` の 4 値で絞り込める。
+ *  401 (= 未ログイン) の場合は呼び出し側で `SduiFetchError` を catch して空扱いにする。
+ */
+export type MyListingsStatus = "active" | "sold" | "canceled" | "expired" | "all";
+
+export const fetchMyListings = async (
+  status?: MyListingsStatus,
+): Promise<ListingViewWithCounts[]> => {
+  const path =
+    status && status !== "all"
+      ? `/listings/me?status=${encodeURIComponent(status)}`
+      : `/listings/me`;
+  return fetchJson<ListingViewWithCounts[]>(path);
+};
+
 /** `POST /api/v1/listings` — 新規出品 (= login 必須)。 */
 export const postListing = async (
   req: CreateListingRequest,
@@ -671,9 +690,13 @@ export const postListing = async (
   });
 };
 
-/** `GET /api/v1/listings/{public_id}` — 1 件取得 (= public)。 */
-export const fetchListing = async (publicId: string): Promise<ListingView> => {
-  return fetchJson<ListingView>(`/listings/${encodeURIComponent(publicId)}`);
+/** `GET /api/v1/listings/{public_id}` — 1 件取得 (= public)。
+ *  戻り値は seller_name / bid_count / watcher_count を JOIN で含めた `ListingViewWithCounts`
+ *  (= 一覧 endpoint と同 shape)。詳細ページの seller 名表示で fallback 不要。 */
+export const fetchListing = async (
+  publicId: string,
+): Promise<ListingViewWithCounts> => {
+  return fetchJson<ListingViewWithCounts>(`/listings/${encodeURIComponent(publicId)}`);
 };
 
 /** `POST /api/v1/listings/{id}/cancel` — 自分の出品をキャンセル (= 204)。 */
@@ -701,11 +724,11 @@ export const postListingBid = async (
   );
 };
 
-/** `POST /api/v1/listings/{id}/watch` — listing watch トグル。 */
+/** `POST /api/v1/listings/{id}/watch` — listing watch トグル (= 200 + { watching })。 */
 export const postListingWatch = async (
   id: string,
-): Promise<{ watching: boolean }> => {
-  return fetchJson<{ watching: boolean }>(
+): Promise<ToggleWatchResponse> => {
+  return fetchJson<ToggleWatchResponse>(
     `/listings/${encodeURIComponent(id)}/watch`,
     {
       method: "POST",

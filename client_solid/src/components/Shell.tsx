@@ -30,13 +30,16 @@ interface NavEntry {
   key: RouteKey;
   label: string;
   icon: () => JSX.Element;
-  group: "EC" | "飼育" | "取引" | "運営";
+  group: "マーケット" | "飼育";
   /** 動的な数値として評価される。0 や undefined の場合はバッジを表示しない */
   badge?: () => number | undefined;
   hidden?: boolean;
 }
 
-const GROUPS: Array<NavEntry["group"]> = ["EC", "飼育", "取引", "運営"];
+// C2C pivot: 旧 "EC" / "取引" / "運営" を「マーケット」に統合。
+//   - "EC" (= 生体・用品 + カート) と "取引" (= C2Cマーケット) は同概念のため統合
+//   - "運営" (= ショップ管理) は B2C 概念のため全廃
+const GROUPS: Array<NavEntry["group"]> = ["マーケット", "飼育"];
 
 interface ShellProps {
   current: RouteKey;
@@ -72,13 +75,22 @@ export const Shell = (props: ShellProps) => {
   });
 
   const nav: NavEntry[] = [
-    { key: "products", label: "生体・用品", icon: Icons.grid, group: "EC" },
-    { key: "product-detail", label: "商品詳細", icon: Icons.tag, group: "EC", hidden: true },
+    // C2C pivot: 「生体・用品」を「出品中の生体」に改名。/products URL はそのまま。
+    { key: "products", label: "出品中の生体", icon: Icons.grid, group: "マーケット" },
+    { key: "product-detail", label: "出品詳細", icon: Icons.tag, group: "マーケット", hidden: true },
+    // C2C pivot: 出品作成ページ (= 個体カルテ「この個体を出品」/ 一覧の CTA から到達)
+    { key: "listing-new", label: "出品する", icon: Icons.plus, group: "マーケット", hidden: true },
+    // Phase 3: 自分の出品管理 (= /listings/me)。販売者目線の主要動線。
+    { key: "my-listings", label: "マイ出品", icon: Icons.tag, group: "マーケット" },
+    // Phase 3: 取引履歴 (= /orders、C2C pivot 後は購入+販売の取引履歴として運用)。
+    //   実装本体は MyOrdersPage / OrderDetailPage。販売側 orders は Phase 4 で統合予定。
+    { key: "orders", label: "取引履歴", icon: Icons.timeline, group: "マーケット" },
+    { key: "order-detail", label: "取引詳細", icon: Icons.card, group: "マーケット", hidden: true },
     {
       key: "cart",
       label: "カート",
       icon: Icons.cart,
-      group: "EC",
+      group: "マーケット",
       badge: () => props.cartCount?.(),
     },
     { key: "mypage", label: "マイページ", icon: Icons.home, group: "飼育" },
@@ -101,8 +113,8 @@ export const Shell = (props: ShellProps) => {
       badge: () => props.eclosionCount?.(),
     },
     { key: "bloodline", label: "血統系図", icon: Icons.tree, group: "飼育" },
-    { key: "market", label: "C2Cマーケット", icon: Icons.beetle, group: "取引" },
-    { key: "shop", label: "ショップ管理", icon: Icons.shop, group: "運営" },
+    // C2C pivot: 旧 "C2Cマーケット" は /products に統合済 (= sidebar から削除)。
+    // 旧 "ショップ管理" は B2C 概念のため全廃。
   ];
 
   return (

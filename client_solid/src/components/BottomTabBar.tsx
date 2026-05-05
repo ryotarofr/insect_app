@@ -44,12 +44,11 @@ interface BottomTabBarProps {
 
 /** More シート側にまわすルート (= 下部バーに primary として出さないもの) */
 // 個体カルテ (specimen) は詳細ビューなので More からは出さない。
-// マイページ → 所有個体カード経由で id 付きで開く。
+// C2C pivot: 旧 "shop" は廃止 (= ショップ管理機能なし)。
 const MORE_ROUTES: RouteKey[] = [
   "products",
   "product-detail", // 単独で飛ぶ導線はない (商品一覧経由)
   "bloodline",
-  "shop",
 ];
 
 const formatBadge = (n: number | undefined): string | null => {
@@ -71,7 +70,8 @@ export const BottomTabBar = (props: BottomTabBarProps) => {
     },
     // Cohort Phase 1: 旧「記録 (= /log)」を「飼育 (= /cohorts)」に置換。
     { key: "cohort", label: "飼育", icon: Icons.timeline },
-    { key: "market", label: "市場", icon: Icons.beetle },
+    // C2C pivot: 旧 "market" (= C2Cマーケット) は廃止。/products に統合済。
+    { key: "products", label: "市場", icon: Icons.beetle },
     {
       key: "cart",
       label: "カート",
@@ -81,9 +81,9 @@ export const BottomTabBar = (props: BottomTabBarProps) => {
   ];
 
   const moreItems: MoreItem[] = [
-    { key: "products", label: "生体・用品", icon: Icons.grid, hint: "ショップで購入" },
+    // C2C pivot: 旧 "shop" (= ショップ管理) は廃止。
+    { key: "products", label: "出品中の生体", icon: Icons.grid, hint: "C2Cマーケット" },
     { key: "bloodline", label: "血統系図", icon: Icons.tree, hint: "系譜・近交係数" },
-    { key: "shop", label: "ショップ管理", icon: Icons.shop, hint: "運営向け" },
   ];
 
   // UX-1: specimen 等の詳細ビューは親ルートに丸めてから判定する。

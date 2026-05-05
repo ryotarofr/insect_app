@@ -1,7 +1,28 @@
 # KOCHU insect_app DB 設計書
 
-`server/migrations/0001_initial.sql 〜 0011_orders_user_fk.sql` を統合した、全 23 テーブルの設計書です。
+`server/migrations/0001_initial.sql 〜 0011_orders_user_fk.sql` を統合した設計書です。
 ER 図 (`db_design_er.drawio`) と組み合わせて参照してください。
+
+> **⚠️ C2C pivot (= 2026-05 / migration 0021_c2c_pivot_drop_b2c_tables.sql)**:
+>
+> 旧 B2C 商品系テーブルは **全て DROP 済**:
+>   - `products`, `product_translations`, `product_bloodlines`, `product_watches`
+>
+> `cart_items.product_id` / `order_items.product_id` / `order_items.product_uuid` は
+> `listing_id` (UUID FK to `listings`) に置き換え。
+>
+> 販売対象は `listings` (= 6.1) のみとなり、cart / orders はそれを参照する形に統一。
+> 購入確定 (= Stripe webhook で orders.status="paid") 時に
+> `specimens.owner_user_id` を seller → buyer に書き換える譲渡フローが動く。
+>
+> **本書の 3.1〜3.4 セクション (products / product_translations / cart_items / product_watches)
+> は歴史記録として残しているが、現行 schema では:**
+>   - `products` / `product_translations` / `product_watches` → 存在しない
+>   - `cart_items` → `product_id` 列が消え `listing_id` 列に置換
+>
+> 詳細は
+> [`server/migrations/0021_c2c_pivot_drop_b2c_tables.sql`](server/migrations/0021_c2c_pivot_drop_b2c_tables.sql)
+> および [`docs/api-v1-endpoints.md`](docs/api-v1-endpoints.md) 参照。
 
 ## 目次
 

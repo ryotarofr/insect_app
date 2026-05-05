@@ -21,13 +21,12 @@ use super::orders::OrderRepoError;
 
 /// fulfillment 専用 row。
 ///
-/// `OrderLineRow` (= /api/v1/orders/{id} レスポンス用) と分けたのは、API 契約 row に
-/// fulfillment 内部実装の列 (id / fulfilled_specimen_id) を混ぜたくないため。
+/// C2C pivot: 旧 product_id / product_uuid (= B2C 商品参照) を listing_id に置換。
+/// `listing_id` は ON DELETE SET NULL なので Option (= listing が消えた後でも item は残る)。
 #[derive(Debug, Clone, FromRow)]
 pub struct OrderItemFulfillmentRow {
     pub id: Uuid,
-    pub product_id: String,
-    pub product_uuid: Option<Uuid>,
+    pub listing_id: Option<Uuid>,
     pub title: String,
     pub unit_price_jpy: i64,
     pub qty: i32,
@@ -47,11 +46,11 @@ pub async fn list_items_pending_fulfillment(
     };
     sqlx::query_as::<_, OrderItemFulfillmentRow>(
         r#"
-        SELECT id, product_id, product_uuid, title, unit_price_jpy, qty, fulfilled_specimen_id
+        SELECT id, listing_id, title, unit_price_jpy, qty, fulfilled_specimen_id
         FROM order_items
         WHERE order_id = $1
           AND fulfilled_specimen_id IS NULL
-        ORDER BY product_id
+        ORDER BY id
         "#,
     )
     .bind(order_id)

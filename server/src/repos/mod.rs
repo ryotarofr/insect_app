@@ -16,9 +16,6 @@ pub mod order_fulfillment;
 pub mod orders;
 pub mod password_resets;
 pub mod prefectures;
-pub mod product_bloodlines;
-pub mod product_watches;
-pub mod products;
 pub mod shipping_methods;
 pub mod species;
 pub mod species_stats;
@@ -28,3 +25,5 @@ pub mod specimens;
 pub mod stripe_webhook_events;
 pub mod user_sessions;
 pub mod users;
+// C2C pivot: products / product_bloodlines / product_watches は削除済。
+//   listings (= C2C 出品) が販売対象の唯一のエンティティに統一された。

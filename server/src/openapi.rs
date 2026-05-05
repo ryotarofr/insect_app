@@ -93,17 +93,15 @@ pub struct ErrorResponse {
         crate::handlers::auth::get_me,
         crate::handlers::auth::post_password_reset_request,
         crate::handlers::auth::post_password_reset_confirm,
-        // PR O-3: data.ts 移行系 (species + products, raw JSON)
+        // C2C pivot: 旧 products / product_bloodlines は削除済。
         crate::handlers::species::list_species,
-        crate::handlers::products::list_products,
-        // 商品血統情報 (= フロント PRODUCT_BLOODLINE 移行)
-        crate::handlers::product_bloodlines::list_product_bloodlines,
         // PR O-4: 飼育ログ (specimen_logs)
         crate::handlers::specimen_logs::list_my_logs,
         crate::handlers::specimen_logs::list_logs,
         crate::handlers::specimen_logs::create_log,
         // PR O-5: C2C marketplace (listings)
         crate::handlers::listings::list_active,
+        crate::handlers::listings::list_my_listings,
         crate::handlers::listings::create_listing,
         crate::handlers::listings::get_listing,
         crate::handlers::listings::cancel_listing,
@@ -141,13 +139,8 @@ pub struct ErrorResponse {
         // PR O-11: SDUI analytics ingest (events)
         crate::handlers::events::post_events,
         crate::handlers::events::list_events,
-        // PR O-12: 商品 watch (= /health は /api/v1 外なので非掲載)
-        crate::handlers::watch::toggle_watch,
-        // PR O-13: SDUI Card blocks (opaque body / 構造詳細は ts-rs 経由)
-        crate::handlers::cards::get_product_card,
-        crate::handlers::cards::get_product_detail_card,
-        crate::handlers::cards::get_cart_card,
-        crate::handlers::cards::list_product_cards,
+        // C2C pivot: 旧 watch (商品ウォッチ) / cards (SDUI cards/products / cart) は削除済。
+        //   listing 用は handlers::listings::toggle_watch_listing (= 上で登録済) で代替。
         // PR O-14: cohorts (= 群飼育 6 endpoint)。`/cohorts/me` 一覧 / 作成 / 詳細 /
         //   個体化 (promote) / archive / cohort_log 追加。詳細 DTO は handlers::cohorts。
         crate::handlers::cohorts::list_my_cohorts,
@@ -170,12 +163,8 @@ pub struct ErrorResponse {
             crate::handlers::auth::MeResponse,
             crate::handlers::auth::PasswordResetRequest,
             crate::handlers::auth::PasswordResetConfirmRequest,
-            // PR O-3: data.ts 移行系
+            // C2C pivot: 旧 ProductResponse / ProductBloodlineResponse / AncestorResponse は削除済。
             crate::handlers::species::SpeciesResponse,
-            crate::handlers::products::ProductResponse,
-            // 商品血統情報 DTO
-            crate::handlers::product_bloodlines::ProductBloodlineResponse,
-            crate::handlers::product_bloodlines::AncestorResponse,
             // PR O-4: 飼育ログ DTO
             crate::handlers::specimen_logs::SpecimenLogView,
             crate::handlers::specimen_logs::CreateSpecimenLogRequest,
@@ -225,8 +214,8 @@ pub struct ErrorResponse {
             crate::sdui::analytics::AnalyticsEvent,
             crate::sdui::analytics::AnalyticsEventBatch,
             crate::sdui::analytics::AnalyticsEventType,
-            // PR O-12: watch DTO
-            crate::handlers::watch::WatchToggleResponse,
+            // C2C pivot: 旧 WatchToggleResponse (= 商品ウォッチ) は削除済。
+            //   listing watch の戻り値は handlers::listings::ToggleWatchResponse を参照。
             // PR O-14: cohorts DTO (= 群飼育)
             crate::handlers::cohorts::CohortView,
             crate::handlers::cohorts::CohortLogView,
@@ -245,10 +234,10 @@ pub struct ErrorResponse {
     tags(
         // tag は handler 側で `tag = "..."` 指定で参照される。
         (name = "auth", description = "認証 / セッション"),
-        (name = "products", description = "商品マスタ"),
+        // C2C pivot: 旧 "products" tag は削除済 (= listings に統合)。
         (name = "specimens", description = "個体カルテ"),
-        (name = "orders", description = "注文"),
-        (name = "cart", description = "カート"),
+        (name = "orders", description = "取引履歴"),
+        (name = "cart", description = "カート (C2C 出品入り)"),
         (name = "checkout", description = "チェックアウト"),
         (name = "listings", description = "C2C マーケットプレイス"),
         (name = "uploads", description = "画像 / アセットアップロード"),

@@ -68,6 +68,16 @@ pub(crate) fn snapshot_checkout() -> CheckoutState {
         .clone()
 }
 
+/// 配送先 5 フィールドが全て埋まっているか判定する (= post_checkout_submit のガード)。
+/// C2C pivot で旧 handlers::cards から本ファイルに移植 (= cards.rs は廃止済)。
+pub(crate) fn is_shipping_complete(s: &CheckoutState) -> bool {
+    !s.address_name.trim().is_empty()
+        && !s.address_tel.trim().is_empty()
+        && !s.address_zip.trim().is_empty()
+        && !s.address_pref.trim().is_empty()
+        && !s.address_addr.trim().is_empty()
+}
+
 // ──────────────────────────────────────────────────────────────────────
 // 許容フィールド一覧 + 配送方法定義
 // ──────────────────────────────────────────────────────────────────────
@@ -272,36 +282,29 @@ pub struct CheckoutSubmitResponse {
 
 /// `POST /api/v1/checkout/submit` — 注文を確定し Stripe Checkout Session URL を返す。
 ///
-/// **Phase 9.x AppState 配線**:
+/// **C2C pivot 後の流れ**:
 ///   `axum::extract::State<AppState>` 経由で `Option<PgPool>` を受け取り、
-///   - `repos::products::find_by_public_id(pool, ...)` で product_uuid 解決
-///   - `repos::orders::insert_order(pool, ...)` で DB に永続化
+///   - `repos::listings::find_by_public_id(pool, ...)` で listing_id (UUID) と現在価格を解決
+///   - `repos::orders::insert_order(pool, ...)` で DB に永続化 (= order_items.listing_id)
 ///   どちらも pool 不在時は in-memory fallback。
-///
-/// **Session 配線** (= Cookie middleware 導入後):
-///   `axum::Extension<SessionId>` 経由で cookie 由来の UUID を受け取り、
-///   `orders.session_id` (= TEXT) と Stripe Session の reference に詰める。
-///   未ログイン (= anonymous) でも cookie で安定した UUID を持つので、同一ユーザの
-///   複数 cart → 注文の追跡が可能になる。
 #[utoipa::path(
     post,
     path = "/checkout/submit",
     tag = "checkout",
     responses(
         (status = 200, description = "注文確定 + Stripe Checkout Session URL を返す", body = CheckoutSubmitResponse),
-        (status = 400, description = "cart 空 / shipping 未入力 / 商品不正 / Stripe session 失敗", body = crate::openapi::ErrorResponse),
+        (status = 400, description = "cart 空 / shipping 未入力 / 出品不正 / Stripe session 失敗", body = crate::openapi::ErrorResponse),
     ),
 )]
 pub async fn post_checkout_submit(
     axum::extract::State(state): axum::extract::State<crate::state::AppState>,
     axum::Extension(session_id): axum::Extension<crate::session::SessionId>,
 ) -> Result<Json<CheckoutSubmitResponse>, AppError> {
-    use crate::handlers::cards::{is_shipping_complete, product_filter_meta};
     use crate::handlers::cart::snapshot_cart_for_session;
+    use crate::repos::listings;
     use crate::repos::orders::{
         OrderInsertRequest, OrderLineInsert, ShippingAddressInsert, insert_order,
     };
-    use crate::repos::products;
     use crate::stripe::{CheckoutLineItem, CheckoutProvider, CheckoutSessionRequest};
 
     // ── 1. Validate cart ──────────────────────────────────────────
@@ -319,50 +322,44 @@ pub async fn post_checkout_submit(
     }
 
     // ── 3. cart entries → order line items + Stripe LineItem 並列構築 ──
-    let meta = product_filter_meta();
+    // C2C pivot: 旧 product_filter_meta は廃止。listings から直接 unit_price と title を引く。
     let mut order_lines: Vec<OrderLineInsert> = Vec::with_capacity(cart.len());
     let mut stripe_lines: Vec<CheckoutLineItem> = Vec::with_capacity(cart.len());
     let mut subtotal_jpy: i64 = 0;
 
     for (_token, entry) in &cart {
-        let m = meta.get(entry.product_id.as_str()).ok_or_else(|| {
-            AppError::BadRequest(format!("unknown product in cart: {}", entry.product_id))
-        })?;
-        let unit_price_jpy: i64 = m.price_yen as i64;
+        // entry.listing_id は listings.public_id (= "L-0421" 等) として保持されている。
+        let listing = listings::find_by_public_id(state.db(), &entry.listing_id)
+            .await
+            .map_err(|e| AppError::BadRequest(format!("listing lookup: {e}")))?
+            .ok_or_else(|| {
+                AppError::BadRequest(format!("unknown listing in cart: {}", entry.listing_id))
+            })?;
+
+        // 現在価格 (= 即決 / オークション現在値) を採用。NULL なら starting_price_jpy。
+        let unit_price_jpy: i64 = listing
+            .current_price_jpy
+            .unwrap_or(listing.starting_price_jpy);
         let qty = entry.qty;
         if qty == 0 {
             return Err(AppError::BadRequest(format!(
                 "cart entry has qty=0 for {}",
-                entry.product_id
+                entry.listing_id
             )));
         }
         let line_subtotal: i64 = unit_price_jpy * qty as i64;
         subtotal_jpy += line_subtotal;
 
-        // Phase 9.F: pool が AppState 経由で来ているので products テーブルから
-        //   public_id → UUID を解決する。pool 不在 (in-memory fallback) の場合は
-        //   毎回ランダム UUID が返る性質があるため None に倒し、DB INSERT 時に
-        //   product_uuid を NULL にしておく (= product_id TEXT で履歴は保たれる)。
-        let product_uuid = if state.db().is_some() {
-            match products::find_by_public_id(state.db(), &entry.product_id).await {
-                Ok(Some(p)) => Some(p.row.id),
-                _ => None,
-            }
-        } else {
-            None
-        };
-
         order_lines.push(OrderLineInsert {
-            product_id: entry.product_id.clone(),
-            product_uuid,
-            title: m.title.to_string(),
+            listing_id: Some(listing.id),
+            title: listing.title.clone(),
             unit_price_jpy,
             qty,
             subtotal_jpy: line_subtotal,
         });
         stripe_lines.push(CheckoutLineItem {
-            product_id: entry.product_id.clone(),
-            title: m.title.to_string(),
+            product_id: entry.listing_id.clone(),
+            title: listing.title.clone(),
             unit_price_jpy,
             qty,
         });

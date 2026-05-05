@@ -30,9 +30,7 @@ import { CardRenderer } from "../sdui/CardRenderer";
 import { CartReloadProvider } from "../sdui/CartContext";
 import { SduiFetchError } from "../sdui/api";
 import { useCartSnapshot } from "../sdui/useCartSnapshot";
-import { CartBloodlineReminder } from "../components/products/CartBloodlineReminder";
-import "../styles/bloodline.css";
-import "../styles/product-bloodline.css";
+// C2C pivot: B2C 商品の血統リマインダは廃止 (= CartBloodlineReminder 削除済み)。
 
 const ErrorView = (props: { err: unknown }) => {
   const message = () => {
@@ -85,10 +83,8 @@ export const CartSduiPage = () => {
                 {(c) => (
                   <CartReloadProvider value={snap.reload}>
                     <CardRenderer card={c()} />
-                    {/* Phase 3: SDUI カード直下に血統リマインダを差し込む.
-                        CartCard は max-width: 640px / margin: 0 auto で中央寄せ
-                        されているので、リマインダ側も同じ制約を CSS で揃える. */}
-                    <CartBloodlineReminder card={c()} />
+                    {/* C2C pivot: B2C 血統リマインダは廃止。出品 (listing) の血統情報は
+                        listing 詳細ページで個別に表示する設計 (= 後続 PR)。 */}
                   </CartReloadProvider>
                 )}
               </Show>

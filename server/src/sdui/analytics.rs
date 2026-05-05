@@ -30,7 +30,7 @@ use ts_rs::TS;
 /// 拡張は contract 変更扱いで明示的に追加する。
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, utoipa::ToSchema, PartialEq, Eq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-#[ts(export)]
+#[ts(export, rename_all = "camelCase")]
 pub struct AnalyticsEvent {
     /// 対象 Block / Card の analyticsId。空文字は不可。
     pub analytics_id: String,
@@ -83,7 +83,6 @@ where
 /// 一致するが、将来の `dwell_time` 等が来た時に明確に snake_case で受ける意図)。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, TS, utoipa::ToSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-#[ts(export)]
 pub enum AnalyticsEventType {
     Impression,
     Click,
@@ -94,7 +93,7 @@ pub enum AnalyticsEventType {
 /// review fix (major): SDUI v6 §10.1 — batch 包み構造側でも未知 field を弾く。
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, utoipa::ToSchema, PartialEq, Eq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-#[ts(export)]
+#[ts(export, rename_all = "camelCase")]
 pub struct AnalyticsEventBatch {
     pub events: Vec<AnalyticsEvent>,
 }

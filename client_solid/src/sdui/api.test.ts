@@ -520,22 +520,21 @@ describe("fetchProductDetailCard", () => {
 // ──────────────────────────────────────────────────────────────────────
 
 describe("postCartAdd", () => {
-  it("POST /api/v1/cart に productId/qty を camelCase で送る", async () => {
+  it("POST /api/v1/cart に listingId/qty を camelCase で送る", async () => {
     const mock = vi.fn().mockImplementation(
       okJsonFactory({ cartCount: 3, undoToken: "undo_42" }),
     );
     vi.stubGlobal("fetch", mock);
 
-    const res = await postCartAdd("p-x", 2);
+    const res = await postCartAdd("L-1", 2);
     expect(res.cartCount).toBe(3);
     expect(res.undoToken).toBe("undo_42");
 
     const [url, init] = mock.mock.calls[0]!;
     expect(url).toBe("/api/v1/cart");
     expect(init.method).toBe("POST");
-    // body は camelCase
-    expect(init.body).toBe(JSON.stringify({ productId: "p-x", qty: 2 }));
-    // Content-Type が JSON
+    // C2C pivot: server は listingId を受ける (= cart_items.listing_id FK)
+    expect(init.body).toBe(JSON.stringify({ listingId: "L-1", qty: 2 }));
     const headers = init.headers as Record<string, string>;
     expect(headers["Content-Type"]).toBe("application/json");
   });
@@ -546,9 +545,9 @@ describe("postCartAdd", () => {
     );
     vi.stubGlobal("fetch", mock);
 
-    await postCartAdd("p-x");
+    await postCartAdd("L-1");
     const [, init] = mock.mock.calls[0]!;
-    expect(init.body).toBe(JSON.stringify({ productId: "p-x", qty: 1 }));
+    expect(init.body).toBe(JSON.stringify({ listingId: "L-1", qty: 1 }));
   });
 
   it("400 → SduiFetchError(status=400, body)", async () => {
@@ -560,7 +559,7 @@ describe("postCartAdd", () => {
         }),
       ),
     );
-    await expect(postCartAdd("p-x", 0)).rejects.toMatchObject({
+    await expect(postCartAdd("L-1", 0)).rejects.toMatchObject({
       name: "SduiFetchError",
       status: 400,
     });
@@ -571,7 +570,7 @@ describe("postCartAdd", () => {
       "fetch",
       vi.fn().mockRejectedValue(new TypeError("Failed to fetch")),
     );
-    await expect(postCartAdd("p-x")).rejects.toMatchObject({
+    await expect(postCartAdd("L-1")).rejects.toMatchObject({
       name: "SduiFetchError",
       status: 0,
     });

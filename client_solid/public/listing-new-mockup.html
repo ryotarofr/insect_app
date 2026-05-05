@@ -1,0 +1,669 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>個体を出品する / KOCHŪ モック</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  /* マイページモックと共通のデザイントークン */
+  :root {
+    --bg-canvas: oklch(0.985 0.004 80);
+    --bg-card:   oklch(1 0 0);
+    --bg-soft:   oklch(0.96 0.006 80);
+    --bg-softer: oklch(0.98 0.005 80);
+    --fg:        oklch(0.22 0.01 80);
+    --fg-muted:  oklch(0.48 0.01 80);
+    --fg-faint:  oklch(0.68 0.008 80);
+    --border:    oklch(0.9 0.006 80);
+    --border-strong: oklch(0.82 0.008 80);
+
+    --primary:        oklch(0.45 0.08 150);
+    --primary-soft:   oklch(0.93 0.03 150);
+    --primary-fg:     oklch(0.98 0.004 80);
+
+    --accent-amber:   oklch(0.78 0.13 80);
+    --accent-amber-soft: oklch(0.96 0.04 80);
+    --accent-blue:    oklch(0.55 0.10 240);
+    --accent-blue-soft: oklch(0.95 0.03 240);
+    --accent-rose:    oklch(0.62 0.13 25);
+    --accent-rose-soft: oklch(0.96 0.03 25);
+
+    --serif: "Noto Serif JP", "Hiragino Mincho ProN", serif;
+    --sans:  "Noto Sans JP", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+    --mono:  "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body { font-family: var(--sans); background: var(--bg-canvas); color: var(--fg); font-size: 14px; line-height: 1.55; letter-spacing: 0.01em; }
+
+  /* ── 全体: サイドバー + メイン ───────────────────────────────────── */
+  .app { display: grid; grid-template-columns: 200px 1fr; min-height: 100vh; }
+
+  .sidebar { background: var(--bg-card); border-right: 1px solid var(--border); padding: 16px 12px 12px; display: flex; flex-direction: column; position: sticky; top: 0; height: 100vh; }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 4px 6px 18px; }
+  .brand-mark { width: 36px; height: 36px; border-radius: 8px; background: var(--primary); color: var(--primary-fg); display: grid; place-items: center; font-family: var(--serif); font-weight: 700; }
+  .brand-name { font-family: var(--serif); font-size: 18px; font-weight: 700; letter-spacing: 0.04em; }
+  .brand-sub  { color: var(--fg-faint); font-size: 11px; margin-top: 2px; }
+  .nav-section { padding: 8px 6px 4px; color: var(--fg-faint); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .nav { display: flex; flex-direction: column; gap: 2px; }
+  .nav a { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; color: var(--fg); text-decoration: none; font-size: 13px; }
+  .nav a:hover { background: var(--bg-soft); }
+  .nav a.is-active { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+  .nav .badge { margin-left: auto; min-width: 20px; height: 18px; padding: 0 6px; border-radius: 999px; background: var(--primary); color: var(--primary-fg); font-size: 11px; display: grid; place-items: center; font-weight: 600; }
+  .nav .badge--soft { background: var(--bg-soft); color: var(--fg-muted); }
+  .nav .icon { width: 16px; height: 16px; opacity: 0.75; flex-shrink: 0; }
+  .sidebar-footer { margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 8px; }
+  .user-chip { display: flex; align-items: center; gap: 10px; padding: 4px 6px; }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--primary-soft); color: var(--primary); display: grid; place-items: center; font-size: 11px; font-weight: 700; }
+  .user-name { font-size: 13px; font-weight: 600; }
+  .user-role { font-family: var(--mono); font-size: 11px; color: var(--fg-faint); }
+  .logout { font-size: 11px; color: var(--fg-faint); padding: 6px 4px; }
+
+  /* ── トップバー ────────────────────────────────────────────────────── */
+  .topbar { height: 52px; padding: 0 32px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--border); background: var(--bg-canvas); position: sticky; top: 0; z-index: 10; }
+  .crumb { color: var(--fg-faint); font-size: 12px; }
+  .crumb b { color: var(--fg); font-weight: 600; }
+  .crumb a { color: var(--fg-muted); text-decoration: none; }
+  .search { background: var(--bg-soft); border: 1px solid transparent; border-radius: 8px; padding: 6px 10px; color: var(--fg-muted); font-size: 12px; display: flex; align-items: center; gap: 8px; min-width: 280px; }
+  .search .kbd { font-family: var(--mono); font-size: 10px; color: var(--fg-faint); border: 1px solid var(--border); padding: 1px 6px; border-radius: 4px; }
+
+  .content { padding: 28px 32px 60px; max-width: 1400px; }
+
+  /* ── ヒーロー ──────────────────────────────────────────────────────── */
+  .page-head { margin-bottom: 20px; }
+  .page-head .eyebrow { color: var(--fg-faint); font-size: 12px; letter-spacing: 0.06em; }
+  .page-head h1 { font-family: var(--serif); font-size: 28px; font-weight: 600; margin: 6px 0 4px; letter-spacing: 0.02em; }
+  .page-head .meta { color: var(--fg-muted); font-size: 13px; }
+
+  /* ── ステッパー ────────────────────────────────────────────────────── */
+  .stepper { display: flex; gap: 0; margin: 12px 0 22px; }
+  .step { display: flex; align-items: center; gap: 8px; padding: 6px 14px; font-size: 12px; color: var(--fg-faint); position: relative; }
+  .step .num { width: 22px; height: 22px; border-radius: 50%; background: var(--bg-soft); color: var(--fg-muted); display: grid; place-items: center; font-family: var(--mono); font-size: 11px; font-weight: 600; border: 1px solid var(--border); }
+  .step.is-active { color: var(--fg); font-weight: 600; }
+  .step.is-active .num { background: var(--primary); color: var(--primary-fg); border-color: var(--primary); }
+  .step.is-done .num { background: var(--primary-soft); color: var(--primary); border-color: var(--primary-soft); }
+  .step + .step::before { content: ""; display: block; width: 24px; height: 1px; background: var(--border); margin: 0 6px; }
+
+  /* ── ボタン ────────────────────────────────────────────────────────── */
+  .btn { display: inline-flex; align-items: center; gap: 6px; padding: 9px 14px; border-radius: 8px; font-size: 13px; font-weight: 600; border: 1px solid var(--border); background: var(--bg-card); color: var(--fg); cursor: pointer; text-decoration: none; font-family: inherit; }
+  .btn:hover { background: var(--bg-soft); }
+  .btn--primary { background: var(--primary); color: var(--primary-fg); border-color: var(--primary); }
+  .btn--primary[disabled], .btn--primary.is-disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn--ghost { background: transparent; }
+  .btn--lg { padding: 11px 18px; font-size: 14px; }
+  .btn .icon { font-weight: 400; }
+
+  /* ── 2 カラム ──────────────────────────────────────────────────────── */
+  .layout { display: grid; grid-template-columns: 1fr 420px; gap: 16px; align-items: start; }
+  .panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; }
+  .panel-head { padding: 14px 18px; border-bottom: 1px solid var(--border); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .panel-head .title { font-weight: 600; font-size: 14px; display: flex; align-items: baseline; gap: 8px; }
+  .panel-head .num { font-family: var(--mono); font-size: 11px; color: var(--fg-faint); letter-spacing: 0.1em; }
+  .panel-head .sub { color: var(--fg-faint); font-size: 12px; }
+  .panel-body { padding: 14px 18px; }
+
+  /* ── 個体ピッカー（左） ────────────────────────────────────────────── */
+  .picker-tools { display: flex; gap: 8px; padding: 10px 14px; border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+  .input { background: var(--bg-soft); border: 1px solid transparent; border-radius: 8px; padding: 6px 10px; font-size: 13px; color: var(--fg); font-family: inherit; }
+  .input:focus { outline: 2px solid var(--primary-soft); border-color: var(--primary); background: var(--bg-card); }
+  .input--full { flex: 1; min-width: 180px; }
+  .chip { padding: 4px 10px; border-radius: 99px; border: 1px solid var(--border); background: var(--bg-card); font-size: 12px; color: var(--fg-muted); cursor: pointer; }
+  .chip.is-on { background: var(--primary-soft); color: var(--primary); border-color: var(--primary-soft); font-weight: 600; }
+
+  .specimens { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; padding: 14px; }
+  .specimen-card { display: grid; grid-template-columns: 60px 1fr; gap: 10px; padding: 10px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-card); cursor: pointer; align-items: start; position: relative; }
+  .specimen-card:hover { background: var(--bg-softer); }
+  .specimen-card.is-selected { border-color: var(--primary); background: var(--primary-soft); }
+  .specimen-card.is-selected::after { content: "選択中"; position: absolute; top: 8px; right: 8px; font-size: 10px; padding: 2px 8px; background: var(--primary); color: var(--primary-fg); border-radius: 99px; font-weight: 600; }
+  .specimen-card.is-disabled { opacity: 0.55; cursor: not-allowed; }
+  .specimen-card.is-disabled::after { content: "出品不可"; position: absolute; top: 8px; right: 8px; font-size: 10px; padding: 2px 8px; background: var(--bg-soft); color: var(--fg-faint); border-radius: 99px; font-weight: 600; }
+  .specimen-thumb { width: 60px; height: 60px; border-radius: 8px; background: linear-gradient(135deg, oklch(0.92 0.04 80), oklch(0.86 0.05 70)); border: 1px solid var(--border); display: grid; place-items: center; font-size: 22px; flex-shrink: 0; }
+  .specimen-id { font-family: var(--mono); font-size: 10px; color: var(--fg-faint); }
+  .specimen-name { font-weight: 600; font-size: 13px; line-height: 1.3; margin: 2px 0; }
+  .specimen-meta { color: var(--fg-muted); font-size: 11.5px; display: flex; gap: 6px; flex-wrap: wrap; }
+  .specimen-meta .dot { color: var(--fg-faint); }
+  .tag { display: inline-flex; padding: 1px 6px; font-size: 10px; border-radius: 99px; background: var(--bg-soft); color: var(--fg-muted); font-weight: 600; }
+  .tag.male   { background: var(--accent-blue-soft); color: var(--accent-blue); }
+  .tag.female { background: var(--accent-rose-soft); color: var(--accent-rose); }
+  .tag.adult  { background: var(--primary-soft); color: var(--primary); }
+  .tag.larva  { background: var(--accent-amber-soft); color: oklch(0.45 0.13 80); }
+
+  /* ── 右パネル（出品情報） ─────────────────────────────────────────── */
+  .right-col { position: sticky; top: 68px; display: flex; flex-direction: column; gap: 12px; }
+
+  .form-row { display: flex; flex-direction: column; gap: 4px; margin-bottom: 14px; }
+  .form-row > label { font-size: 12px; color: var(--fg-muted); display: flex; align-items: center; gap: 6px; }
+  .form-row > label .help { font-size: 10px; color: var(--fg-faint); margin-left: auto; }
+  .form-row > .input { padding: 9px 12px; font-size: 14px; background: var(--bg-card); border-color: var(--border); }
+  .form-row textarea.input { min-height: 110px; resize: vertical; line-height: 1.6; }
+  .form-row select.input { padding: 9px 12px; }
+  .price-input { display: flex; align-items: stretch; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--bg-card); }
+  .price-input .yen { padding: 9px 12px; background: var(--bg-soft); color: var(--fg-muted); font-family: var(--serif); font-size: 16px; font-weight: 600; border-right: 1px solid var(--border); }
+  .price-input input { flex: 1; border: none; background: transparent; padding: 9px 12px; font-family: var(--serif); font-size: 18px; font-weight: 600; color: var(--fg); font-family: inherit; }
+  .price-input input:focus { outline: none; }
+
+  /* セグメント切替 */
+  .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 0; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; background: var(--bg-card); }
+  .seg button { padding: 9px; border: 0; background: transparent; cursor: pointer; font-size: 13px; color: var(--fg-muted); font-family: inherit; font-weight: 600; }
+  .seg button.is-on { background: var(--fg); color: var(--bg-card); }
+
+  /* 推奨価格 */
+  .price-hint { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: var(--bg-softer); border-radius: 8px; color: var(--fg-muted); font-size: 11.5px; margin-top: 4px; }
+  .price-hint b { color: var(--fg); font-family: var(--serif); font-weight: 600; }
+
+  /* 自動生成 切替 */
+  .desc-tabs { display: flex; gap: 4px; margin-bottom: 6px; }
+  .desc-tab { font-size: 11.5px; padding: 4px 10px; border-radius: 99px; border: 1px solid var(--border); background: var(--bg-card); cursor: pointer; color: var(--fg-muted); font-family: inherit; }
+  .desc-tab.is-on { background: var(--fg); color: var(--bg-card); border-color: var(--fg); }
+  .desc-toolbar { display: flex; gap: 6px; flex-wrap: wrap; padding: 6px 0 8px; }
+  .desc-toolbar button { font-size: 11px; padding: 3px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--bg-card); cursor: pointer; color: var(--fg-muted); font-family: inherit; }
+  .desc-toolbar button:hover { background: var(--bg-soft); color: var(--fg); }
+
+  /* 写真追加 */
+  .photo-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .photo { aspect-ratio: 1; border-radius: 8px; background: linear-gradient(135deg, oklch(0.92 0.04 80), oklch(0.86 0.05 70)); border: 1px solid var(--border); display: grid; place-items: center; font-size: 24px; position: relative; }
+  .photo .badge-cover { position: absolute; left: 4px; top: 4px; font-size: 9px; padding: 2px 6px; background: var(--fg); color: var(--bg-card); border-radius: 99px; font-weight: 600; }
+  .photo.is-add { background: var(--bg-softer); border: 1.5px dashed var(--border-strong); color: var(--fg-faint); cursor: pointer; }
+  .photo.is-add:hover { color: var(--primary); border-color: var(--primary); background: var(--primary-soft); }
+
+  /* 配送方法ラジオ */
+  .ship-options { display: flex; flex-direction: column; gap: 6px; }
+  .ship-opt { display: grid; grid-template-columns: 18px 1fr auto; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; cursor: pointer; align-items: start; background: var(--bg-card); }
+  .ship-opt.is-on { border-color: var(--primary); background: var(--primary-soft); }
+  .ship-opt input { margin-top: 2px; accent-color: var(--primary); }
+  .ship-opt .label { font-weight: 600; font-size: 13px; }
+  .ship-opt .desc { color: var(--fg-muted); font-size: 11.5px; margin-top: 2px; }
+  .ship-opt .price { font-family: var(--serif); font-weight: 600; font-size: 13px; color: var(--fg); }
+
+  /* 手数料サマリ */
+  .fee-card { background: var(--bg-softer); border: 1px solid var(--border); border-radius: 10px; padding: 14px; }
+  .fee-row { display: flex; justify-content: space-between; align-items: center; padding: 4px 0; font-size: 13px; }
+  .fee-row .label { color: var(--fg-muted); }
+  .fee-row .val { font-family: var(--serif); font-weight: 600; }
+  .fee-row.total { border-top: 1px solid var(--border); margin-top: 8px; padding-top: 12px; font-size: 14px; }
+  .fee-row.total .val { font-size: 18px; color: var(--primary); }
+  .fee-note { font-size: 11px; color: var(--fg-faint); margin-top: 8px; line-height: 1.6; }
+
+  /* バリデーション */
+  .check-list { display: flex; flex-direction: column; gap: 6px; }
+  .check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; }
+  .check.ok    { color: var(--primary); }
+  .check.warn  { color: oklch(0.45 0.13 80); }
+  .check.todo  { color: var(--fg-muted); }
+  .check::before { content: ""; width: 14px; height: 14px; border-radius: 50%; background: currentColor; flex-shrink: 0; opacity: 0.18; position: relative; }
+  .check::after  { content: "✓"; position: absolute; font-size: 10px; color: currentColor; margin-left: 3px; margin-top: 1px; font-weight: 700; }
+  .check.todo::after { content: "○"; }
+  .check.warn::after { content: "!"; }
+
+  /* 完了モーダル */
+  .complete-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 12px; }
+  .complete-card h3 { margin: 0; font-family: var(--serif); font-size: 18px; }
+  .complete-card .listing-pub-id { font-family: var(--mono); font-size: 12px; color: var(--fg-muted); }
+  .complete-actions { display: flex; gap: 8px; }
+
+  .footer-bar {
+    position: sticky; bottom: 0; background: var(--bg-card); border-top: 1px solid var(--border);
+    padding: 12px 18px; display: flex; gap: 8px; align-items: center; justify-content: flex-end;
+    border-radius: 0 0 12px 12px;
+  }
+  .footer-bar .left-note { margin-right: auto; color: var(--fg-faint); font-size: 11.5px; }
+  .footer-bar .left-note b { color: var(--fg); }
+
+  /* プレビューカード（出品が見える形） */
+  .preview-card { display: grid; grid-template-columns: 88px 1fr; gap: 12px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg-card); }
+  .preview-thumb { width: 88px; height: 88px; border-radius: 8px; background: linear-gradient(135deg, oklch(0.92 0.04 80), oklch(0.86 0.05 70)); border: 1px solid var(--border); display: grid; place-items: center; font-size: 32px; }
+  .preview-title { font-weight: 600; font-size: 14px; line-height: 1.35; }
+  .preview-meta { color: var(--fg-faint); font-size: 11.5px; margin-top: 4px; display: flex; gap: 6px; }
+  .preview-price { font-family: var(--serif); font-size: 18px; font-weight: 700; color: var(--fg); margin-top: 6px; }
+  .preview-price small { font-family: var(--sans); font-size: 11px; color: var(--fg-faint); margin-left: 2px; font-weight: 400; }
+
+  .accordion-section { border-top: 1px solid var(--border); }
+  .accordion-section summary { padding: 12px 18px; cursor: pointer; font-weight: 600; font-size: 13px; list-style: none; display: flex; align-items: center; gap: 8px; }
+  .accordion-section summary::-webkit-details-marker { display: none; }
+  .accordion-section summary::before { content: "▸"; color: var(--fg-faint); transition: transform 0.15s; }
+  .accordion-section[open] summary::before { transform: rotate(90deg); }
+  .accordion-body { padding: 0 18px 16px; }
+
+  /* 注釈 */
+  .note { margin-top: 36px; padding: 18px; border: 1px dashed var(--border-strong); border-radius: 12px; background: var(--bg-softer); color: var(--fg-muted); font-size: 12.5px; line-height: 1.7; }
+  .note h3 { margin: 0 0 8px; font-family: var(--serif); font-size: 14px; color: var(--fg); }
+  .note ul { margin: 0; padding-left: 20px; }
+  .note code { font-family: var(--mono); font-size: 11.5px; background: var(--bg-card); padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); }
+
+  @media (max-width: 1100px) {
+    .layout { grid-template-columns: 1fr; }
+    .right-col { position: static; }
+    .specimens { grid-template-columns: 1fr; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ─── サイドバー（出品中の生体 active）─────────────────────────── -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">蟲</div>
+      <div>
+        <div class="brand-name">KOCHŪ</div>
+        <div class="brand-sub">昆虫EC × 飼育ログ</div>
+      </div>
+    </div>
+
+    <div class="nav-section">マーケット</div>
+    <nav class="nav">
+      <a href="#"><span class="icon">▦</span> 出品中の生体 <span class="badge badge--soft">213</span></a>
+      <a href="#" class="is-active"><span class="icon">★</span> マイ出品 <span class="badge">3</span></a>
+      <a href="#"><span class="icon">♻</span> 取引履歴 <span class="badge badge--soft">12</span></a>
+      <a href="#"><span class="icon">🛒</span> カート</a>
+    </nav>
+    <div class="nav-section" style="margin-top:14px">飼育</div>
+    <nav class="nav">
+      <a href="#"><span class="icon">⌂</span> マイページ</a>
+      <a href="#"><span class="icon">▤</span> 飼育</a>
+      <a href="#"><span class="icon">🔔</span> 羽化予測</a>
+      <a href="#"><span class="icon">⌬</span> 血統系図</a>
+    </nav>
+    <div class="sidebar-footer">
+      <div class="user-chip">
+        <div class="avatar">りょ</div>
+        <div>
+          <div class="user-name">りょ</div>
+          <div class="user-role">breeder</div>
+        </div>
+      </div>
+      <div class="logout">ログアウト</div>
+    </div>
+  </aside>
+
+  <!-- ─── メイン ─────────────────────────────────────────────────── -->
+  <main>
+    <div class="topbar">
+      <div class="crumb"><a href="#">マイページ</a> &nbsp;/&nbsp; <a href="#">マイ出品</a> &nbsp;/&nbsp; <b>出品する</b></div>
+      <div class="search"><span>🔍</span><span style="flex:1">個体ID・種名・出品を検索...</span><span class="kbd">⌘K</span></div>
+    </div>
+
+    <div class="content">
+
+      <!-- ヘッダ -->
+      <div class="page-head">
+        <div class="eyebrow">マーケット</div>
+        <h1>個体を出品する</h1>
+        <div class="meta">所有個体を C2C マーケットに出品 — 説明はカルテから自動生成、編集可</div>
+
+        <div class="stepper">
+          <div class="step is-active"><span class="num">1</span> 個体を選ぶ</div>
+          <div class="step"><span class="num">2</span> 写真と説明</div>
+          <div class="step"><span class="num">3</span> 価格と販売方式</div>
+          <div class="step"><span class="num">4</span> 確認 → 出品</div>
+        </div>
+      </div>
+
+      <!-- 2 カラム本体 -->
+      <div class="layout">
+
+        <!-- 左: 個体ピッカー + 写真 + 説明 -->
+        <section style="display:flex; flex-direction:column; gap:12px;">
+
+          <!-- §01 個体を選ぶ -->
+          <div class="panel">
+            <div class="panel-head">
+              <div class="title"><span class="num">§01</span> 出品する個体を選ぶ</div>
+              <div class="sub">所有個体 12 / archived は非表示</div>
+            </div>
+            <div class="picker-tools">
+              <input class="input input--full" placeholder="個体ID / 名前 / 種で絞り込み..." />
+              <button class="chip is-on">すべて</button>
+              <button class="chip">成虫</button>
+              <button class="chip">幼虫</button>
+              <button class="chip">蛹</button>
+              <button class="chip">♂</button>
+              <button class="chip">♀</button>
+            </div>
+            <div class="specimens">
+              <!-- 選択中 -->
+              <div class="specimen-card is-selected">
+                <div class="specimen-thumb">🪲</div>
+                <div>
+                  <div class="specimen-id">#DHH-0271</div>
+                  <div class="specimen-name">ヘラクレス 黒曜</div>
+                  <div class="specimen-meta">
+                    <span>148.0mm</span><span class="dot">·</span><span>28.4g</span><span class="dot">·</span><span>CBF3</span>
+                  </div>
+                  <div class="specimen-meta" style="margin-top:4px">
+                    <span class="tag male">♂</span><span class="tag adult">成虫</span><span class="tag">血統認証</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="specimen-card">
+                <div class="specimen-thumb">🪲</div>
+                <div>
+                  <div class="specimen-id">#PHG-0145</div>
+                  <div class="specimen-name">パラワン 蒼天</div>
+                  <div class="specimen-meta">
+                    <span>112.0mm</span><span class="dot">·</span><span>WF1</span>
+                  </div>
+                  <div class="specimen-meta" style="margin-top:4px">
+                    <span class="tag male">♂</span><span class="tag adult">成虫</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="specimen-card">
+                <div class="specimen-thumb">🪲</div>
+                <div>
+                  <div class="specimen-id">#NJI-0033</div>
+                  <div class="specimen-name">ニジイロ ペア候補</div>
+                  <div class="specimen-meta">
+                    <span>62mm</span><span class="dot">·</span><span>F2</span>
+                  </div>
+                  <div class="specimen-meta" style="margin-top:4px">
+                    <span class="tag female">♀</span><span class="tag adult">成虫</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="specimen-card is-disabled" title="現在 L-0421 として出品中">
+                <div class="specimen-thumb">🪲</div>
+                <div>
+                  <div class="specimen-id">#OOK-0102</div>
+                  <div class="specimen-name">国産オオクワ 能勢YG</div>
+                  <div class="specimen-meta">
+                    <span>82mm</span><span class="dot">·</span><span>F4</span>
+                  </div>
+                  <div class="specimen-meta" style="margin-top:4px">
+                    <span class="tag male">♂</span><span class="tag adult">成虫</span><span class="tag" style="background:var(--accent-amber-soft); color:oklch(0.45 0.13 80);">出品中 L-0408</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="specimen-card">
+                <div class="specimen-thumb">🐛</div>
+                <div>
+                  <div class="specimen-id">#DHH-0301</div>
+                  <div class="specimen-name">ヘラクレス L3</div>
+                  <div class="specimen-meta">
+                    <span>体重 86g</span><span class="dot">·</span><span>CBF4</span>
+                  </div>
+                  <div class="specimen-meta" style="margin-top:4px">
+                    <span class="tag">未判別</span><span class="tag larva">幼虫 L3</span>
+                  </div>
+                </div>
+              </div>
+
+              <div class="specimen-card">
+                <div class="specimen-thumb">🪲</div>
+                <div>
+                  <div class="specimen-id">#DKM-0011</div>
+                  <div class="specimen-name">タイワンタガメ</div>
+                  <div class="specimen-meta">
+                    <span>WC</span>
+                  </div>
+                  <div class="specimen-meta" style="margin-top:4px">
+                    <span class="tag female">♀</span><span class="tag adult">成虫</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- §02 写真 + 説明 -->
+          <div class="panel">
+            <div class="panel-head">
+              <div class="title"><span class="num">§02</span> 写真と説明</div>
+              <div class="sub">最大 6 枚 / 1 枚目はカバー</div>
+            </div>
+            <div class="panel-body">
+
+              <div class="photo-grid" style="margin-bottom:14px">
+                <div class="photo">🪲<span class="badge-cover">カバー</span></div>
+                <div class="photo">🪲</div>
+                <div class="photo">🪲</div>
+                <div class="photo is-add">＋ 追加</div>
+              </div>
+
+              <div class="form-row">
+                <label>タイトル <span class="help">残り 28 文字</span></label>
+                <input class="input" value="ヘラクレス♂ 148mm 自家累代CBF3 — 血統認証付" />
+              </div>
+
+              <div class="form-row" style="margin-bottom:0">
+                <label>商品説明
+                  <span class="help" style="margin-left:auto">下書き：カルテから自動生成</span>
+                </label>
+                <div class="desc-tabs">
+                  <button class="desc-tab is-on">プレビュー</button>
+                  <button class="desc-tab">編集</button>
+                  <button class="desc-tab">マークダウン</button>
+                </div>
+                <div class="desc-toolbar">
+                  <button>＋ 計測値を挿入</button>
+                  <button>＋ 血統ツリー</button>
+                  <button>＋ 飼育環境</button>
+                  <button>＋ 配送補足</button>
+                </div>
+                <textarea class="input" style="min-height:160px;">【サイズ】148.0 mm（2026/04/28 計測）／ 体重 28.4 g
+【世代】CBF3（自家累代）／ 血統認証あり（イベントログ参照可）
+【羽化】2026-04-19 ／ 後食済 28 日
+
+▼ 親情報
+父：#DHH-0188 ヘラクレス 群青（145.2mm）
+母：#DHH-0192 ヘラクレス 朱華（68mm）
+
+▼ 飼育環境
+温度 24–26℃ / 湿度 60–70% / マット：黒土ベースの一般的な腐葉土ブレンド
+
+▼ 補足
+血統認証バッジは飼育ログから自動付与されています。配送は要冷蔵便（夏季）または常温緩衝便（春秋）から選択可能です。</textarea>
+              </div>
+
+            </div>
+          </div>
+
+        </section>
+
+        <!-- 右: 出品情報 + 手数料 + プレビュー（sticky） -->
+        <aside class="right-col">
+
+          <!-- §03 価格と販売方式 -->
+          <div class="panel">
+            <div class="panel-head">
+              <div class="title"><span class="num">§03</span> 価格と販売方式</div>
+            </div>
+            <div class="panel-body">
+
+              <div class="form-row">
+                <label>販売方式</label>
+                <div class="seg">
+                  <button class="is-on">オークション</button>
+                  <button>即決</button>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <label>開始価格 <span class="help">最低落札価格</span></label>
+                <div class="price-input">
+                  <span class="yen">¥</span>
+                  <input value="45,000" />
+                </div>
+                <div class="price-hint">
+                  <span>📈</span>
+                  <span>同種・同サイズ帯の直近30日中央値 <b>¥48,500</b>（取引 14 件） — 推奨レンジ ¥38,000〜¥58,000</span>
+                </div>
+              </div>
+
+              <div class="form-row">
+                <label>終了期間</label>
+                <select class="input">
+                  <option>1日</option>
+                  <option>3日（推奨）</option>
+                  <option selected>7日</option>
+                  <option>14日</option>
+                </select>
+              </div>
+
+              <div class="form-row" style="margin-bottom:0">
+                <label>即決価格を併用 <span class="help">任意</span></label>
+                <div class="price-input">
+                  <span class="yen">¥</span>
+                  <input placeholder="例: 65,000" />
+                </div>
+              </div>
+
+            </div>
+          </div>
+
+          <!-- §04 配送 -->
+          <details class="panel" open>
+            <summary class="panel-head" style="cursor:pointer">
+              <div class="title"><span class="num">§04</span> 配送方法</div>
+              <span class="sub">複数選択可</span>
+            </summary>
+            <div class="panel-body">
+              <div class="ship-options">
+                <label class="ship-opt is-on">
+                  <input type="checkbox" checked />
+                  <div>
+                    <div class="label">クール便（要冷蔵 / 推奨）</div>
+                    <div class="desc">夏季の死着リスクを下げる断熱+保冷剤付き梱包</div>
+                  </div>
+                  <div class="price">+¥1,800</div>
+                </label>
+                <label class="ship-opt is-on">
+                  <input type="checkbox" checked />
+                  <div>
+                    <div class="label">常温緩衝便</div>
+                    <div class="desc">春秋限定 / 緩衝マット入り箱詰</div>
+                  </div>
+                  <div class="price">+¥980</div>
+                </label>
+                <label class="ship-opt">
+                  <input type="checkbox" />
+                  <div>
+                    <div class="label">手渡し（首都圏のみ）</div>
+                    <div class="desc">出品者と購入者の合意が必要</div>
+                  </div>
+                  <div class="price">¥0</div>
+                </label>
+              </div>
+            </div>
+          </details>
+
+          <!-- §05 手数料サマリ -->
+          <div class="panel">
+            <div class="panel-head">
+              <div class="title"><span class="num">§05</span> 手数料と受取額</div>
+              <div class="sub">想定落札 ¥48,500</div>
+            </div>
+            <div class="panel-body">
+              <div class="fee-card">
+                <div class="fee-row"><span class="label">想定落札額</span><span class="val">¥48,500</span></div>
+                <div class="fee-row"><span class="label">販売手数料 (10%)</span><span class="val" style="color:var(--accent-rose)">−¥4,850</span></div>
+                <div class="fee-row"><span class="label">Stripe 決済手数料 (3.6%)</span><span class="val" style="color:var(--accent-rose)">−¥1,746</span></div>
+                <div class="fee-row total"><span class="label">あなたの受取額</span><span class="val">¥41,904</span></div>
+                <div class="fee-note">
+                  ※ Stripe Connect 経由でエスクロー保管 → 購入者の受取確認後に振込（3〜5 営業日）。
+                  死着 / 大幅な状態相違が確認された場合は自動返金フローが起動します。
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- §06 出品プレビュー -->
+          <div class="panel">
+            <div class="panel-head">
+              <div class="title"><span class="num">§06</span> 出品プレビュー</div>
+              <a href="#" class="sub" style="text-decoration:none">フルプレビュー →</a>
+            </div>
+            <div class="panel-body">
+              <div class="preview-card">
+                <div class="preview-thumb">🪲</div>
+                <div>
+                  <div class="preview-title">ヘラクレス♂ 148mm 自家累代CBF3 — 血統認証付</div>
+                  <div class="preview-meta">
+                    <span class="tag adult">血統認証</span><span class="tag">クール対応</span>
+                  </div>
+                  <div class="preview-price">¥45,000<small>〜（オークション）</small></div>
+                </div>
+              </div>
+
+              <div class="check-list" style="margin-top:14px">
+                <div class="check ok">写真 3 枚（最低 1 枚 OK）</div>
+                <div class="check ok">説明文（カルテから自動生成 + 親情報あり）</div>
+                <div class="check ok">血統リンク（父・母 specimens 紐付け済）</div>
+                <div class="check warn">Stripe Connect 受取口座が未連携</div>
+              </div>
+            </div>
+
+            <div class="footer-bar">
+              <div class="left-note">出品料 <b>¥0</b> ・ 手数料は売却成立時のみ</div>
+              <button class="btn">下書き保存</button>
+              <button class="btn btn--primary btn--lg is-disabled" title="Stripe Connect 連携が必要">出品する →</button>
+            </div>
+          </div>
+
+        </aside>
+      </div>
+
+      <!-- 設計メモ -->
+      <div class="note">
+        <h3>このモックの設計メモ</h3>
+        <ul>
+          <li><b>2 カラム + sticky 右パネル</b>。現状の <code>/listings/new</code> 構造を踏襲しつつ、左に個体ピッカー、
+              写真 + 説明、右にフォーム + 手数料 + プレビューを配置。スクロール中もアクションが見える。</li>
+          <li><b>個体カードに状態タグ</b>。<code>archived</code> は非表示、<code>既出品</code> は disabled + 出品 ID 表示で誤操作防止。
+              性別 / ステージは色分けタグで判別性を上げる。</li>
+          <li><b>説明文は 3 モード</b>: プレビュー（rendered）/ 編集（プレーン）/ マークダウン。
+              カルテ自動生成のときは <code>「下書き：カルテから自動生成」</code> ラベルを残し、編集後は <code>「編集済」</code> に切替。</li>
+          <li><b>推奨価格</b>: <code>specimens</code> + <code>orders/order_items</code> から同種同サイズ帯の中央値を出す。
+              将来の AI 価格推定（Phase 6 出品自動アシスト）の差し込み口になる。</li>
+          <li><b>手数料サマリは想定落札額ベースで動的計算</b>。販売手数料 10% / Stripe 3.6% は
+              <code>features.md</code> の C2C 経済設計に準拠。</li>
+          <li><b>出品ボタンは前提条件で disable</b>。Stripe Connect 未連携 / 写真 0 枚 / タイトル空 / 価格 0 は
+              ボタン無効 + チェックリストで原因表示（accountability）。</li>
+          <li><b>API: <code>POST /api/v1/listings</code></b> と整合
+              （<code>specimen_id</code>, <code>title</code>, <code>description</code>, <code>is_auction</code>,
+              <code>starting_price_jpy</code>, <code>ends_at</code>）。配送方法は別 endpoint
+              <code>PATCH /listings/{id}/shipping_methods</code> を新設するか、出品時に listings に
+              <code>allowed_shipping_methods</code> JSONB を追加する余地。</li>
+          <li><b>下書き保存</b>: <code>listings.status='draft'</code> を CHECK 制約に追加するマイグレーションが必要。
+              現状は <code>active / sold / canceled / expired</code> のみ。</li>
+        </ul>
+      </div>
+
+      <!-- 出品完了モーダルのモック -->
+      <div class="section-title" style="margin-top:36px"><h2 style="font-family:var(--serif); font-weight:600; font-size:18px; margin:0; color: var(--fg-faint)">出品完了後（モーダルまたは /listings/{public_id} 遷移）</h2></div>
+      <div class="panel" style="margin-top:12px">
+        <div class="panel-body">
+          <div class="complete-card">
+            <div style="display:flex; align-items:center; gap:14px">
+              <div style="width:44px; height:44px; border-radius:50%; background:var(--primary-soft); color:var(--primary); display:grid; place-items:center; font-size:22px">✓</div>
+              <div>
+                <h3>出品が公開されました</h3>
+                <div class="listing-pub-id">L-0428 ・ オークション残り 7日 ・ 開始 ¥45,000</div>
+              </div>
+            </div>
+            <div class="preview-card">
+              <div class="preview-thumb">🪲</div>
+              <div>
+                <div class="preview-title">ヘラクレス♂ 148mm 自家累代CBF3 — 血統認証付</div>
+                <div class="preview-meta">公開URL: <span style="font-family:var(--mono)">/listings/L-0428</span></div>
+                <div class="preview-price">¥45,000<small>〜</small></div>
+              </div>
+            </div>
+            <div class="complete-actions">
+              <button class="btn btn--primary">出品ページを見る</button>
+              <button class="btn">マイ出品に戻る</button>
+              <button class="btn btn--ghost">SNS でシェア</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+</body>
+</html>

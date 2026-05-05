@@ -73,7 +73,7 @@ use super::blocks::{CardBlock, Href, Localizable};
 /// `Option` + `skip_serializing_if` の組み合わせでそのまま optional に保たれる。
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-#[ts(export)]
+#[ts(export, rename_all = "camelCase")]
 pub struct ProductListResponse {
     /// 絞り込み UI 群。
     /// `None` の時はフロント側で filter bar を描かない (= フィルタ機能 OFF)。
@@ -104,7 +104,7 @@ pub struct ProductListResponse {
 /// 絞り込みエリア全体。複数の `FilterGroup` を縦に並べる想定。
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-#[ts(export)]
+#[ts(export, rename_all = "camelCase")]
 pub struct FilterBar {
     pub groups: Vec<FilterGroup>,
 }
@@ -112,7 +112,7 @@ pub struct FilterBar {
 /// 絞り込み 1 軸ぶん (例: 「カテゴリ」「飼育難度」)。
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-#[ts(export)]
+#[ts(export, rename_all = "camelCase")]
 pub struct FilterGroup {
     /// クエリパラメータ名 (`?category=...` の "category")。group 内ユニーク。
     pub key: String,
@@ -132,7 +132,7 @@ pub struct FilterGroup {
 ///   残すため、独立 struct とする。
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-#[ts(export)]
+#[ts(export, rename_all = "camelCase")]
 pub struct FilterChipItem {
     /// chip の値識別子 (例: "live" / "supply" / "easy")。group 内一意。
     pub key: String,
@@ -165,7 +165,7 @@ pub struct FilterChipItem {
 /// `SortOption.selected` も明示的に持たせて renderer の責務を減らしている。
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-#[ts(export)]
+#[ts(export, rename_all = "camelCase")]
 pub struct SortBar {
     /// 現在適用中の sort key (例: "name" / "price_asc" / "new")。
     /// クエリ未指定時は default value で埋まる。
@@ -178,7 +178,7 @@ pub struct SortBar {
 /// 「自分を抜く / 自分を追加する」のではなく「自分に置き換える」のが違い。
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-#[ts(export)]
+#[ts(export, rename_all = "camelCase")]
 pub struct SortOption {
     /// sort 値識別子 (例: "name" / "price_asc" / "price_desc" / "new")。
     pub key: String,
@@ -207,7 +207,7 @@ pub struct SortOption {
 /// クライアントを変えずに移行できる (= server だけで決められる)。
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-#[ts(export)]
+#[ts(export, rename_all = "camelCase")]
 pub struct SearchBox {
     /// 現在の検索文字列 (空 / 未指定なら None)。controlled input の初期値として使う。
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -235,7 +235,13 @@ pub struct SearchBox {
 /// するだけで済むようにするため。range collapse のロジックは server に集約。
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "camelCase", deny_unknown_fields)]
-#[ts(export)]
+// ts-rs v9 は serde の internally-tagged enum を尊重しないため、明示指定が必要。
+#[ts(
+    export,
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum PageLink {
     /// 数字リンク。
     #[serde(rename_all = "camelCase")]
@@ -257,7 +263,7 @@ pub enum PageLink {
 /// クライアントは `data-disabled="true"` 付きの span などで render すればよい。
 #[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-#[ts(export)]
+#[ts(export, rename_all = "camelCase")]
 pub struct Pagination {
     /// 現在のページ番号 (1 始まり)。
     pub page: u32,

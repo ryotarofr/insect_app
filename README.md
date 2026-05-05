@@ -1,6 +1,13 @@
-# 昆虫EC × 飼育管理プラットフォーム
+# 昆虫C2Cマーケット × 飼育管理プラットフォーム
 
-昆虫（カブトムシ・クワガタ等）の販売ECと飼育管理を統合したプラットフォーム。個体カルテ、血統管理、消耗品の自動補充、羽化予測などを一体で提供する。
+昆虫（カブトムシ・クワガタ等）の **C2C 取引** と飼育管理を統合したプラットフォーム。
+飼育者が育てた個体を直接売買でき、個体カルテ・血統管理・羽化予測を一体で提供する。
+
+> **C2C pivot (2026-05)**: 旧 B2C ショップモデル (= ANCHOR BEETLE CO. が商品を売る形) を全廃し、
+> ユーザ間 (= ブリーダー → ブリーダー) の出品 / 購入モデルに切り替え済。
+> `listings` が販売対象の唯一のエンティティで、購入確定時に specimen の owner が
+> seller → buyer に譲渡される。詳細は [マイグレーション 0021](server/migrations/0021_c2c_pivot_drop_b2c_tables.sql) と
+> [`docs/api-v1-endpoints.md`](docs/api-v1-endpoints.md) 参照。
 
 ## 技術スタック概要
 
@@ -268,6 +275,8 @@ cp server/.env.example server/.env
 ```bash
 cd server
 cargo run
+# or
+cargo run --bin insect_app_server
 ```
 
 `DB_AUTO_MIGRATE=true` (default) なら起動時に `server/migrations/*.sql` が自動で流れる。Phase 9.A〜9.G の対応で 0001〜0011 が揃っており、適用後は以下のテーブル / 列が利用可能:
@@ -286,6 +295,8 @@ cargo run
 | 0010_stripe_webhook_events | `stripe_webhook_events` (= event_id 冪等性キャッシュ) |
 | 0011_orders_user_fk | `orders.user_id` FK + 既存行の session 経由 backfill |
 | 0012_product_watches_session_owner | `product_watches` を session_id 許容に拡張 (= UUID PK + CHECK + UNIQUE 部分 index) |
+| 0013〜0020 | shipping_addresses FK / order_items.fulfilled_specimen_id / email_outbox / password_resets / assets / species_stats / product_bloodlines / cohorts |
+| **0021_c2c_pivot_drop_b2c_tables** | **C2C pivot**: `cart_items.product_id` → `listing_id` (FK to listings) / `order_items` を listing_id 化 / `products` / `product_translations` / `product_bloodlines` / `product_watches` を DROP |
 
 DB 接続失敗 / `DATABASE_URL` 未設定でも server は起動する (= 各 repo が in-memory fallback を持つので、cart / watch / cookie session / auth (= dynamic store) が機能限定で動く)。production では `db::init_pool` 直接呼び出しに切り替えて DB 不在 = fatal にする想定。
 

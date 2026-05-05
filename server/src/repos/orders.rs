@@ -37,12 +37,10 @@ pub struct OrderInsertRequest {
 
 #[derive(Debug, Clone)]
 pub struct OrderLineInsert {
-    /// public_id スナップショット (= "p-hh-m-142")。historical reference 用に保持。
-    pub product_id: String,
-    /// products(id) への UUID 参照 (Phase 9.F / 0005_order_items_product_fk.sql)。
-    /// `None` の場合 (= public_id 解決失敗 / DB 不在時) は order_items.product_uuid に
-    /// NULL が入る。注文履歴の不変性は product_id (TEXT) で確保されているため許容。
-    pub product_uuid: Option<Uuid>,
+    /// listings(id) への UUID 参照 (C2C pivot / 0021_c2c_pivot_drop_b2c_tables.sql)。
+    /// `None` の場合 (= listing 削除済 / pool 不在時) は order_items.listing_id に NULL が入る。
+    /// 注文履歴の不変性は title / unit_price_jpy のスナップショットで確保している。
+    pub listing_id: Option<Uuid>,
     pub title: String,
     pub unit_price_jpy: i64,
     pub qty: u32,
@@ -64,6 +62,9 @@ pub struct OrderRecord {
     pub id: Uuid,
     pub session_id: String,
     pub user_id: Option<Uuid>,
+    /// Phase 4 / migration 0022: 出品者 (= listings.seller_user_id) を fulfill_paid_order 時に
+    /// COALESCE で書き込む。NULL は「未確定 (= まだ paid 遷移していない / 複数 seller を含む)」を表す。
+    pub seller_user_id: Option<Uuid>,
     pub stripe_session_id: Option<String>,
     pub stripe_payment_intent_id: Option<String>,
     pub status: String,
@@ -74,12 +75,10 @@ pub struct OrderRecord {
 }
 
 /// `order_items` テーブルから SELECT して返す行 (= 注文詳細 endpoint 用)。
-/// `OrderLineInsert` は INSERT 用で qty が u32 なのに対し、本 row は DB 列定義通り i32 で
-/// 受け取る (= sqlx::FromRow が i32 の derive を持つため)。
+/// C2C pivot: 旧 product_id (TEXT) / product_uuid (UUID) を listing_id に置換。
 #[derive(Debug, Clone, FromRow)]
 pub struct OrderLineRow {
-    pub product_id: String,
-    pub product_uuid: Option<Uuid>,
+    pub listing_id: Option<Uuid>,
     pub title: String,
     pub unit_price_jpy: i64,
     pub qty: i32,
@@ -184,16 +183,18 @@ fn validate(req: &OrderInsertRequest) -> Result<(), OrderRepoError> {
         ));
     }
     for li in &req.line_items {
+        let listing_label = li
+            .listing_id
+            .map(|id| id.to_string())
+            .unwrap_or_else(|| "<no listing>".to_string());
         if li.qty == 0 || li.qty > 99 {
             return Err(OrderRepoError::Invalid(format!(
-                "qty out of range (1..=99) for {}",
-                li.product_id
+                "qty out of range (1..=99) for listing {listing_label}"
             )));
         }
         if li.unit_price_jpy < 0 || li.subtotal_jpy < 0 {
             return Err(OrderRepoError::Invalid(format!(
-                "negative price for {}",
-                li.product_id
+                "negative price for listing {listing_label}"
             )));
         }
     }
@@ -215,11 +216,14 @@ async fn insert_order_db(
     let mut tx: Transaction<'_, Postgres> = pool.begin().await.map_err(OrderRepoError::Db)?;
 
     // ── orders INSERT ──
+    // seller_user_id は INSERT 時には書かない (= NULL)。fulfill_paid_order が paid 遷移時に
+    // listings 経由で解決して UPDATE する (= update_seller_user_id_if_null)。
     let row = sqlx::query(
         r#"
         INSERT INTO orders (session_id, user_id, stripe_session_id, status, amount_jpy, shipping_jpy)
         VALUES ($1, $2, $3, 'pending', $4, $5)
-        RETURNING id, session_id, user_id, stripe_session_id, stripe_payment_intent_id,
+        RETURNING id, session_id, user_id, seller_user_id,
+                  stripe_session_id, stripe_payment_intent_id,
                   status, amount_jpy, shipping_jpy, created_at, updated_at
         "#,
     )
@@ -236,6 +240,7 @@ async fn insert_order_db(
         id: row.try_get("id").map_err(OrderRepoError::Db)?,
         session_id: row.try_get("session_id").map_err(OrderRepoError::Db)?,
         user_id: row.try_get("user_id").map_err(OrderRepoError::Db)?,
+        seller_user_id: row.try_get("seller_user_id").map_err(OrderRepoError::Db)?,
         stripe_session_id: row.try_get("stripe_session_id").map_err(OrderRepoError::Db)?,
         stripe_payment_intent_id: row
             .try_get("stripe_payment_intent_id")
@@ -249,20 +254,19 @@ async fn insert_order_db(
     let order_id = record.id;
 
     // ── order_items INSERT (loop) ──
-    // Phase 9.F: product_uuid を追加 (= products(id) への FK)。
-    // public_id (= product_id text) 解決失敗時は NULL を入れる (= 監査ログで追跡可能)。
+    // C2C pivot: 旧 product_id (TEXT) / product_uuid (UUID) を listing_id に置換。
+    // listing_id NULL は許容 (= ON DELETE SET NULL / 出品が消えた後でも履歴は残る)。
     for li in &req.line_items {
         sqlx::query(
             r#"
             INSERT INTO order_items
-                (order_id, product_id, product_uuid, title,
+                (order_id, listing_id, title,
                  unit_price_jpy, qty, subtotal_jpy)
-            VALUES ($1, $2, $3, $4, $5, $6, $7)
+            VALUES ($1, $2, $3, $4, $5, $6)
             "#,
         )
         .bind(order_id)
-        .bind(&li.product_id)
-        .bind(li.product_uuid)
+        .bind(li.listing_id)
         .bind(&li.title)
         .bind(li.unit_price_jpy)
         .bind(li.qty as i32)
@@ -325,7 +329,8 @@ pub async fn find_by_id(
     match pool {
         Some(p) => sqlx::query_as::<_, OrderRecord>(
             r#"
-            SELECT id, session_id, user_id, stripe_session_id, stripe_payment_intent_id,
+            SELECT id, session_id, user_id, seller_user_id,
+                   stripe_session_id, stripe_payment_intent_id,
                    status, amount_jpy, shipping_jpy, created_at, updated_at
             FROM orders
             WHERE id = $1
@@ -344,7 +349,7 @@ pub async fn find_by_id(
     }
 }
 
-/// 1 注文の line_items を product_id 順で返す。
+/// 1 注文の line_items を listing_id 順 (NULL 後置) で返す。
 pub async fn list_items_by_order_id(
     pool: Option<&PgPool>,
     order_id: Uuid,
@@ -352,10 +357,10 @@ pub async fn list_items_by_order_id(
     match pool {
         Some(p) => sqlx::query_as::<_, OrderLineRow>(
             r#"
-            SELECT product_id, product_uuid, title, unit_price_jpy, qty, subtotal_jpy
+            SELECT listing_id, title, unit_price_jpy, qty, subtotal_jpy
             FROM order_items
             WHERE order_id = $1
-            ORDER BY product_id
+            ORDER BY listing_id NULLS LAST, title
             "#,
         )
         .bind(order_id)
@@ -371,8 +376,123 @@ pub async fn list_items_by_order_id(
                 .filter(|(oid, _)| *oid == order_id)
                 .map(|(_, r)| r.clone())
                 .collect();
-            rows.sort_by(|a, b| a.product_id.cmp(&b.product_id));
+            rows.sort_by(|a, b| a.title.cmp(&b.title));
             Ok(rows)
+        }
+    }
+}
+
+/// Phase 4: GET /api/v1/orders/me?role=... の `role` 指定。
+///
+/// - `Buyer` → `orders.user_id = me`
+/// - `Seller` → `orders.seller_user_id = me`
+/// - `All` → 上記の OR (= 自分が買い手 or 売り手の注文すべて)
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum OrderRole {
+    Buyer,
+    Seller,
+    All,
+}
+
+/// `role` 指定で 1 user の注文履歴を created_at 降順で返す (= GET /api/v1/orders/me 用)。
+///
+/// **Phase 4 / 取引履歴の販売側統合**:
+///   - `Buyer` (= 旧 `list_by_user_id` と同じ): `WHERE user_id = $1`
+///   - `Seller`: `WHERE seller_user_id = $1` (= migration 0022 で追加した列)
+///   - `All`: `WHERE user_id = $1 OR seller_user_id = $1` (= 自分の取引すべて)
+///
+/// `seller_user_id` は paid 遷移時に listings 経由で書き込まれるため、pending な注文は
+/// `Seller` フィルタでは出ない。これは「販売の取引履歴は確定したものだけ」という設計意図。
+pub async fn find_by_role(
+    pool: Option<&PgPool>,
+    user_id: Uuid,
+    role: OrderRole,
+) -> Result<Vec<OrderRecord>, OrderRepoError> {
+    match pool {
+        Some(p) => {
+            let where_clause = match role {
+                OrderRole::Buyer => "user_id = $1",
+                OrderRole::Seller => "seller_user_id = $1",
+                OrderRole::All => "user_id = $1 OR seller_user_id = $1",
+            };
+            let q = format!(
+                r#"
+                SELECT id, session_id, user_id, seller_user_id,
+                       stripe_session_id, stripe_payment_intent_id,
+                       status, amount_jpy, shipping_jpy, created_at, updated_at
+                FROM orders
+                WHERE {where_clause}
+                ORDER BY created_at DESC, id
+                "#,
+            );
+            sqlx::query_as::<_, OrderRecord>(&q)
+                .bind(user_id)
+                .fetch_all(p)
+                .await
+                .map_err(OrderRepoError::Db)
+        }
+        None => {
+            let store = memory_store()
+                .lock()
+                .map_err(|_| OrderRepoError::Invalid("in-memory mutex poisoned".to_string()))?;
+            let mut rows: Vec<OrderRecord> = store
+                .iter()
+                .filter(|r| match role {
+                    OrderRole::Buyer => r.user_id == Some(user_id),
+                    OrderRole::Seller => r.seller_user_id == Some(user_id),
+                    OrderRole::All => {
+                        r.user_id == Some(user_id) || r.seller_user_id == Some(user_id)
+                    }
+                })
+                .cloned()
+                .collect();
+            rows.sort_by(|a, b| {
+                b.created_at
+                    .cmp(&a.created_at)
+                    .then_with(|| a.id.cmp(&b.id))
+            });
+            Ok(rows)
+        }
+    }
+}
+
+/// Phase 4: orders.seller_user_id を「まだ NULL の時だけ」書き込む (= COALESCE 相当)。
+///
+/// `fulfill_paid_order` が paid 遷移時に line_items の listing.seller_user_id を引いて呼ぶ。
+/// 同 order の retry / 並列 webhook で 2 度書きされても結果は冪等 (= 2 度目は no-op)。
+/// 異なる seller_user_id で再呼び出しされても、最初に書いた値が優先されて不変性が保たれる。
+pub async fn update_seller_user_id_if_null(
+    pool: Option<&PgPool>,
+    order_id: Uuid,
+    seller_user_id: Uuid,
+) -> Result<(), OrderRepoError> {
+    match pool {
+        Some(p) => {
+            sqlx::query(
+                r#"
+                UPDATE orders
+                SET seller_user_id = $2
+                WHERE id = $1 AND seller_user_id IS NULL
+                "#,
+            )
+            .bind(order_id)
+            .bind(seller_user_id)
+            .execute(p)
+            .await
+            .map_err(OrderRepoError::Db)?;
+            Ok(())
+        }
+        None => {
+            let mut store = memory_store()
+                .lock()
+                .map_err(|_| OrderRepoError::Invalid("in-memory mutex poisoned".to_string()))?;
+            if let Some(o) = store.iter_mut().find(|o| o.id == order_id)
+                && o.seller_user_id.is_none()
+            {
+                o.seller_user_id = Some(seller_user_id);
+                o.updated_at = Utc::now();
+            }
+            Ok(())
         }
     }
 }
@@ -385,7 +505,8 @@ pub async fn list_by_user_id(
     match pool {
         Some(p) => sqlx::query_as::<_, OrderRecord>(
             r#"
-            SELECT id, session_id, user_id, stripe_session_id, stripe_payment_intent_id,
+            SELECT id, session_id, user_id, seller_user_id,
+                   stripe_session_id, stripe_payment_intent_id,
                    status, amount_jpy, shipping_jpy, created_at, updated_at
             FROM orders
             WHERE user_id = $1
@@ -466,6 +587,8 @@ fn insert_order_memory(req: OrderInsertRequest) -> Result<OrderRecord, OrderRepo
         id: Uuid::new_v4(),
         session_id: req.session_id,
         user_id: req.user_id,
+        // Phase 4: in-memory モードでも seller_user_id は paid 遷移時に書く。
+        seller_user_id: None,
         stripe_session_id: req.stripe_session_id,
         stripe_payment_intent_id: None,
         status: "pending".to_string(),
@@ -489,8 +612,7 @@ fn insert_order_memory(req: OrderInsertRequest) -> Result<OrderRecord, OrderRepo
             items_store.push((
                 rec.id,
                 OrderLineRow {
-                    product_id: li.product_id,
-                    product_uuid: li.product_uuid,
+                    listing_id: li.listing_id,
                     title: li.title,
                     unit_price_jpy: li.unit_price_jpy,
                     qty: li.qty as i32,
@@ -537,8 +659,7 @@ mod tests {
             amount_jpy: 96000,
             shipping_jpy: Some(1800),
             line_items: vec![OrderLineInsert {
-                product_id: "p-x".to_string(),
-                product_uuid: None,                 // test fixture では UUID 解決スキップ
+                listing_id: None,                 // test fixture では UUID 解決スキップ
                 title: "Test".to_string(),
                 unit_price_jpy: 48000,
                 qty: 2,
@@ -612,30 +733,26 @@ mod tests {
         assert!(!is_valid_status(""));
     }
 
-    /// Phase 9.F: OrderLineInsert に product_uuid: Option<Uuid> が乗っており、
-    /// None / Some の両方を構築できる (= API 契約の確認)。
-    /// in-memory 経路は line_items を保存しないので、本テストは型検証が主目的。
+    /// C2C pivot: OrderLineInsert.listing_id: Option<Uuid> の構築確認 (= 型検証目的)。
     #[test]
-    fn order_line_insert_accepts_product_uuid() {
+    fn order_line_insert_accepts_listing_id() {
         let with_none = OrderLineInsert {
-            product_id: "p-x".to_string(),
-            product_uuid: None,
+            listing_id: None,
             title: "T".to_string(),
             unit_price_jpy: 100,
             qty: 1,
             subtotal_jpy: 100,
         };
-        assert!(with_none.product_uuid.is_none());
+        assert!(with_none.listing_id.is_none());
 
         let some_uuid = Uuid::new_v4();
         let with_some = OrderLineInsert {
-            product_id: "p-x".to_string(),
-            product_uuid: Some(some_uuid),
+            listing_id: Some(some_uuid),
             title: "T".to_string(),
             unit_price_jpy: 100,
             qty: 1,
             subtotal_jpy: 100,
         };
-        assert_eq!(with_some.product_uuid, Some(some_uuid));
+        assert_eq!(with_some.listing_id, Some(some_uuid));
     }
 }

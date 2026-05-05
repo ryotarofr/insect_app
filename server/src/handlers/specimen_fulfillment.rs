@@ -1,62 +1,52 @@
-//! 注文確定 → 個体カルテ自動生成 (K1 / 1 ヶ月計画 Week 1)。
+//! 注文確定 → 個体カルテ譲渡 (C2C pivot 後の K1 相当)。
 //!
-//! **責務**:
-//!   - `orders.status = 'paid'` 遷移後に呼ばれ、`order_items` の live (= 生体) 商品 1 行
-//!     につき `specimens` を 1 件 INSERT し、`order_items.fulfilled_specimen_id` で紐付ける。
+//! **C2C pivot 後の責務**:
+//!   `orders.status = 'paid'` 遷移後に呼ばれ、`order_items.listing_id` から
+//!   listings.specimen_id を引き、その specimen の owner を seller → buyer に書き換える。
+//!   B2C 時代のように specimen を **新規生成** するのではなく、**既存個体を譲渡** する。
 //!
 //! **冪等性 (二段構え)**:
 //!   1. webhook 層: `stripe_webhook_events.event_id` の UNIQUE で同じ Stripe event の二重
-//!      受信を弾く (= `repos::stripe_webhook_events::record_if_new`)。
+//!      受信を弾く。
 //!   2. 行レベル: `mark_item_fulfilled` の WHERE に `fulfilled_specimen_id IS NULL` を
-//!      含めることで、たとえ重複呼び出しが通っても specimen の二重紐付けは起こらない。
+//!      含めることで、たとえ重複呼び出しが通っても二重譲渡は起こらない。
 //!
 //! **失敗時の挙動**:
 //!   この関数が `Err` を返すと、呼び出し側 (= `stripe_webhook::post_stripe_webhook`) は
 //!   webhook を 5xx で返し、idempotency キャッシュを rollback する。Stripe の retry が
 //!   走り、再実行時は行レベルガードで idempotent。
-//!
-//! **将来の移管 (Week 2 / apalis)**:
-//!   1 ヶ月計画 Week 2 で apalis ジョブに分離し、webhook ホットパスから外す予定。
-//!   現状は同期処理で paid 遷移と一連で動かす最小実装。
 
 use uuid::Uuid;
 
-use crate::repos::{email_outbox, order_fulfillment, orders, products, specimens, users};
+use crate::repos::{email_outbox, listings, order_fulfillment, orders, specimens, users};
 use crate::state::AppState;
 
-/// `paid` 遷移した注文に対して、live `order_items` 1 行 = 1 specimen を生成する。
-///
-/// **前提**: 呼び出し前に `orders.status = 'paid'` への更新が成功している。
+/// `paid` 遷移した注文に対して、`order_items.listing_id` から specimen を引いて
+/// owner を譲渡する。
 ///
 /// **挙動**:
-///   1. 注文を取得 → `user_id` が None なら specimen を作らない (= 匿名注文 / 後追い紐付けは別タスク)
+///   1. 注文を取得 → `user_id` (= buyer) が None なら譲渡スキップ
 ///   2. 未 fulfill な order_items を列挙
 ///   3. 各 item について:
-///      - `product_uuid` が None なら skip (= public_id → uuid 解決失敗の旧行)
-///      - products を引き、`kind != 'live'` なら skip (= supply / mat / jelly 等)
-///      - `species_id` が None なら skip + warn (= 0003 の CHECK で起こらない defensive)
-///      - SpecimenInsert を組み立てて specimens::insert
-///      - `mark_item_fulfilled` で order_items に specimen_id を書き戻す
-///        - `Ok(false)` (= 競合) なら orphan specimen が残るが warn 止め (= ops で archive)
-///
-/// **qty > 1 の扱い**:
-///   live 1 行 = 1 specimen のみ生成する (qty > 1 は warn のみ / 1 specimen で完了)。
-///   live 商品の domain 上 qty=1 が原則であり、複数個体を 1 注文行にまとめるのは MVP 範囲外。
+///      - `listing_id` が None (= listing 削除済) なら skip
+///      - listings を引き、`specimen_id` が None (= specimen 紐付け無し出品) なら skip
+///      - `mark_item_fulfilled` で order_items に specimen_id を書き戻す (= 行レベル冪等)
+///      - `specimens.owner_user_id` を seller → buyer に UPDATE (= transfer_owner)
+///      - seller に「出品が売れました」メールを email_outbox に enqueue
+///   4. ループ終了後、buyer に「注文確認」メールを email_outbox に enqueue
 pub async fn fulfill_paid_order(state: &AppState, order_id: Uuid) -> anyhow::Result<()> {
     let order = orders::find_by_id(state.db(), order_id)
         .await
         .map_err(|e| anyhow::anyhow!("order lookup: {e}"))?
         .ok_or_else(|| anyhow::anyhow!("order not found: {order_id}"))?;
 
-    let Some(owner_user_id) = order.user_id else {
+    let Some(buyer_user_id) = order.user_id else {
         tracing::warn!(
-            "fulfill_paid_order: order {} has no user_id (anonymous purchase); skipping specimen generation",
+            "fulfill_paid_order: order {} has no user_id (anonymous purchase); skipping transfer",
             order_id
         );
         return Ok(());
     };
-
-    let purchased_at = order.created_at.date_naive();
 
     let pending = order_fulfillment::list_items_pending_fulfillment(state.db(), order_id)
         .await
@@ -68,122 +58,101 @@ pub async fn fulfill_paid_order(state: &AppState, order_id: Uuid) -> anyhow::Res
     }
 
     for item in pending {
-        let Some(product_uuid) = item.product_uuid else {
+        let Some(listing_id) = item.listing_id else {
             tracing::warn!(
-                "fulfill_paid_order: item {} has NULL product_uuid (product_id={}); skipping",
-                item.id,
-                item.product_id
-            );
-            continue;
-        };
-
-        let product = match products::find_by_id(state.db(), product_uuid).await {
-            Ok(Some(p)) => p,
-            Ok(None) => {
-                tracing::warn!(
-                    "fulfill_paid_order: product {} not found (item={}); skipping",
-                    product_uuid,
-                    item.id
-                );
-                continue;
-            }
-            Err(e) => return Err(anyhow::anyhow!("product lookup: {e}")),
-        };
-
-        if product.row.kind != "live" {
-            // supply (用品) は specimen 不要 → fulfilled_specimen_id は NULL のまま残す。
-            continue;
-        }
-        let Some(species_id) = product.row.species_id.clone() else {
-            tracing::warn!(
-                "fulfill_paid_order: live product {} has NULL species_id (item={}); skipping",
-                product_uuid,
+                "fulfill_paid_order: item {} has NULL listing_id; skipping",
                 item.id
             );
             continue;
         };
 
-        if item.qty > 1 {
+        let listing = match listings::find_by_id(state.db(), listing_id).await {
+            Ok(Some(l)) => l,
+            Ok(None) => {
+                tracing::warn!(
+                    "fulfill_paid_order: listing {} not found (item={}); skipping",
+                    listing_id,
+                    item.id
+                );
+                continue;
+            }
+            Err(e) => return Err(anyhow::anyhow!("listing lookup: {e}")),
+        };
+
+        let Some(specimen_id) = listing.specimen_id else {
+            // 自由 title 出品 (= specimen 紐付け無し) は譲渡対象 specimen が存在しない。
+            // C2C pivot の MVP 範囲では specimen 紐付け listing のみが正規フロー。
             tracing::warn!(
-                "fulfill_paid_order: live item {} has qty={} > 1; generating only 1 specimen (qty>1 unsupported for live in MVP)",
-                item.id,
-                item.qty
+                "fulfill_paid_order: listing {} has NULL specimen_id (item={}); skipping",
+                listing_id,
+                item.id
             );
-        }
-
-        // stage / stage_progress: badge_kind から最低限の推論。
-        //   "larva" → 幼虫 (stage_progress 0.5) / それ以外 → 成虫 (1.0)。
-        //   products に stage 列が無いため、これ以上の精度は K2 (= カルテ詳細編集) で
-        //   ユーザに上書きしてもらう前提。
-        let (stage, stage_progress) = match product.row.badge_kind.as_deref() {
-            Some("larva") => ("幼虫".to_string(), 0.5_f64),
-            _ => ("成虫".to_string(), 1.0_f64),
+            continue;
         };
 
-        let public_id = build_specimen_public_id(&species_id, item.id);
-        let name = product.title("ja"); // ja を主、無ければ public_id fallback
-
-        let payload = specimens::SpecimenInsert {
-            public_id,
-            owner_user_id,
-            species_id,
-            name,
-            sex: product.row.sex.clone().unwrap_or_else(|| "unknown".to_string()),
-            stage,
-            stage_progress,
-            size_mm: product.row.size_mm,
-            weight_g: None,
-            birth_date: None,
-            purchased_at: Some(purchased_at),
-            purchased_from_shop_id: Some(product.row.shop_id),
-            generation: product.row.generation.clone(),
-            purchase_price_jpy: Some(item.unit_price_jpy),
-            eclosion_eta: None,
-            father_id: None,
-            mother_id: None,
-            father_label: None,
-            mother_label: None,
-            notes: None,
-        };
-
-        let specimen_id = specimens::insert(state.db(), payload)
-            .await
-            .map_err(|e| anyhow::anyhow!("specimens::insert (item={}): {e}", item.id))?;
-
+        // C2C pivot Step B: 譲渡を本実装。
+        //   1. mark_item_fulfilled で fulfilled_specimen_id を埋め (= 行レベル冪等性ガード)
+        //   2. 成功した場合のみ specimens.owner_user_id を seller → buyer に書き換える
+        // 順序:
+        //   競合 (= 並行する webhook) で fulfilled_specimen_id が既に埋まっている場合は
+        //   bound=false で返るので、その時は owner 書き換えも skip する。これにより
+        //   「2 度 owner 書き換える」事故を防ぐ。
         let bound = order_fulfillment::mark_item_fulfilled(state.db(), item.id, specimen_id)
             .await
             .map_err(|e| anyhow::anyhow!("mark_item_fulfilled: {e}"))?;
 
         if !bound {
-            // 競合 = 別経路で既に紐付けられた。今作った specimen は orphan になるが、
-            // 安全側に倒して warn だけにする (= 後続で manual archive 可能)。
             tracing::warn!(
-                "fulfill_paid_order: item {} was fulfilled by a concurrent run; orphan specimen={}",
+                "fulfill_paid_order: item {} was fulfilled by a concurrent run; skipping owner transfer",
                 item.id,
-                specimen_id
             );
-        } else {
-            tracing::info!(
-                "fulfill_paid_order: order {} item {} → specimen {} (owner={})",
-                order_id,
-                item.id,
-                specimen_id,
-                owner_user_id
-            );
+            continue;
         }
+
+        // owner 書き換え (= seller → buyer)。NotFound は warn 止め (= specimen 削除済の race)。
+        match specimens::transfer_owner(state.db(), specimen_id, buyer_user_id).await {
+            Ok(()) => {
+                tracing::info!(
+                    "fulfill_paid_order: order {} item {} → specimen {} transferred (seller={} → buyer={})",
+                    order_id,
+                    item.id,
+                    specimen_id,
+                    listing.seller_user_id,
+                    buyer_user_id
+                );
+            }
+            Err(e) => {
+                // owner 書き換え失敗は致命 (= buyer の所有が反映されない)。
+                // anyhow で包んで上位 (stripe_webhook) に伝播し、5xx + Stripe retry を促す。
+                return Err(anyhow::anyhow!(
+                    "transfer_owner failed for specimen {}: {e}",
+                    specimen_id
+                ));
+            }
+        }
+
+        // seller 通知メール (= 「出品が売れました」) を enqueue。
+        // idempotency_key="seller_sale:{order_item_id}" で同 item の 2 重 enqueue を排除。
+        // 失敗は warn 止め (= 譲渡 / 注文整合性は既に成立、メールは best-effort)。
+        enqueue_listing_sold_to_seller(
+            state,
+            order_id,
+            item.id,
+            listing.seller_user_id,
+            listing.public_id.clone(),
+            listing.title.clone(),
+            item.unit_price_jpy,
+        )
+        .await;
     }
 
-    // PR N-3: 注文確認メールを email_outbox に enqueue。
-    // - idempotency_key="order:{order_id}" で同 stripe event 2 重 enqueue を排除
-    // - to_email は users.email から取得 (= NULL なら warn skip / メール送れない user)
-    // - email_outbox 失敗は order 自体の整合性に影響しないので warn のみ
-    enqueue_order_confirmation(state, order_id, owner_user_id, order.amount_jpy).await;
+    // 注文確認メールを email_outbox に enqueue (= 既存 B2C ロジックと同じ)。
+    enqueue_order_confirmation(state, order_id, buyer_user_id, order.amount_jpy).await;
 
     Ok(())
 }
 
-/// `order_confirmation` 種別の email を outbox に enqueue。失敗は warn ログのみで握り潰す
-/// (= 注文 / 個体生成は既に成功しており、メールは best-effort)。
+/// `order_confirmation` 種別の email を outbox に enqueue。失敗は warn ログのみで握り潰す。
 async fn enqueue_order_confirmation(
     state: &AppState,
     order_id: Uuid,
@@ -241,36 +210,81 @@ async fn enqueue_order_confirmation(
     }
 }
 
-/// specimen の `public_id` を `#{SPECIES_UPPER}-{first 6 hex of item_id}` 形式で生成。
+/// `listing_sold` 種別の email を seller に enqueue する。
 ///
-/// 例: species_id="dhh", item_id=00112233-... → "#DHH-001122"
+/// **C2C pivot**: 注文確定 → 譲渡完了直後に呼ぶ。order_items 単位 (= 1 listing 単位) で
+/// 1 通ずつ enqueue し、idempotency_key で 2 重 enqueue を排除する。
 ///
-/// **衝突可能性**: item_id は UUID v4 で 122 bit エントロピ。先頭 6 hex (= 24 bit) の
-/// 部分衝突は同一 species_id 内で 16M に 1 回程度。万一 specimens.public_id の UNIQUE
-/// 制約に引っかかれば呼び出し側が DB エラーで 5xx を返し、Stripe retry → mark_item_fulfilled
-/// が効いて再生成は走らない (= 旧 specimen は orphan のまま archive 待ち)。十分許容範囲。
-fn build_specimen_public_id(species_id: &str, item_id: Uuid) -> String {
-    let species_upper = species_id.to_uppercase();
-    let item_hex = item_id.simple().to_string();
-    let prefix = item_hex.get(..6).unwrap_or(&item_hex);
-    format!("#{species_upper}-{prefix}")
-}
+/// **失敗ハンドリング**:
+///   譲渡 / 注文整合性は既に成立しているので、メール enqueue 失敗は warn 止め
+///   (= best-effort、Stripe retry を発火させない)。enqueue 後の実送信失敗は
+///   email_outbox の retry / dead-letter で処理される。
+async fn enqueue_listing_sold_to_seller(
+    state: &AppState,
+    order_id: Uuid,
+    item_id: Uuid,
+    seller_user_id: Uuid,
+    listing_public_id: String,
+    listing_title: String,
+    sale_price_jpy: i64,
+) {
+    let user = match users::find_by_id(state.db(), seller_user_id).await {
+        Ok(Some(u)) => u,
+        Ok(None) => {
+            tracing::warn!(
+                "enqueue_listing_sold_to_seller: seller {} not found (order={}, item={})",
+                seller_user_id,
+                order_id,
+                item_id
+            );
+            return;
+        }
+        Err(e) => {
+            tracing::warn!(
+                "enqueue_listing_sold_to_seller: seller lookup failed: {e} (order={order_id}, item={item_id})"
+            );
+            return;
+        }
+    };
+    let Some(to_email) = user.email else {
+        tracing::warn!(
+            "enqueue_listing_sold_to_seller: seller {} has NULL email; cannot send notification (order={}, item={})",
+            seller_user_id,
+            order_id,
+            item_id
+        );
+        return;
+    };
 
-#[cfg(test)]
-mod tests {
-    use super::*;
+    let payload = email_outbox::OutboxEnqueue {
+        kind: "listing_sold".to_string(),
+        to_email,
+        template_args: serde_json::json!({
+            "order_id": order_id.to_string(),
+            "item_id": item_id.to_string(),
+            "listing_public_id": listing_public_id,
+            "listing_title": listing_title,
+            "sale_price_jpy": sale_price_jpy,
+        }),
+        // idempotency: order_item 単位で 1 通だけ送る (= 同 webhook の 2 重実行に強い)。
+        idempotency_key: Some(format!("seller_sale:{item_id}")),
+        owner_user_id: Some(seller_user_id),
+    };
 
-    #[test]
-    fn build_specimen_public_id_uses_species_upper_and_6_hex() {
-        let id = Uuid::parse_str("00112233-4455-6677-8899-aabbccddeeff").unwrap();
-        assert_eq!(build_specimen_public_id("dhh", id), "#DHH-001122");
-        assert_eq!(build_specimen_public_id("cat", id), "#CAT-001122");
-    }
-
-    #[test]
-    fn build_specimen_public_id_handles_empty_species() {
-        let id = Uuid::nil();
-        // species_id が空でも panic しない (= public_id の prefix 部だけ "" になる)
-        assert_eq!(build_specimen_public_id("", id), "#-000000");
+    match email_outbox::enqueue(state.db(), payload).await {
+        Ok(outbox_id) => {
+            tracing::info!(
+                outbox_id = %outbox_id,
+                order_id = %order_id,
+                item_id = %item_id,
+                seller_user_id = %seller_user_id,
+                "listing_sold enqueued"
+            );
+        }
+        Err(e) => {
+            tracing::warn!(
+                "enqueue_listing_sold_to_seller failed: {e} (order={order_id}, item={item_id})"
+            );
+        }
     }
 }

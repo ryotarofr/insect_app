@@ -21,7 +21,7 @@ use super::blocks::Block;
 /// 例: `headline` / `actions` を含めようとすると deserialize で 400。
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-#[ts(export)]
+#[ts(export, rename_all = "camelCase")]
 pub struct ProductFeatureRegions {
     #[serde(default)]
     pub header: Vec<Block>,
@@ -69,7 +69,7 @@ impl ProductFeatureRegions {
 /// `Vec::new()` になるため、JSON 側で省略しても OK)。
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-#[ts(export)]
+#[ts(export, rename_all = "camelCase")]
 pub struct ProductDetailRegions {
     #[serde(default)]
     pub gallery: Vec<Block>,
@@ -138,7 +138,7 @@ impl ProductDetailRegions {
 ///   必要が出る。
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
-#[ts(export)]
+#[ts(export, rename_all = "camelCase")]
 pub struct CartRegions {
     #[serde(default)]
     pub header: Vec<Block>,

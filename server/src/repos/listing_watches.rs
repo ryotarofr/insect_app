@@ -98,6 +98,32 @@ pub async fn find_listing_ids_by_user(
     }
 }
 
+/// 匿名 session が watch していた listing を、login 後の user に承継する。
+///
+/// **C2C pivot Step C**: `handlers::auth::promote_session_to_user` から呼ばれる。
+/// register / login 時に「匿名 session の状態を user に引き継ぐ」共通処理の一部。
+///
+/// **現状は no-op**:
+///   `listing_watches` テーブルは `(user_id, listing_id)` PK で `session_id` 列を持たず、
+///   設計上 watch は **login user 限定**。匿名 session で watch される行は存在しない
+///   ので、引き継ぐべきデータが無い。本関数は将来 session 対応に拡張した時に
+///   `handlers::auth` から呼ばれるシグネチャを **先回りで確保** する目的で no-op 実装。
+///
+/// **将来 session 対応する場合**:
+///   1. migration で `listing_watches` に `session_id UUID` 列を追加
+///      (= product_watches の 0012_product_watches_session_owner.sql と同じ pattern)
+///   2. PK を変更 (= `id UUID PK` + UNIQUE 部分 index)
+///   3. 本関数の中身を実装 (= UPDATE listing_watches SET user_id = $2, session_id = NULL
+///      WHERE session_id = $1 AND user_id IS NULL)
+pub async fn promote_session_to_user(
+    _pool: Option<&PgPool>,
+    _session_id: Uuid,
+    _user_id: Uuid,
+) -> Result<(), ListingWatchRepoError> {
+    // no-op: listing_watches は login user only スキーマ (上記 doc 参照)
+    Ok(())
+}
+
 pub async fn count_by_listing(
     pool: Option<&PgPool>,
     listing_id: Uuid,

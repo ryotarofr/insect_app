@@ -4,8 +4,10 @@
 //!
 //! **責務 (現状)**:
 //!   - HMAC-SHA256 検証 (= `Stripe-Signature` header の `v1=<hex>`) を `subtle::ConstantTimeEq`
-//!     で実施。env `STRIPE_WEBHOOK_SECRET` が空なら scaffolding mode (= dev / test) で skip。
-//!     production では `lib.rs::ensure_production_env_or_panic` で必須化済。
+//!     で実施。**Stripe 公式仕様** (= signed_payload `"{timestamp}.{body}"`) に準拠した
+//!     計算で、本物の Stripe webhook と byte 単位で一致する。
+//!     env `STRIPE_WEBHOOK_SECRET` が空なら dev mode で skip し、production では
+//!     `lib.rs::ensure_production_env_or_panic` で必須化済。
 //!   - **Replay 対策**: `Stripe-Signature` の `t=<unix>` を抽出し、`|now - t| <= tolerance`
 //!     (default 300 秒 / `KOCHU_STRIPE_TOLERANCE_SEC` env で上書き) を超えたら 401。
 //!   - **Idempotency**: 受信 event_id を `stripe_webhook_events` テーブルに `record_if_new`
@@ -75,10 +77,20 @@ fn tolerance_seconds() -> i64 {
         .unwrap_or(300)
 }
 
-/// raw body と secret から HMAC-SHA256 hex を計算する。
-fn compute_hmac_hex(secret: &str, body: &[u8]) -> String {
+/// Stripe 仕様の `signed_payload` (= `"{timestamp}.{body}"`) に対して HMAC-SHA256 hex を計算する。
+///
+/// **Stripe 公式仕様** (= https://stripe.com/docs/webhooks/signatures):
+///   `signed_payload` = `f"{timestamp}.{body}"` (= dot 連結)
+///   `expected_sig`   = HMAC_SHA256(secret, signed_payload).hex()
+///
+/// ここで `timestamp` は `Stripe-Signature` header の `t=` 部分の **文字列形式 (= 10 進整数の string)**。
+/// i64 → `to_string()` して body の先頭にドット連結するのが正しい (= 数値 byte 連結ではない)。
+fn compute_hmac_hex(secret: &str, timestamp: i64, body: &[u8]) -> String {
     let mut mac = HmacSha256::new_from_slice(secret.as_bytes())
         .expect("HMAC accepts arbitrary key length");
+    // signed_payload = "{timestamp}.{body}" を mac.update に逐次流す (= 巨大 body の copy 回避)。
+    mac.update(timestamp.to_string().as_bytes());
+    mac.update(b".");
     mac.update(body);
     hex::encode(mac.finalize().into_bytes())
 }
@@ -115,7 +127,9 @@ fn verify_signature(headers: &HeaderMap, body: &[u8]) -> Result<(), AppError> {
         return Err(AppError::Unauthorized);
     }
 
-    let expected_hex = compute_hmac_hex(&secret, body);
+    // **Stripe 仕様**: HMAC は `"{timestamp}.{body}"` に対して計算する。
+    //   timestamp 文字列を body の前にドット連結したものが signed_payload。
+    let expected_hex = compute_hmac_hex(&secret, t, body);
     if expected_hex.as_bytes().ct_eq(provided_hex.as_bytes()).into() {
         Ok(())
     } else {
@@ -391,8 +405,7 @@ mod tests {
                 amount_jpy: 96000,
                 shipping_jpy: Some(1800),
                 line_items: vec![OrderLineInsert {
-                    product_id: "p-x".to_string(),
-                    product_uuid: None, // test fixture では UUID 解決スキップ
+                    listing_id: None, // C2C pivot test fixture: listing 解決スキップ
                     title: "Test".to_string(),
                     unit_price_jpy: 48000,
                     qty: 2,
@@ -578,12 +591,38 @@ mod tests {
     #[test]
     fn compute_hmac_hex_matches_known_vector() {
         // 既知 vector で再計算が一意であることだけ確認 (= regression detection)。
-        let a = compute_hmac_hex("secret", b"hello");
-        let b = compute_hmac_hex("secret", b"hello");
+        // signed_payload = "{ts}.{body}" 形式。
+        let a = compute_hmac_hex("secret", 1_700_000_000, b"hello");
+        let b = compute_hmac_hex("secret", 1_700_000_000, b"hello");
         assert_eq!(a, b);
         assert_eq!(a.len(), 64, "SHA-256 hex は 64 文字");
-        let c = compute_hmac_hex("secret", b"hello!");
+        let c = compute_hmac_hex("secret", 1_700_000_000, b"hello!");
         assert_ne!(a, c, "1 文字違いで hash が変わる");
+        // 同 body / 異 timestamp でも hash が変わる (= replay safety の前提)
+        let d = compute_hmac_hex("secret", 1_700_000_001, b"hello");
+        assert_ne!(a, d, "timestamp が変わると hash が変わる");
+    }
+
+    #[test]
+    fn compute_hmac_hex_matches_stripe_official_format() {
+        // Stripe 公式仕様 (= "{timestamp}.{body}" の HMAC) との一致を、
+        // 同等の手計算と比較して検証する。
+        // ここでは sha2 + hmac の direct 呼び出しと結果を突き合わせる。
+        use hmac::{Hmac, Mac};
+        use sha2::Sha256;
+        type H = Hmac<Sha256>;
+
+        let secret = "whsec_official";
+        let ts: i64 = 1_700_000_123;
+        let body = b"{\"id\":\"evt_test\",\"type\":\"checkout.session.completed\"}";
+
+        let mut mac = H::new_from_slice(secret.as_bytes()).unwrap();
+        mac.update(format!("{ts}.").as_bytes());
+        mac.update(body);
+        let expected = hex::encode(mac.finalize().into_bytes());
+
+        let actual = compute_hmac_hex(secret, ts, body);
+        assert_eq!(actual, expected, "Stripe 仕様の signed_payload と一致");
     }
 
     #[tokio::test]
@@ -607,11 +646,13 @@ mod tests {
             std::env::set_var("STRIPE_WEBHOOK_SECRET", "whsec_test");
         }
         let body = b"payload";
-        let hex = compute_hmac_hex("whsec_test", body);
+        let ts = now_ts();
+        // signed_payload = "{ts}.{body}" の HMAC を計算する。
+        let hex = compute_hmac_hex("whsec_test", ts, body);
         let mut h = HeaderMap::new();
         h.insert(
             "stripe-signature",
-            format!("t={ts},v1={hex}", ts = now_ts()).parse().unwrap(),
+            format!("t={ts},v1={hex}").parse().unwrap(),
         );
         verify_signature(&h, body).expect("正しい署名は通る");
         unset_webhook_secret();
@@ -688,9 +729,9 @@ mod tests {
             std::env::remove_var("KOCHU_STRIPE_TOLERANCE_SEC");
         }
         let body = b"payload";
-        let hex = compute_hmac_hex("whsec_test", body);
         // 10 分前 (= 600 秒前) は default の 300 秒を超える → reject
         let old_ts = now_ts() - 600;
+        let hex = compute_hmac_hex("whsec_test", old_ts, body);
         let mut h = HeaderMap::new();
         h.insert(
             "stripe-signature",
@@ -711,9 +752,9 @@ mod tests {
             std::env::remove_var("KOCHU_STRIPE_TOLERANCE_SEC");
         }
         let body = b"payload";
-        let hex = compute_hmac_hex("whsec_test", body);
         // 10 分先 → reject
         let future_ts = now_ts() + 600;
+        let hex = compute_hmac_hex("whsec_test", future_ts, body);
         let mut h = HeaderMap::new();
         h.insert(
             "stripe-signature",
@@ -733,8 +774,9 @@ mod tests {
             std::env::set_var("STRIPE_WEBHOOK_SECRET", "whsec_test");
         }
         let body = b"payload";
-        let hex = compute_hmac_hex("whsec_test", body);
-        // t= が無い header (= 古い stripe / 攻撃者の偽装) → reject
+        // t= が無いヘッダ → 検証関数は extract_timestamp 段階で reject するので、
+        //   署名の中身 (hex) が valid かは関係ない。dummy hex で十分。
+        let hex = "deadbeef".to_string();
         let mut h = HeaderMap::new();
         h.insert("stripe-signature", format!("v1={hex}").parse().unwrap());
         match verify_signature(&h, body) {
@@ -753,9 +795,9 @@ mod tests {
             std::env::set_var("KOCHU_STRIPE_TOLERANCE_SEC", "3600");
         }
         let body = b"payload";
-        let hex = compute_hmac_hex("whsec_test", body);
         // default 300 秒の境を越える 10 分前でも、env で 3600 まで広げれば通る
         let old_ts = now_ts() - 600;
+        let hex = compute_hmac_hex("whsec_test", old_ts, body);
         let mut h = HeaderMap::new();
         h.insert(
             "stripe-signature",

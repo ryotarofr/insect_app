@@ -21,17 +21,18 @@ export const ROUTE_PATHS: Record<RouteKey, string> = {
   "cohort-new": "/cohorts/new",
   eclosion: "/eclosion",
   bloodline: "/bloodline",
-  shop: "/shop",
-  market: "/market",
-  // Phase 9.1: SDUI カートに統一 (旧 cart-sdui route は廃止)
+  // C2C pivot: cart は listing 入りの cart_items として再利用
   cart: "/cart",
   warranty: "/help/warranty",
   // Phase 9.G: login / register UI
   login: "/login",
-  // Phase 9.G: 注文履歴 (= /api/v1/orders/me 経由)
+  // C2C pivot: 「取引履歴」として運用 (注文履歴の UI ラベルだけ後続 PR で更新)
   orders: "/orders",
-  // 注文詳細は /orders/:id だが、ROUTE_PATHS は代表 path を持てば良い
   "order-detail": "/orders",
+  // C2C pivot: 出品作成ページ (= 個体カルテ「この個体を出品」/ /products から遷移)
+  "listing-new": "/listings/new",
+  // Phase 3: 自分の出品管理ページ (= タブ式の縦リスト全件)
+  "my-listings": "/listings/me",
   // 404 は実際にはここから遷移しない (URL → RouteKey 経路でしか来ない)。
   // 何か理由があって setRoute("not-found") した時のために便宜上のパスを置く。
   "not-found": "/404",
@@ -65,8 +66,11 @@ export const pathnameToRouteKey = (pathname: string): RouteKey => {
   if (path === "/cohorts") return "cohort";
   if (path === "/eclosion") return "eclosion";
   if (/^\/bloodline(?:\/|$)/.test(path)) return "bloodline";
-  if (path === "/shop") return "shop";
-  if (path === "/market") return "market";
+  // C2C pivot: 旧 /shop, /market は廃止。/market は /products と統合済 → 404 に倒す。
+  // 新規: /listings/new (= 出品作成ページ)
+  if (path === "/listings/new") return "listing-new";
+  // Phase 3: /listings/me (= マイ出品管理) は /listings/{public_id} より先に評価する。
+  if (path === "/listings/me") return "my-listings";
   if (path === "/cart") return "cart";
   // Phase 9.1: 旧 /cart-sdui は /cart に正規化 (= 古いブックマークの救済)
   if (path === "/cart-sdui") return "cart";
@@ -105,6 +109,10 @@ export const sidebarRouteKey = (route: RouteKey): RouteKey => {
   }
   // 単独個体登録もサイドバー上は「飼育」配下扱い (= 飼育の CTA から到達するため)
   if (route === "specimen-new") return "cohort";
+  // C2C pivot: 出品作成は /products (出品一覧) の派生としてハイライト
+  if (route === "listing-new") return "products";
+  // Phase 3: 取引詳細 (/orders/:id) はサイドバー上「取引履歴」をハイライト
+  if (route === "order-detail") return "orders";
   return route;
 };
 
@@ -151,12 +159,24 @@ export const crumbFor = (route: RouteKey, ids: CrumbIds = {}): Crumb[] => {
     case "mypage":
       return [{ label: "マイページ", href: undefined }];
     case "products":
-      return [{ label: "ショップ", href: undefined }, { label: "生体・用品" }];
+      // C2C pivot: 「ショップ」概念を廃止し、マーケット (= C2C 出品一覧) に統一
+      return [{ label: "マーケット", href: undefined }, { label: "出品中の生体" }];
     case "product-detail":
       return [
-        { label: "ショップ", href: "/products" },
-        { label: "生体・用品", href: "/products" },
-        { label: ids.productTitle ?? "商品詳細" },
+        { label: "マーケット", href: "/products" },
+        { label: "出品中の生体", href: "/products" },
+        { label: ids.productTitle ?? "出品詳細" },
+      ];
+    case "listing-new":
+      return [
+        { label: "マーケット", href: "/products" },
+        { label: "出品する" },
+      ];
+    case "my-listings":
+      // Phase 3: 自分の出品管理ページ。マイページの子として位置づける。
+      return [
+        { label: "マイページ", href: "/" },
+        { label: "マイ出品" },
       ];
     case "specimen":
       return [
@@ -203,14 +223,10 @@ export const crumbFor = (route: RouteKey, ids: CrumbIds = {}): Crumb[] => {
           ? [{ label: ids.bloodlineId } as Crumb]
           : []),
       ];
-    case "shop":
-      return [{ label: "運営", href: undefined }, { label: "ショップ管理" }];
-    case "market":
-      return [{ label: "取引", href: undefined }, { label: "C2Cマーケット" }];
     case "cart":
-      // Phase 9.1: SDUI カートに統一済み。
+      // C2C pivot: cart は listing の購入経路として再利用
       return [
-        { label: "ショップ", href: "/products" },
+        { label: "マーケット", href: "/products" },
         { label: "カート" },
       ];
     case "warranty":
@@ -222,17 +238,17 @@ export const crumbFor = (route: RouteKey, ids: CrumbIds = {}): Crumb[] => {
       // Phase 9.G: login / register の breadcrumb は単独 (= サイドバー上の親が無い)
       return [{ label: "ログイン" }];
     case "orders":
-      // Phase 9.G: 注文履歴は「マイページ」配下の派生として breadcrumb を組む
+      // C2C pivot: 「取引履歴」(= 出品 / 入札 / 購入の履歴) として運用
       return [
         { label: "マイページ", href: "/" },
-        { label: "注文履歴" },
+        { label: "取引履歴" },
+        { label: "取引履歴" },
       ];
     case "order-detail":
-      // 注文詳細は /orders → 詳細 の 3 段。末尾は id (= 短縮表示) で揺らがせない。
       return [
         { label: "マイページ", href: "/" },
-        { label: "注文履歴", href: "/orders" },
-        { label: "注文詳細" },
+        { label: "取引履歴", href: "/orders" },
+        { label: "取引詳細" },
       ];
     case "not-found":
       return [{ label: "ページが見つかりません" }];

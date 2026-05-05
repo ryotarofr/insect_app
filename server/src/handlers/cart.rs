@@ -8,8 +8,9 @@
 //!   - 旧 in-memory `cart_store` グローバル (= `Mutex<HashMap<token, entry>>`) を撤去。
 //!   - `repos::cart_items` 経由で DB / in-memory fallback どちらでも動く構成へ移行。
 //!   - cart は `SessionId` (= cookie middleware が発行する UUID) で分離される。
-//!   - `productId` (= public_id) は INSERT 時に `repos::products::find_uuid_for_public_id`
-//!     で UUID 解決し、`cart_items.product_id` (UUID) に格納する。
+//!   - **C2C pivot**: `listingId` (= listings.public_id) を INSERT 時に
+//!     `repos::listings::find_by_public_id` で UUID 解決し、`cart_items.listing_id` (UUID FK)
+//!     に格納する。旧 products テーブル / find_uuid_for_public_id 経路は廃止。
 //!   - `undoToken` は `cart_items.id` UUID の文字列表現 (= 旧 "undo_<n>" から変更)。
 //!     破壊的変更だが client 側はトークンを opaque に扱う設計なので問題なし。
 //!
@@ -26,18 +27,18 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::AppError;
-use crate::repos::{cart_items, products};
+use crate::repos::{cart_items, listings};
 use crate::session::SessionId;
 use crate::state::AppState;
 
-/// snapshot_cart の戻り値型。`product_id` は public_id (= "p-hh-m-142") として保持し、
-/// 既存 cards.rs / checkout.rs の build ロジックを最小変更で動かす。
+/// snapshot_cart の戻り値型。`listing_id` は listings.public_id (= "L-0421") として保持し、
+/// checkout.rs の build ロジックを最小変更で動かす。
 ///
-/// **Phase 9.E**: 旧 `Mutex<HashMap>` 由来の構造体だったが、本 PR で repos::cart_items から
-/// 復元する pure data structure に変わった (= snapshot 専用)。
+/// **C2C pivot**: 旧 product_id (= "p-hh-m-142") の意味で扱っていた `listing_id` フィールドを、
+/// listings.public_id の意味に再解釈。実 DB 列 (cart_items.listing_id) は listings(id) UUID。
 #[derive(Debug, Clone)]
 pub(crate) struct CartEntry {
-    pub product_id: String,
+    pub listing_id: String,
     pub qty: u32,
 }
 
@@ -48,12 +49,10 @@ pub(crate) struct CartEntry {
 /// `(SessionId, AppState)` 組から cart の現在内容を返す。
 ///
 /// 戻り値は `Vec<(token_hex, CartEntry)>` で id 昇順 (= deterministic / 表示順安定)。
-/// product_uuid → public_id の逆引きは `repos::products::find_by_id` で 1 件ずつ解決
-/// (= MVP は cart 内の行数が小さいので N+1 でも実用上問題なし。性能要件が出たら
-/// JOIN クエリ or `find_many_by_ids` バッチ取得に切替)。
+/// listing_uuid → listings.public_id の逆引きは `repos::listings::find_by_id` で 1 件ずつ解決。
 ///
-/// **可視性**: `CartEntry` は `pub(crate)` なので関数も `pub(crate)` に揃える
-/// (= crate 内部 (cards.rs / checkout.rs) からのみ使う API)。
+/// **C2C pivot**: 旧 `repos::products::find_by_id` 経由を listings::find_by_id に置換。
+/// listings が削除されたら ON DELETE CASCADE で cart_items も消えるため、_=>continue で skip。
 pub(crate) async fn snapshot_cart_for_session(
     state: &AppState,
     session_id: Uuid,
@@ -64,14 +63,13 @@ pub(crate) async fn snapshot_cart_for_session(
 
     let mut result: Vec<(String, CartEntry)> = Vec::with_capacity(rows.len());
     for row in rows {
-        let public_id = match products::find_by_id(state.db(), row.product_id).await {
-            Ok(Some(p)) => p.row.public_id,
-            // 商品マスタから消えた行 (= ON DELETE CASCADE で消えるはずだが防御的に) は
-            // public_id 不明として skip する。snapshot に出ないので UI も表示しない。
+        let public_id = match listings::find_by_id(state.db(), row.listing_id).await {
+            Ok(Some(l)) => l.public_id,
+            // listings が消えた (= ON DELETE CASCADE で cart 行もすぐ消える) は skip。
             _ => continue,
         };
         let qty = u32::try_from(row.qty).unwrap_or(0);
-        result.push((row.id.to_string(), CartEntry { product_id: public_id, qty }));
+        result.push((row.id.to_string(), CartEntry { listing_id: public_id, qty }));
     }
     // id (UUID) 順は str ソートで一貫する。tests / UI が deterministic に。
     result.sort_by(|a, b| a.0.cmp(&b.0));
@@ -96,7 +94,7 @@ async fn cart_total_qty_for_session(
 #[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct AddToCartRequest {
-    pub product_id: String,
+    pub listing_id: String,
     /// 省略時は 1。
     #[serde(default = "default_qty")]
     pub qty: u32,
@@ -135,20 +133,21 @@ pub async fn add_to_cart(
     Extension(session_id): Extension<SessionId>,
     Json(req): Json<AddToCartRequest>,
 ) -> Result<Json<AddToCartResponse>, AppError> {
-    if req.product_id.is_empty() {
+    if req.listing_id.is_empty() {
         return Err(AppError::BadRequest("productId is empty".to_string()));
     }
     if req.qty == 0 {
         return Err(AppError::BadRequest("qty must be >= 1".to_string()));
     }
 
-    // public_id → UUID 解決 (= pool 有り時 DB lookup / 無し時は memory_product_uuid map)
-    let product_uuid = products::find_uuid_for_public_id(state.db(), &req.product_id)
+    // public_id → UUID 解決 (C2C pivot: listings.public_id 経由 / 旧 products lookup を置換)
+    let listing_uuid = listings::find_by_public_id(state.db(), &req.listing_id)
         .await
-        .map_err(|e| AppError::BadRequest(format!("product lookup: {e}")))?
+        .map_err(|e| AppError::BadRequest(format!("listing lookup: {e}")))?
         .ok_or_else(|| {
-            AppError::BadRequest(format!("unknown productId: {}", req.product_id))
-        })?;
+            AppError::BadRequest(format!("unknown listingId: {}", req.listing_id))
+        })?
+        .id;
 
     // INSERT cart_items
     let qty_i32 = i32::try_from(req.qty).map_err(|_| {
@@ -159,7 +158,7 @@ pub async fn add_to_cart(
         cart_items::CartItemInsert {
             session_id: Some(session_id.0),
             user_id: None,
-            product_id: product_uuid,
+            listing_id: listing_uuid,
             qty: qty_i32,
         },
     )
@@ -310,17 +309,45 @@ mod tests {
         State(AppState::default())
     }
 
+    /// C2C pivot 後のテスト共通 setup: cart + listings の memory store を空にし、
+    /// テストで使う listing public_id 群を 1 件ずつ in-memory に seed する。
+    /// 各 add_to_cart 呼び出しは listings::find_by_public_id を引くため、
+    /// 事前に該当 public_id を memory に入れておかないと "unknown listingId" で失敗する。
+    async fn seed_listings(public_ids: &[&str]) {
+        crate::repos::listings::reset_memory_for_test();
+        let seller =
+            Uuid::parse_str("a0a0a0a0-0000-4000-8000-00000000a0a0").unwrap();
+        for pid in public_ids {
+            let _ = crate::repos::listings::insert(
+                None,
+                crate::repos::listings::ListingInsert {
+                    public_id: pid.to_string(),
+                    seller_user_id: seller,
+                    specimen_id: None,
+                    title: format!("Test listing {pid}"),
+                    description: None,
+                    is_auction: false,
+                    starting_price_jpy: 1000,
+                    ends_at: None,
+                },
+            )
+            .await
+            .expect("listing seed");
+        }
+    }
+
     #[tokio::test]
     async fn add_then_delete_roundtrip() {
         let _g = lock_guard();
         reset_cart_for_test();
+        seed_listings(&["L-1"]).await;
         let session = Uuid::new_v4();
 
         let res = add_to_cart(
             st(),
             ext(session),
             Json(AddToCartRequest {
-                product_id: "p-hh-m-142".to_string(),
+                listing_id: "L-1".to_string(),
                 qty: 1,
             }),
         )
@@ -349,13 +376,14 @@ mod tests {
     async fn cart_count_accumulates_across_adds() {
         let _g = lock_guard();
         reset_cart_for_test();
+        seed_listings(&["L-1", "L-2", "L-3"]).await;
         let session = Uuid::new_v4();
 
         let r1 = add_to_cart(
             st(),
             ext(session),
             Json(AddToCartRequest {
-                product_id: "p-hh-m-142".to_string(),
+                listing_id: "L-1".to_string(),
                 qty: 1,
             }),
         )
@@ -367,7 +395,7 @@ mod tests {
             st(),
             ext(session),
             Json(AddToCartRequest {
-                product_id: "p-cat-l".to_string(),
+                listing_id: "L-2".to_string(),
                 qty: 3,
             }),
         )
@@ -377,12 +405,12 @@ mod tests {
 
         // r1 だけ undo
         delete_cart_item(st(), Path(r1.0.undo_token)).await.unwrap();
-        // 残り: cat-l の qty=3 だけ。新規追加で確認。
+        // 残り: L-2 の qty=3 だけ。新規追加で確認。
         let r3 = add_to_cart(
             st(),
             ext(session),
             Json(AddToCartRequest {
-                product_id: "p-jelly".to_string(),
+                listing_id: "L-3".to_string(),
                 qty: 2,
             }),
         )
@@ -399,7 +427,7 @@ mod tests {
             st(),
             ext(Uuid::new_v4()),
             Json(AddToCartRequest {
-                product_id: "".to_string(),
+                listing_id: "".to_string(),
                 qty: 1,
             }),
         )
@@ -414,11 +442,12 @@ mod tests {
     async fn zero_qty_is_400() {
         let _g = lock_guard();
         reset_cart_for_test();
+        // qty=0 は listings lookup 前に validate される (= listing_id は seed 不要)。
         match add_to_cart(
             st(),
             ext(Uuid::new_v4()),
             Json(AddToCartRequest {
-                product_id: "p-hh-m-142".to_string(),
+                listing_id: "L-1".to_string(),
                 qty: 0,
             }),
         )
@@ -433,20 +462,22 @@ mod tests {
     async fn unknown_product_id_is_400() {
         let _g = lock_guard();
         reset_cart_for_test();
+        // C2C pivot: seed_listings を呼ばず空のままにする (= L-NOPE は存在しない)。
+        crate::repos::listings::reset_memory_for_test();
         match add_to_cart(
             st(),
             ext(Uuid::new_v4()),
             Json(AddToCartRequest {
-                product_id: "p-galaxy".to_string(), // memory_product_uuid に無い
+                listing_id: "L-NOPE".to_string(),
                 qty: 1,
             }),
         )
         .await
         {
             Err(AppError::BadRequest(msg)) => {
-                assert!(msg.contains("p-galaxy"), "expected msg to contain id, got {msg}");
+                assert!(msg.contains("L-NOPE"), "expected msg to contain id, got {msg}");
             }
-            other => panic!("expected BadRequest on unknown product, got {other:?}"),
+            other => panic!("expected BadRequest on unknown listing, got {other:?}"),
         }
     }
 
@@ -469,15 +500,16 @@ mod tests {
 
     #[test]
     fn add_request_deserializes_camel_case() {
-        let json = r#"{"productId":"p-x","qty":2}"#;
+        // C2C pivot: client は `listingId` (= listings.public_id) を送る。
+        let json = r#"{"listingId":"L-1","qty":2}"#;
         let req: AddToCartRequest = serde_json::from_str(json).unwrap();
-        assert_eq!(req.product_id, "p-x");
+        assert_eq!(req.listing_id, "L-1");
         assert_eq!(req.qty, 2);
     }
 
     #[test]
     fn add_request_qty_default_is_1() {
-        let json = r#"{"productId":"p-x"}"#;
+        let json = r#"{"listingId":"L-1"}"#;
         let req: AddToCartRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.qty, 1);
     }
@@ -502,13 +534,14 @@ mod tests {
     async fn patch_qty_updates_entry() {
         let _g = lock_guard();
         reset_cart_for_test();
+        seed_listings(&["L-1"]).await;
         let session = Uuid::new_v4();
 
         let r = add_to_cart(
             st(),
             ext(session),
             Json(AddToCartRequest {
-                product_id: "p-hh-m-142".to_string(),
+                listing_id: "L-1".to_string(),
                 qty: 2,
             }),
         )
@@ -540,12 +573,13 @@ mod tests {
     async fn patch_qty_zero_is_400() {
         let _g = lock_guard();
         reset_cart_for_test();
+        seed_listings(&["L-1"]).await;
         let session = Uuid::new_v4();
         let r = add_to_cart(
             st(),
             ext(session),
             Json(AddToCartRequest {
-                product_id: "p-hh-m-142".to_string(),
+                listing_id: "L-1".to_string(),
                 qty: 1,
             }),
         )
@@ -569,12 +603,13 @@ mod tests {
     async fn patch_qty_too_large_is_400() {
         let _g = lock_guard();
         reset_cart_for_test();
+        seed_listings(&["L-1"]).await;
         let session = Uuid::new_v4();
         let r = add_to_cart(
             st(),
             ext(session),
             Json(AddToCartRequest {
-                product_id: "p-hh-m-142".to_string(),
+                listing_id: "L-1".to_string(),
                 qty: 1,
             }),
         )
@@ -614,13 +649,14 @@ mod tests {
     async fn snapshot_returns_token_sorted() {
         let _g = lock_guard();
         reset_cart_for_test();
+        seed_listings(&["L-1", "L-2", "L-3"]).await;
         let session = Uuid::new_v4();
         // 3 件 add (token は UUID なので順序は random だが str ソートで安定)
         let _ = add_to_cart(
             st(),
             ext(session),
             Json(AddToCartRequest {
-                product_id: "p-hh-m-142".to_string(),
+                listing_id: "L-1".to_string(),
                 qty: 1,
             }),
         )
@@ -630,7 +666,7 @@ mod tests {
             st(),
             ext(session),
             Json(AddToCartRequest {
-                product_id: "p-cat-l".to_string(),
+                listing_id: "L-2".to_string(),
                 qty: 2,
             }),
         )
@@ -640,7 +676,7 @@ mod tests {
             st(),
             ext(session),
             Json(AddToCartRequest {
-                product_id: "p-jelly".to_string(),
+                listing_id: "L-3".to_string(),
                 qty: 3,
             }),
         )
@@ -661,6 +697,7 @@ mod tests {
     async fn cart_is_isolated_per_session() {
         let _g = lock_guard();
         reset_cart_for_test();
+        seed_listings(&["L-1"]).await;
         let session_a = Uuid::new_v4();
         let session_b = Uuid::new_v4();
 
@@ -668,7 +705,7 @@ mod tests {
             st(),
             ext(session_a),
             Json(AddToCartRequest {
-                product_id: "p-hh-m-142".to_string(),
+                listing_id: "L-1".to_string(),
                 qty: 2,
             }),
         )

@@ -23,7 +23,10 @@ use std::sync::OnceLock;
 use uuid::Uuid;
 
 use crate::error::AppError;
-use crate::repos::{cart_items, email_outbox, password_resets, product_watches, user_sessions, users};
+// C2C pivot: product_watches は削除済 (= listings 用は repos::listing_watches)
+use crate::repos::{
+    cart_items, email_outbox, listing_watches, password_resets, user_sessions, users,
+};
 use crate::session::SessionId;
 use crate::state::AppState;
 
@@ -38,11 +41,14 @@ async fn promote_session_to_user(db: Option<&PgPool>, session: Uuid, user: Uuid)
             e
         );
     }
-    if let Err(e) = product_watches::promote_session_to_user(db, session, user).await {
+    // C2C pivot Step C: listing_watches 承継 (= 現状 no-op stub)。
+    //   listing_watches スキーマは login user only (= session_id 列を持たない) なので
+    //   引き継ぐ行は無いが、将来 session 対応に拡張する余地のためフックだけ残す。
+    if let Err(e) = listing_watches::promote_session_to_user(db, session, user).await {
         tracing::warn!(
             session = %session,
             user = %user,
-            "promote_session_to_user: watch promote failed: {}",
+            "promote_session_to_user: listing_watches promote failed: {}",
             e
         );
     }
@@ -489,11 +495,11 @@ mod tests {
     use uuid::Uuid;
 
     /// auth テストは users + user_sessions に加え、register / login で
-    /// `cart_items::promote_session_to_user` と `product_watches::promote_session_to_user`
-    /// を呼ぶため、それぞれの `memory_guard()` も **同じ順序** で取得して逐次化する。
-    /// 順序: users → user_sessions → cart_items → product_watches (= 全テストで統一)。
+    /// `cart_items::promote_session_to_user` を呼ぶため、それぞれの `memory_guard()` も
+    /// **同じ順序** で取得して逐次化する。
+    /// 順序: users → user_sessions → cart_items (= 全テストで統一)。
+    /// C2C pivot: 旧 product_watches は削除済 (= 4 番目の guard を撤去)。
     fn lock_guards() -> (
-        std::sync::MutexGuard<'static, ()>,
         std::sync::MutexGuard<'static, ()>,
         std::sync::MutexGuard<'static, ()>,
         std::sync::MutexGuard<'static, ()>,
@@ -501,8 +507,7 @@ mod tests {
         let u = users::memory_guard();
         let s = user_sessions::memory_guard();
         let c = cart_items::memory_guard();
-        let w = product_watches::memory_guard();
-        (u, s, c, w)
+        (u, s, c)
     }
 
     fn st() -> State<AppState> {
@@ -793,94 +798,10 @@ mod tests {
         }
     }
 
-    /// 匿名 session で watch していた商品が register / login 後も維持されること。
-    /// product_watches::promote_session_to_user が auth handler から呼ばれているか確認。
-    #[tokio::test]
-    async fn register_promotes_session_watches_to_user() {
-        let _g = lock_guards();
-        users::reset_dynamic_for_test();
-        user_sessions::reset_memory_for_test();
-        crate::repos::cart_items::reset_memory_for_test();
-        crate::repos::product_watches::reset_memory_for_test();
-
-        let session = Uuid::new_v4();
-        let _ = user_sessions::create_anonymous_for_test(None, session).await.unwrap();
-
-        // 匿名で 2 商品を watch
-        let p1 = Uuid::new_v4();
-        let p2 = Uuid::new_v4();
-        let session_owner = crate::repos::product_watches::WatchOwner::Session(session);
-        crate::repos::product_watches::toggle(None, session_owner, p1).await.unwrap();
-        crate::repos::product_watches::toggle(None, session_owner, p2).await.unwrap();
-
-        // register
-        let res = post_register(st(), ext(session), Json(req("alice", "alice@example.com")))
-            .await
-            .unwrap();
-        let user_id = Uuid::parse_str(&res.0.user_id).unwrap();
-
-        // session 経由では消えており、user 経由で見えている
-        let user_owner = crate::repos::product_watches::WatchOwner::User(user_id);
-        let session_ids =
-            crate::repos::product_watches::find_product_ids_by_owner(None, session_owner)
-                .await
-                .unwrap();
-        let user_ids =
-            crate::repos::product_watches::find_product_ids_by_owner(None, user_owner)
-                .await
-                .unwrap();
-        assert!(session_ids.is_empty(), "session 経由は空 (= 移譲済)");
-        assert_eq!(user_ids.len(), 2, "user 経由で 2 件見える");
-    }
-
-    #[tokio::test]
-    async fn login_promotes_session_watches_to_user() {
-        let _g = lock_guards();
-        users::reset_dynamic_for_test();
-        user_sessions::reset_memory_for_test();
-        crate::repos::cart_items::reset_memory_for_test();
-        crate::repos::product_watches::reset_memory_for_test();
-
-        // ── prep: register でユーザを作っておく (= session_a を user に紐付け済)
-        let session_a = Uuid::new_v4();
-        let _ = user_sessions::create_anonymous_for_test(None, session_a).await.unwrap();
-        let _ = post_register(st(), ext(session_a), Json(req("alice", "alice@example.com")))
-            .await
-            .unwrap();
-
-        // ── 別 session_b で 1 商品 watch (= 別ブラウザでの匿名 watch)
-        let session_b = Uuid::new_v4();
-        let _ = user_sessions::create_anonymous_for_test(None, session_b).await.unwrap();
-        let p = Uuid::new_v4();
-        crate::repos::product_watches::toggle(
-            None,
-            crate::repos::product_watches::WatchOwner::Session(session_b),
-            p,
-        )
-        .await
-        .unwrap();
-
-        // session_b で login
-        let res = post_login(
-            st(),
-            ext(session_b),
-            Json(LoginRequest {
-                email: "alice@example.com".to_string(),
-                password: "correct horse battery staple".to_string(),
-            }),
-        )
-        .await
-        .unwrap();
-        let user_id = Uuid::parse_str(&res.0.user_id).unwrap();
-
-        // user 経由で見えるようになっている (= session_b の watch が承継)
-        let user_owner = crate::repos::product_watches::WatchOwner::User(user_id);
-        let user_ids =
-            crate::repos::product_watches::find_product_ids_by_owner(None, user_owner)
-                .await
-                .unwrap();
-        assert!(user_ids.contains(&p), "session_b の watch が user に承継された");
-    }
+    // C2C pivot: 旧 product_watches の session→user 承継テスト
+    // (register_promotes_session_watches_to_user / login_promotes_session_watches_to_user) は
+    // product_watches テーブルの廃止に伴い削除した。listing_watches 用の同等テストは
+    // listing_watches::promote_session_to_user が実装され次第 follow-up PR で追加する。
 
     #[tokio::test]
     async fn login_then_logout_then_me_chain_returns_401() {
@@ -909,8 +830,8 @@ mod tests {
 
     /// password_reset テストは users + outbox + password_resets の memory store を弄るので
     /// 通常 lock + outbox / password_resets の guard を一気に取る。
+    /// C2C pivot: 旧 product_watches guard は削除済 (= 5 タプルに縮約)。
     fn lock_guards_with_reset() -> (
-        std::sync::MutexGuard<'static, ()>,
         std::sync::MutexGuard<'static, ()>,
         std::sync::MutexGuard<'static, ()>,
         std::sync::MutexGuard<'static, ()>,
@@ -920,10 +841,9 @@ mod tests {
         let u = users::memory_guard();
         let s = user_sessions::memory_guard();
         let c = cart_items::memory_guard();
-        let w = product_watches::memory_guard();
         let o = email_outbox::memory_guard();
         let r = password_resets::memory_guard();
-        (u, s, c, w, o, r)
+        (u, s, c, o, r)
     }
 
     #[tokio::test]

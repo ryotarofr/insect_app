@@ -12,7 +12,8 @@
 //!   - 1 件処理ごとに await を挟むので I/O bound 性能は十分
 //!
 //! **テンプレート (= 暫定)**:
-//!   - order_confirmation: 注文番号 + 金額
+//!   - order_confirmation: 注文番号 + 金額 (= buyer 宛)
+//!   - listing_sold      : 出品が売れた通知 (= seller 宛 / C2C pivot で追加)
 //!   - eclosion_reminder : 個体名 + 羽化予測日 (= PR N-4 で配線)
 //!   - password_reset    : reset link (= PR N-5 で配線)
 
@@ -152,6 +153,35 @@ fn render_template(kind: &str, args: &Value) -> (String, String) {
             );
             (subject, body)
         }
+        // C2C pivot: 出品が売れた時に seller に飛ぶ通知。
+        // template_args:
+        //   listing_public_id : "L-A1B2C" (= human-readable 出品 ID)
+        //   listing_title     : "ヘラクレスオオカブト ♂ 142mm CBF2"
+        //   sale_price_jpy    : 45000 (= 即決価格 / オークション落札価格)
+        //   order_id / item_id: 内部参照用 (= サポート問い合わせ時の手がかり)
+        "listing_sold" => {
+            let listing_public_id = args
+                .get("listing_public_id")
+                .and_then(Value::as_str)
+                .unwrap_or("(unknown)");
+            let listing_title = args
+                .get("listing_title")
+                .and_then(Value::as_str)
+                .unwrap_or("(unknown)");
+            let sale_price_jpy = args
+                .get("sale_price_jpy")
+                .and_then(Value::as_i64)
+                .unwrap_or(0);
+            let order_id = args
+                .get("order_id")
+                .and_then(Value::as_str)
+                .unwrap_or("(unknown)");
+            let subject = format!("【KOCHU】出品が売れました - {listing_public_id}");
+            let body = format!(
+                "あなたの出品が売れました。\n\n出品 ID : {listing_public_id}\n商品名  : {listing_title}\n販売価格: ¥{sale_price_jpy}\n\n発送方法・期限はマイページ「取引履歴」からご確認いただけます。\n購入者の配送先情報も同画面で表示されます。\n\n注文番号: {order_id} (= サポート問い合わせ時にご提示ください)\n\n— KOCHU"
+            );
+            (subject, body)
+        }
         other => {
             let subject = format!("【KOCHU】通知 ({other})");
             let body = format!("kind={other}\nargs={args}");
@@ -239,6 +269,26 @@ mod tests {
         assert!(subj.contains("o-XYZ"));
         assert!(body.contains("o-XYZ"));
         assert!(body.contains("¥48000"));
+    }
+
+    #[test]
+    fn render_template_listing_sold_includes_key_fields() {
+        let (subj, body) = render_template(
+            "listing_sold",
+            &json!({
+                "listing_public_id": "L-A1B2C",
+                "listing_title": "ヘラクレスオオカブト ♂ 142mm CBF2",
+                "sale_price_jpy": 45000,
+                "order_id": "ord-001",
+                "item_id": "item-001",
+            }),
+        );
+        // subject: 出品 ID が入っていること
+        assert!(subj.contains("L-A1B2C"), "subj={subj}");
+        // body: タイトル / 価格 / 注文番号が入っていること
+        assert!(body.contains("ヘラクレスオオカブト"), "body={body}");
+        assert!(body.contains("¥45000"), "body={body}");
+        assert!(body.contains("ord-001"), "body={body}");
     }
 
     #[test]
