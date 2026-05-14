@@ -1,11 +1,11 @@
-//! SDUI Analytics 計装の型定義 (Phase 3)。
+//! SDUI Analytics 計装の型定義。
 //!
 //! 詳細: docs/sdui-three-layer-model-v6.md §16 (Analytics 契約)
 //!
 //! クライアントは各 Block の `analyticsId` を観測し、`impression` (画面に映った)
 //! と `click` (ユーザが触った) を区別したイベントを batch で送る。サーバ側は
 //! 受け取った payload を validate し、in-memory ring buffer に積むだけ。
-//! 集計や可視化は別経路 (Phase 4 以降) に分離する。
+//! 集計や可視化は別経路に分離する。
 //!
 //! **設計上の不変条件**:
 //!   - `analyticsId` は空不可。空が来たら 400 で全件リジェクト (batch 単位)。

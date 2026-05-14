@@ -4,8 +4,7 @@
 //
 // **責務**:
 //   `template` で switch し、各 template 用の React コンポーネントに振り分ける。
-//   Phase 1: `product_feature` (一覧カード)
-//   Phase 2: `product_detail` (詳細ページ) を追加。
+//   `product_feature` (一覧カード) / `product_detail` (詳細ページ) に対応。
 //   将来: `hero_intro` / `promise_step` 等。
 //
 // **未知の template への対応**:

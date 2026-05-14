@@ -4,7 +4,6 @@
 //   - `store/specimens.ts` の `serverSpecimens()` (= /specimens/me 経由) から正規化した
 //     legacy `Specimen[]` を sync で公開する
 //   - 個体メモ (notes) は `PATCH /specimens/{id}/notes` で server 永続化
-//     (= PR #5b で localStorage 廃止)
 //
 // **anonymous の扱い**:
 //   `serverSpecimens()` は未 login 時 null。本ファイルは null → `[]` で吸収する。
@@ -58,7 +57,7 @@ export const listEclosionForecasts = (): Array<
     )
     .sort((a, b) => a.eclosionInDays - b.eclosionInDays);
 
-/** 個体メモの取得。serverSpecimens cache から server 値を引く (= 旧 localStorage は廃止)。
+/** 個体メモの取得。serverSpecimens cache から server 値を引く。
  *  キャッシュ未読込 / publicId 不存在は空文字列。 */
 export const getSpecimenMemo = (id: string): string =>
   getSpecimen(id)?.notes ?? "";

@@ -1,4 +1,4 @@
-// components/ShortcutsHelp.tsx — ? キーで開くショートカット一覧モーダル (P4-19)
+// components/ShortcutsHelp.tsx — ? キーで開くショートカット一覧モーダル
 //
 // 目的:
 //   KOCHŪ で使える全キーボードショートカットを一覧化。

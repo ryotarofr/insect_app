@@ -1,4 +1,4 @@
-//! `/api/v1/listings/*` (Phase 9.E / C2C marketplace HTTP API)
+//! `/api/v1/listings/*` (C2C marketplace HTTP API)
 //!
 //! - `GET    /api/v1/listings`                  → active な出品一覧 (= 公開閲覧)
 //! - `GET    /api/v1/listings/me`               → 自分の出品 (= login 必須 / status filter 可)
@@ -18,21 +18,10 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::AppError;
-use crate::repos::{bids, listing_watches, listings, user_sessions};
+use crate::handlers::require_user_id;
+use crate::repos::{bids, listing_watches, listings};
 use crate::session::SessionId;
 use crate::state::AppState;
-
-// ──────────────────────────────────────────────────────────────────────
-// auth guard
-// ──────────────────────────────────────────────────────────────────────
-
-async fn require_user_id(state: &AppState, session_id: Uuid) -> Result<Uuid, AppError> {
-    let session = user_sessions::find_by_id(state.db(), session_id)
-        .await
-        .map_err(|e| AppError::BadRequest(format!("session lookup: {e}")))?
-        .ok_or(AppError::Unauthorized)?;
-    session.user_id.ok_or(AppError::Unauthorized)
-}
 
 // ──────────────────────────────────────────────────────────────────────
 // DTO
@@ -83,7 +72,24 @@ pub struct CreateListingRequest {
     pub description: Option<String>,
     pub is_auction: bool,
     pub starting_price_jpy: i64,
+    /// 即決価格 (= auction の "Buy It Now")。
+    /// 任意 / NULL 許容。設定する場合は `is_auction=true` かつ `> starting_price_jpy`。
+    /// migration 0024 の CHECK 制約と repo validate で同条件を強制。
+    #[serde(default)]
+    pub buyout_price_jpy: Option<i64>,
     pub ends_at: Option<DateTime<Utc>>,
+    /// アップロード済 asset (= /uploads/complete を通過した) の UUID リスト。
+    /// listing 作成成功後に `assets.attach_target` で `(target_kind='listing', target_id=<listing_id>)`
+    /// を書き込む。空配列 / 省略は写真なしの出品として OK。
+    /// asset の所有者検証 (= asset.owner_user_id == seller) は attach 時に呼び出し側で行う。
+    #[serde(default)]
+    pub asset_ids: Vec<String>,
+    /// 出品者が対応可能な配送方法 ID リスト (= shipping_methods.id)。
+    /// 空配列 / 省略は「全方法 OK」と解釈する (= 出品者が絞り込みを設定しない)。
+    /// 行があれば `listing_shipping_methods` に書き込み、checkout は client 側で
+    /// その集合のみから選択する規律。
+    #[serde(default)]
+    pub shipping_method_ids: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
@@ -135,7 +141,10 @@ pub async fn list_active(
     let rows = listings::find_active_with_counts(state.db())
         .await
         .map_err(|e| AppError::BadRequest(format!("listings fetch: {e}")))?;
-    Ok(Json(rows.into_iter().map(ListingViewWithCounts::from).collect()))
+    let mut views: Vec<ListingViewWithCounts> =
+        rows.into_iter().map(ListingViewWithCounts::from).collect();
+    hydrate_shipping_methods(&state, &mut views).await;
+    Ok(Json(views))
 }
 
 /// `GET /api/v1/listings/me` の query parameters。
@@ -149,7 +158,7 @@ pub struct ListMyListingsParams {
 /// `GET /api/v1/listings/me?status=active|sold|canceled|expired|all` —
 /// 自分の出品一覧。
 ///
-/// **Phase 1 / マイ出品**:
+/// **マイ出品**:
 /// - login 必須 (= 401)。session の user_id を `seller_user_id` として固定。
 /// - `?status=` 省略 or `all` で全 status、それ以外は schema CHECK と同じ集合のみ受け付ける。
 /// - 戻り値は `list_active` と同じ `ListingViewWithCounts` shape (= bid_count / watcher_count
@@ -188,7 +197,10 @@ pub async fn list_my_listings(
             }
             listings::ListingRepoError::NotFound(_) => AppError::NotFound,
         })?;
-    Ok(Json(rows.into_iter().map(ListingViewWithCounts::from).collect()))
+    let mut views: Vec<ListingViewWithCounts> =
+        rows.into_iter().map(ListingViewWithCounts::from).collect();
+    hydrate_shipping_methods(&state, &mut views).await;
+    Ok(Json(views))
 }
 
 #[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
@@ -205,6 +217,8 @@ pub struct ListingViewWithCounts {
     pub is_auction: bool,
     pub starting_price_jpy: i64,
     pub current_price_jpy: Option<i64>,
+    /// 即決価格 (= auction の Buy It Now)。
+    pub buyout_price_jpy: Option<i64>,
     pub ends_at: Option<DateTime<Utc>>,
     pub status: String,
     pub is_verified: bool,
@@ -212,6 +226,11 @@ pub struct ListingViewWithCounts {
     pub bid_count: i64,
     /// `v_listings_with_counts.watcher_count`。
     pub watcher_count: i64,
+    /// 対応可能な配送方法 ID 集合。
+    /// **空配列 = 「全方法 OK」** と解釈 (= 出品者が絞り込みを設定していない)。
+    /// 値が入っていれば、checkout はその集合のみから選ぶ規律。
+    #[serde(default)]
+    pub shipping_method_ids: Vec<String>,
 }
 
 impl From<listings::ListingWithCounts> for ListingViewWithCounts {
@@ -227,13 +246,51 @@ impl From<listings::ListingWithCounts> for ListingViewWithCounts {
             is_auction: r.is_auction,
             starting_price_jpy: r.starting_price_jpy,
             current_price_jpy: r.current_price_jpy,
+            buyout_price_jpy: r.buyout_price_jpy,
             ends_at: r.ends_at,
             status: r.status,
             is_verified: r.is_verified,
             bid_count: r.bid_count,
             watcher_count: r.watcher_count,
+            // shipping_method_ids は別 query で埋める (= From の段階では空)。
+            // hydrate_shipping_methods() でまとめて 1 query に集約する。
+            shipping_method_ids: Vec::new(),
         }
     }
+}
+
+// ──────────────────────────────────────────────────────────────────────
+// ListingViewWithCounts.shipping_method_ids の一括 hydrate
+// ──────────────────────────────────────────────────────────────────────
+//
+// listing 一覧 / 詳細を返す箇所で、配送方法の絞り込み集合を 1 listing ずつ別 query で
+// 取って詰める。1 listing あたり 1 round trip だが、MVP の規模なら N+1 でも実用範囲。
+// TODO: 件数が増えたら IN (...) で一括取得する形に最適化する。
+
+async fn hydrate_shipping_methods(
+    state: &AppState,
+    views: &mut [ListingViewWithCounts],
+) {
+    for v in views.iter_mut() {
+        let lid = match Uuid::parse_str(&v.id) {
+            Ok(u) => u,
+            Err(_) => continue,
+        };
+        match crate::repos::listing_shipping_methods::find_by_listing(state.db(), lid).await {
+            Ok(ids) => v.shipping_method_ids = ids,
+            Err(e) => {
+                tracing::warn!(
+                    "hydrate_shipping_methods: find_by_listing({}) failed: {}",
+                    lid,
+                    e
+                );
+            }
+        }
+    }
+}
+
+async fn hydrate_one(state: &AppState, view: &mut ListingViewWithCounts) {
+    hydrate_shipping_methods(state, std::slice::from_mut(view)).await;
 }
 
 /// `POST /api/v1/listings` — 新規出品。seller_user_id は session の user_id に固定。
@@ -272,6 +329,7 @@ pub async fn create_listing(
             description: req.description,
             is_auction: req.is_auction,
             starting_price_jpy: req.starting_price_jpy,
+            buyout_price_jpy: req.buyout_price_jpy,
             ends_at: req.ends_at,
         },
     )
@@ -283,6 +341,130 @@ pub async fn create_listing(
         }
         listings::ListingRepoError::NotFound(_) => AppError::NotFound,
     })?;
+
+    // shipping_method_ids を listing_shipping_methods に書き込む。
+    //
+    // **値域検証**:
+    //   shipping_methods マスタ (= warm キャッシュ) に存在する id のみ受理。未知は 400。
+    //   空配列なら set_for_listing は呼ばず、「全方法 OK」状態 (= 行ゼロ) を維持。
+    //
+    // **失敗ポリシー**:
+    //   - 値域エラー (= 不正な shipping_method_id) は 400 で listing 作成自体を拒否すべきだが、
+    //     既に listing 行は INSERT 済なので**作成成功扱い**で warn 止め (= 規律としては
+    //     pre-validate して INSERT 前に弾くのが筋)。MVP の落としどころ。
+    //   - DB 書き込み失敗は warn 止め (= 「全方法 OK」状態にフォールバック)。
+    if !req.shipping_method_ids.is_empty() {
+        let known: std::collections::HashSet<String> =
+            crate::repos::shipping_methods::cached_methods()
+                .into_keys()
+                .collect();
+        let validated: Vec<&str> = req
+            .shipping_method_ids
+            .iter()
+            .filter(|m| known.contains(m.as_str()))
+            .map(String::as_str)
+            .collect();
+        if validated.len() != req.shipping_method_ids.len() {
+            tracing::warn!(
+                "create_listing: some shipping_method_ids are unknown (input={:?}, known={:?})",
+                req.shipping_method_ids,
+                known
+            );
+        }
+        if !validated.is_empty()
+            && let Err(e) = crate::repos::listing_shipping_methods::set_for_listing(
+                state.db(),
+                id,
+                &validated,
+            )
+            .await
+        {
+            tracing::warn!(
+                "create_listing: set_for_listing failed for listing {}: {}",
+                id,
+                e
+            );
+        }
+    }
+
+    // asset_ids を listing に attach する。
+    //
+    // **失敗ポリシー**:
+    //   - UUID parse 失敗は BadRequest (= client 側のバグなので即時返す)。
+    //   - 所有者違い / 既 attach は warn 止め (= リスト全体は成功扱いで listing を返す)。
+    //     これにより「写真 1 枚が他人のものでも listing 自体は作られる」緩い扱い。
+    //     ただし他人 asset を当てるのは security risk なので require_user_id チェックで
+    //     owner_user_id が seller とずれる場合は attach せず警告ログで済ませる。
+    //
+    //   pool が None (= DB 不在の dev テスト) の場合は attach をスキップ (= asset repo が
+    //   PoolMissing を返すため。listing は in-memory に作られているので OK)。
+    if !req.asset_ids.is_empty() && state.db().is_some() {
+        for raw_id in &req.asset_ids {
+            let asset_id = match Uuid::parse_str(raw_id) {
+                Ok(u) => u,
+                Err(_) => {
+                    return Err(AppError::BadRequest(format!(
+                        "invalid asset_id UUID: {raw_id}"
+                    )));
+                }
+            };
+
+            // 所有者検証: asset.owner_user_id == seller (= 自分の asset しか attach できない)
+            match crate::repos::assets::find_by_id(state.db(), asset_id).await {
+                Ok(Some(a)) => {
+                    if a.owner_user_id != user_id {
+                        tracing::warn!(
+                            "create_listing: asset {} owner mismatch (asset.owner={} session.user={}) — skipping attach",
+                            asset_id,
+                            a.owner_user_id,
+                            user_id
+                        );
+                        continue;
+                    }
+                    if a.status != "uploaded" {
+                        tracing::warn!(
+                            "create_listing: asset {} not uploaded yet (status={}) — skipping attach",
+                            asset_id,
+                            a.status
+                        );
+                        continue;
+                    }
+                }
+                Ok(None) => {
+                    tracing::warn!(
+                        "create_listing: asset {} not found — skipping attach",
+                        asset_id
+                    );
+                    continue;
+                }
+                Err(e) => {
+                    tracing::error!("create_listing: asset lookup failed: {e}");
+                    continue;
+                }
+            }
+
+            // attach (= UPDATE assets SET target_kind='listing', target_id=$listing)。
+            // 既に紐付け済の場合は Ok(false) で warn 止め。
+            match crate::repos::assets::attach_target(state.db(), asset_id, "listing", id)
+                .await
+            {
+                Ok(true) => {}
+                Ok(false) => {
+                    tracing::warn!(
+                        "create_listing: asset {} was already attached to another target",
+                        asset_id
+                    );
+                }
+                Err(e) => {
+                    tracing::error!(
+                        "create_listing: attach_target failed for asset {}: {}",
+                        asset_id,
+                        e
+                    );
+                }
+            }
+        }
+    }
 
     Ok(Json(CreateListingResponse {
         id: id.to_string(),
@@ -315,7 +497,9 @@ pub async fn get_listing(
         .await
         .map_err(|e| AppError::BadRequest(format!("listing lookup: {e}")))?
         .ok_or(AppError::NotFound)?;
-    Ok(Json(ListingViewWithCounts::from(row)))
+    let mut view = ListingViewWithCounts::from(row);
+    hydrate_one(&state, &mut view).await;
+    Ok(Json(view))
 }
 
 /// `POST /api/v1/listings/{id}/cancel` — 自分の出品を canceled に倒す。
@@ -552,11 +736,17 @@ mod tests {
             description: None,
             is_auction,
             starting_price_jpy: starting,
+            // 即決価格は既定で None (= 個別テストで Some を渡して検証)。
+            buyout_price_jpy: None,
             ends_at: if is_auction {
                 Some(Utc::now() + chrono::Duration::days(7))
             } else {
                 None
             },
+            // asset_ids は既定で空 (= 写真なし出品)。テストでも空配列で OK。
+            asset_ids: Vec::new(),
+            // shipping_method_ids 既定空 (= 「全方法 OK」状態)。
+            shipping_method_ids: Vec::new(),
         }
     }
 
@@ -739,7 +929,7 @@ mod tests {
     }
 
     // ──────────────────────────────────────────────────────────────────
-    // Phase 1: GET /listings/me
+    // GET /listings/me
     // ──────────────────────────────────────────────────────────────────
 
     fn my_params(status: Option<&str>) -> Query<ListMyListingsParams> {

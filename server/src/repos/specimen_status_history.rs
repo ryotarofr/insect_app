@@ -1,4 +1,4 @@
-//! specimen_status_history への永続化 (Phase 9.D / DB設計書 v2 §3.4 / Medium #3)
+//! specimen_status_history への永続化 (DB設計書 v2 §3.4)
 //!
 //! **責務**:
 //!   - `specimens.life_status` の遷移履歴を不可逆に積む append-only テーブル

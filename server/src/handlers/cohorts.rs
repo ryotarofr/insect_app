@@ -1,4 +1,4 @@
-//! `/api/v1/cohorts/*` (Phase 6 / 群飼育 HTTP API)
+//! `/api/v1/cohorts/*` (群飼育 HTTP API)
 //!
 //! - `GET    /api/v1/cohorts/me`                    → 一覧 (default active のみ、?archived=true で archived)
 //! - `POST   /api/v1/cohorts`                       → 群を作成
@@ -19,24 +19,14 @@ use serde_json::Value as JsonValue;
 use uuid::Uuid;
 
 use crate::error::AppError;
-use crate::repos::{cohort_logs, cohorts, specimens, user_sessions};
+use crate::handlers::require_user_id;
+use crate::repos::{cohort_logs, cohorts, specimens};
 use crate::session::SessionId;
 use crate::state::AppState;
 
 // ──────────────────────────────────────────────────────────────────────
 // auth
 // ──────────────────────────────────────────────────────────────────────
-
-async fn require_user_id(
-    state: &AppState,
-    session_id: Uuid,
-) -> Result<Uuid, AppError> {
-    let session = user_sessions::find_by_id(state.db(), session_id)
-        .await
-        .map_err(|e| AppError::BadRequest(format!("session lookup: {e}")))?
-        .ok_or(AppError::Unauthorized)?;
-    session.user_id.ok_or(AppError::Unauthorized)
-}
 
 /// 自分の cohort かどうかを確認 (= 他人の cohort へのアクセスを 404 で隠す)
 async fn require_owned(

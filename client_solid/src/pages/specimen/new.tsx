@@ -1,4 +1,4 @@
-// pages/specimen/new.tsx — 個体登録ページ (Phase 8: 連続単発登録モード対応)
+// pages/specimen/new.tsx — 個体登録ページ (連続単発登録モード対応)
 //
 // **配置**:
 //   - エントリ: 飼育一覧の「+ 個体登録」 / マイページ「+ 新規 ▾」 / ⌘K
@@ -8,12 +8,12 @@
 //   `POST /api/v1/specimens` (= sdui/api::postSpecimen) を呼ぶ。
 //   public_id は空送信で server 自動採番に任せる場合と、ユーザ指定値を使う場合がある。
 //
-// **Phase 8 連続単発登録モード**:
+// **連続単発登録モード**:
 //   1 件目を「保存して続けて登録」で送るとカウンタが立ち上がりステータスバナー表示。
 //   以降「キャンセル」のラベル/挙動が連続セッション向きに切り替わる (= 終了確認ダイアログ)。
-//   1 件も登録していない (count = 0) の状態は従来の単発フォームと同じ挙動。
+//   1 件も登録していない (count = 0) の状態は単発フォームと同じ挙動。
 //
-// **未対応** (= 別 PR):
+// **未対応**:
 //   - father_id / mother_id / father_label / mother_label の指定 (= 現状の
 //     POST /specimens は親情報を受け取らない。将来 endpoint 拡張が必要)
 
@@ -38,7 +38,7 @@ export const SpecimenNewPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
 
-  // Phase 8: 連続セッションのカウンタ。0 = 単発モード、>=1 = 連続モード。
+  // 連続セッションのカウンタ。0 = 単発モード、>=1 = 連続モード。
   const [sessionCount, setSessionCount] = createSignal(0);
   const [showEndDialog, setShowEndDialog] = createSignal(false);
 
@@ -75,7 +75,7 @@ export const SpecimenNewPage = () => {
   };
 
 
-  /** Phase 8: SpecimenDetailForm.submit() 成功後に呼ばれる。
+  /** SpecimenDetailForm.submit() 成功後に呼ばれる。
    *   continueAfter=true → カウンタ +1、ページ滞在 (連続モード継続)
    *   continueAfter=false → 単発で完了したので /cohorts へ */
   const handleSubmitSuccess = (continueAfter: boolean) => {

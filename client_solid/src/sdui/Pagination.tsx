@@ -1,4 +1,4 @@
-// Pagination.tsx — Server-Driven ページャのレンダラ (Phase 6)
+// Pagination.tsx — Server-Driven ページャのレンダラ
 //
 // 詳細: docs/sdui-three-layer-model-v5.md §5.6 (List shell + Pagination)
 //

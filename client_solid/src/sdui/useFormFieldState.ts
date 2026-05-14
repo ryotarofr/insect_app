@@ -1,4 +1,4 @@
-// useFormFieldState.ts — FormField のレース耐性 + a11y 統合 hook (Phase 9 前 / M6)
+// useFormFieldState.ts — FormField のレース耐性 + a11y 統合 hook
 //
 // 詳細:
 //   - docs/sdui-three-layer-model-v6.md §11.8.1 規律 1 (focus/dirty 中の上書き禁止)

@@ -9,30 +9,32 @@ export const ROUTE_PATHS: Record<RouteKey, string> = {
   products: "/products",
   "product-detail": "/products", // 実際には /products/:id を別途使用
   specimen: "/specimen",
-  // Cohort Phase 1: 単独個体登録フォーム
+  // 単独個体登録フォーム
   "specimen-new": "/specimens/new",
-  // Cohort Phase 1: 飼育 (cohort) ナビ。「群」概念をユーザー向けに「飼育」と表示。
+  // 飼育 (cohort) ナビ。「群」概念をユーザー向けに「飼育」と表示。
   cohort: "/cohorts",
-  // Cohort Phase 1: 群詳細 (= 実際は /cohorts/:id を別途使用)
+  // 群詳細 (= 実際は /cohorts/:id を別途使用)
   "cohort-detail": "/cohorts",
-  // Cohort Phase 1: 個体化モード (= /cohorts/:id/promote、id は別途)
+  // 個体化モード (= /cohorts/:id/promote、id は別途)
   "cohort-promote": "/cohorts",
-  // Cohort Phase 1: 群を作成
+  // 群を作成
   "cohort-new": "/cohorts/new",
   eclosion: "/eclosion",
   bloodline: "/bloodline",
-  // C2C pivot: cart は listing 入りの cart_items として再利用
+  // cart は listing 入りの cart_items として再利用
   cart: "/cart",
   warranty: "/help/warranty",
-  // Phase 9.G: login / register UI
+  // login / register UI
   login: "/login",
-  // C2C pivot: 「取引履歴」として運用 (注文履歴の UI ラベルだけ後続 PR で更新)
+  // 「取引履歴」として運用
   orders: "/orders",
   "order-detail": "/orders",
-  // C2C pivot: 出品作成ページ (= 個体カルテ「この個体を出品」/ /products から遷移)
+  // 出品作成ページ (= 個体カルテ「この個体を出品」/ /products から遷移)
   "listing-new": "/listings/new",
-  // Phase 3: 自分の出品管理ページ (= タブ式の縦リスト全件)
+  // 自分の出品管理ページ (= タブ式の縦リスト全件)
   "my-listings": "/listings/me",
+  // Stripe Connect onboarding 後の return URL
+  "stripe-connect-return": "/account/stripe-connect/return",
   // 404 は実際にはここから遷移しない (URL → RouteKey 経路でしか来ない)。
   // 何か理由があって setRoute("not-found") した時のために便宜上のパスを置く。
   "not-found": "/404",
@@ -52,10 +54,10 @@ export const pathnameToRouteKey = (pathname: string): RouteKey => {
   if (/^\/products\/[^/]+/.test(path)) return "product-detail";
   if (path === "/products") return "products";
 
-  // Cohort Phase 1: /specimens/new (単独個体登録) は specimen 詳細より先にマッチさせる。
+  // /specimens/new (単独個体登録) は specimen 詳細より先にマッチさせる。
   if (path === "/specimens/new") return "specimen-new";
   if (/^\/specimen(?:\/|$)/.test(path)) return "specimen";
-  // Cohort Phase 1: 飼育 (cohort) 系ルート。
+  // 飼育 (cohort) 系ルート。
   //   /cohorts/new → cohort-new
   //   /cohorts/:id/promote → cohort-promote
   //   /cohorts/:id → cohort-detail
@@ -66,18 +68,19 @@ export const pathnameToRouteKey = (pathname: string): RouteKey => {
   if (path === "/cohorts") return "cohort";
   if (path === "/eclosion") return "eclosion";
   if (/^\/bloodline(?:\/|$)/.test(path)) return "bloodline";
-  // C2C pivot: 旧 /shop, /market は廃止。/market は /products と統合済 → 404 に倒す。
-  // 新規: /listings/new (= 出品作成ページ)
+  // /listings/new (= 出品作成ページ)
   if (path === "/listings/new") return "listing-new";
-  // Phase 3: /listings/me (= マイ出品管理) は /listings/{public_id} より先に評価する。
+  // /listings/me (= マイ出品管理) は /listings/{public_id} より先に評価する。
   if (path === "/listings/me") return "my-listings";
+  // Stripe Connect onboarding return URL
+  if (path === "/account/stripe-connect/return") return "stripe-connect-return";
   if (path === "/cart") return "cart";
-  // Phase 9.1: 旧 /cart-sdui は /cart に正規化 (= 古いブックマークの救済)
+  // 旧 /cart-sdui は /cart に正規化 (= 古いブックマークの救済)
   if (path === "/cart-sdui") return "cart";
   if (path === "/help/warranty") return "warranty";
-  // Phase 9.G: login / register UI
+  // login / register UI
   if (path === "/login") return "login";
-  // Phase 9.G: 注文履歴 + 詳細
+  // 注文履歴 + 詳細
   // /orders/:id (= UUID 文字列) → order-detail / /orders → orders
   if (/^\/orders\/[^/]+/.test(path)) return "order-detail";
   if (path === "/orders") return "orders";
@@ -99,7 +102,7 @@ export const pathnameToRouteKey = (pathname: string): RouteKey => {
 export const sidebarRouteKey = (route: RouteKey): RouteKey => {
   if (route === "specimen") return "mypage";
   if (route === "product-detail") return "products";
-  // Cohort Phase 1: 飼育配下の派生ルートはサイドバー上「飼育」をハイライト
+  // 飼育配下の派生ルートはサイドバー上「飼育」をハイライト
   if (
     route === "cohort-detail" ||
     route === "cohort-promote" ||
@@ -109,9 +112,9 @@ export const sidebarRouteKey = (route: RouteKey): RouteKey => {
   }
   // 単独個体登録もサイドバー上は「飼育」配下扱い (= 飼育の CTA から到達するため)
   if (route === "specimen-new") return "cohort";
-  // C2C pivot: 出品作成は /products (出品一覧) の派生としてハイライト
+  // 出品作成は /products (出品一覧) の派生としてハイライト
   if (route === "listing-new") return "products";
-  // Phase 3: 取引詳細 (/orders/:id) はサイドバー上「取引履歴」をハイライト
+  // 取引詳細 (/orders/:id) はサイドバー上「取引履歴」をハイライト
   if (route === "order-detail") return "orders";
   return route;
 };
@@ -126,15 +129,15 @@ export const specimenUrl = (id?: string): string =>
 export const bloodlineUrl = (id?: string): string =>
   id ? `/bloodline/${encodeURIComponent(id)}` : "/bloodline";
 
-/** Phase 9.G: 注文詳細 URL (= /orders/{id})。 */
+/** 注文詳細 URL (= /orders/{id})。 */
 export const orderUrl = (id: string): string =>
   `/orders/${encodeURIComponent(id)}`;
 
-/** Cohort Phase 1: 群詳細 URL */
+/** 群詳細 URL */
 export const cohortUrl = (publicId: string): string =>
   `/cohorts/${encodeURIComponent(publicId)}`;
 
-/** Cohort Phase 1: 個体化モード URL */
+/** 個体化モード URL */
 export const cohortPromoteUrl = (publicId: string): string =>
   `/cohorts/${encodeURIComponent(publicId)}/promote`;
 
@@ -150,7 +153,7 @@ export interface CrumbIds {
   bloodlineId?: string;
   productTitle?: string;
   specimenName?: string;
-  /** Cohort Phase 1: 群詳細 / 個体化モードのパンくず用 LOT ID */
+  /** 群詳細 / 個体化モードのパンくず用 LOT ID */
   cohortPublicId?: string;
 }
 
@@ -159,7 +162,6 @@ export const crumbFor = (route: RouteKey, ids: CrumbIds = {}): Crumb[] => {
     case "mypage":
       return [{ label: "マイページ", href: undefined }];
     case "products":
-      // C2C pivot: 「ショップ」概念を廃止し、マーケット (= C2C 出品一覧) に統一
       return [{ label: "マーケット", href: undefined }, { label: "出品中の生体" }];
     case "product-detail":
       return [
@@ -173,10 +175,16 @@ export const crumbFor = (route: RouteKey, ids: CrumbIds = {}): Crumb[] => {
         { label: "出品する" },
       ];
     case "my-listings":
-      // Phase 3: 自分の出品管理ページ。マイページの子として位置づける。
+      // 自分の出品管理ページ。マイページの子として位置づける。
       return [
         { label: "マイページ", href: "/" },
         { label: "マイ出品" },
+      ];
+    case "stripe-connect-return":
+      // Stripe onboarding 完了 / 中断 → return URL ページ。
+      return [
+        { label: "マイページ", href: "/" },
+        { label: "Stripe Connect 連携" },
       ];
     case "specimen":
       return [
@@ -185,7 +193,7 @@ export const crumbFor = (route: RouteKey, ids: CrumbIds = {}): Crumb[] => {
         { label: ids.specimenName ?? ids.specimenId ?? "個体カルテ" },
       ];
     case "specimen-new":
-      // Cohort Phase 1: 単独個体登録は飼育配下の枝
+      // 単独個体登録は飼育配下の枝
       return [
         { label: "飼育", href: "/cohorts" },
         { label: "個体登録" },
@@ -224,7 +232,7 @@ export const crumbFor = (route: RouteKey, ids: CrumbIds = {}): Crumb[] => {
           : []),
       ];
     case "cart":
-      // C2C pivot: cart は listing の購入経路として再利用
+      // cart は listing の購入経路として再利用
       return [
         { label: "マーケット", href: "/products" },
         { label: "カート" },
@@ -235,10 +243,10 @@ export const crumbFor = (route: RouteKey, ids: CrumbIds = {}): Crumb[] => {
         { label: "安心保証" },
       ];
     case "login":
-      // Phase 9.G: login / register の breadcrumb は単独 (= サイドバー上の親が無い)
+      // login / register の breadcrumb は単独 (= サイドバー上の親が無い)
       return [{ label: "ログイン" }];
     case "orders":
-      // C2C pivot: 「取引履歴」(= 出品 / 入札 / 購入の履歴) として運用
+      // 「取引履歴」(= 出品 / 入札 / 購入の履歴) として運用
       return [
         { label: "マイページ", href: "/" },
         { label: "取引履歴" },

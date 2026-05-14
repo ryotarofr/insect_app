@@ -1,4 +1,4 @@
-// pages/OrderDetail.tsx — 1 注文の詳細表示 (Phase 9.G / `GET /api/v1/orders/{id}`)
+// pages/OrderDetail.tsx — 1 注文の詳細表示 (`GET /api/v1/orders/{id}`)
 //
 // **責務**:
 //   - mount 時に `fetchOrderDetail(id)` を呼んで order + lineItems を取得
@@ -109,7 +109,8 @@ const Body = (props: { detail: OrderDetail }) => {
                       color: "var(--ink-faint, #888)",
                     }}
                   >
-                    #{li.productId} × {li.qty}
+                    {/* listing 削除済の注文では listingId が null になるので shorten で fallback。 */}
+                    #{li.listingId?.slice(0, 8) ?? "(削除済)"} × {li.qty}
                   </div>
                 </div>
                 <div style={{ "font-family": "var(--font-mono, monospace)" }}>

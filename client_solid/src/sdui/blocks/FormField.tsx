@@ -1,4 +1,4 @@
-// FormField.tsx — Block.type === "form_field" のレンダラ (Phase 8)
+// FormField.tsx — Block.type === "form_field" のレンダラ
 //
 // 詳細:
 //   - docs/sdui-three-layer-model-v6.md §5.8.2 (FormField + ShippingMethodPicker)

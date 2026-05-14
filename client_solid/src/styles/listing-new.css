@@ -1,0 +1,615 @@
+/* listing-new.css — 出品作成 Wizard 用スタイル
+ *
+ * **構造**:
+ *   .listing-new
+ *     .page-head            (= 既存 utility に乗る)
+ *     .wizard-stepper       (= 上部 4 セグメント)
+ *     .wizard-body          (= step 切替 / desktop は全 step 縦並び)
+ *       .wizard-step[data-active]
+ *     .wizard-cta           (= sticky bottom CTA)
+ *
+ * **mobile (≤ 640px)**:
+ *   - 現在 step のみ表示 (data-active="0" は display: none)
+ *   - .wizard-cta を画面下部固定 (= BottomTabBar の上)
+ *
+ * **desktop**:
+ *   - 全 step を縦並び (Stepper クリックで scrollIntoView も可能だが MVP は単純表示)
+ *   - .wizard-cta は normal flow で末尾に配置
+ * ==========================================================================
+ */
+
+.listing-new {
+  /* sticky bottom CTA 分の余白 (= 内容が CTA の下に隠れないように) */
+  padding-bottom: 96px;
+}
+
+/* ── Stepper (上部 4 セグメント) ─────────────────────────── */
+
+.wizard-stepper {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  list-style: none;
+  margin: 16px 0 24px;
+  padding: 0;
+}
+
+.wizard-step-pill {
+  position: relative;
+}
+
+.wizard-step-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  background: transparent;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  color: var(--ink-faint);
+  font-size: 12px;
+  font-family: inherit;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.wizard-step-btn:hover:not(:disabled) {
+  background: var(--bg-sunken);
+  color: var(--ink);
+}
+.wizard-step-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+
+.wizard-step-pill.is-current .wizard-step-btn {
+  border-color: var(--accent-forest, oklch(0.45 0.08 150));
+  background: var(--accent-forest-soft, oklch(0.93 0.03 150));
+  color: var(--accent-forest, oklch(0.45 0.08 150));
+  font-weight: 600;
+}
+.wizard-step-pill.is-done .wizard-step-btn {
+  color: var(--ink);
+  border-color: var(--accent-forest, oklch(0.45 0.08 150));
+  background: transparent;
+}
+
+.wizard-step-num {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 999px;
+  background: var(--bg-sunken);
+  color: var(--ink-mute);
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 600;
+  flex-shrink: 0;
+}
+.wizard-step-pill.is-current .wizard-step-num {
+  background: var(--accent-forest, oklch(0.45 0.08 150));
+  color: var(--ink-inverse, white);
+}
+.wizard-step-pill.is-done .wizard-step-num {
+  background: var(--accent-forest-soft, oklch(0.93 0.03 150));
+  color: var(--accent-forest, oklch(0.45 0.08 150));
+}
+.wizard-step-pill.is-done .wizard-step-num::before {
+  content: "✓";
+}
+.wizard-step-pill.is-done .wizard-step-num span {
+  display: none;
+}
+
+.wizard-step-name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  flex: 1;
+  min-width: 0;
+}
+
+@media (max-width: 640px) {
+  /* モバイル: ラベルを隠して数字バッジだけにする (= 横幅節約) */
+  .wizard-step-name {
+    display: none;
+  }
+  .wizard-step-btn {
+    justify-content: center;
+    padding: 8px 6px;
+  }
+}
+
+/* ── Wizard 本体 ─────────────────────────────────────────── */
+
+.wizard-body {
+  display: flex;
+  flex-direction: column;
+  gap: 28px;
+}
+
+/* Wizard はステッパーと整合させるため、画面サイズに関わらず active な step だけを表示する。
+ * (= ユーザの指摘: 「タブ切替に合わせて表示も切り替えたい」) */
+.wizard-step[data-active="0"] {
+  display: none;
+}
+
+/* ── Step 1: 個体ピッカー ────────────────────────────────── */
+
+.specimen-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 10px;
+}
+@media (min-width: 900px) {
+  .specimen-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.specimen-card-pick {
+  display: flex;
+  align-items: stretch;
+  gap: 10px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-raised);
+  cursor: pointer;
+  text-align: left;
+  font-family: inherit;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.specimen-card-pick:hover {
+  background: var(--bg-sunken);
+}
+.specimen-card-pick.is-selected {
+  border-color: var(--accent-forest, oklch(0.45 0.08 150));
+  border-width: 2px;
+  background: var(--accent-forest-soft, oklch(0.93 0.03 150));
+  padding: 9px; /* 2px border 増分を相殺 */
+}
+
+.specimen-thumb-wrap {
+  width: 56px;
+  height: 56px;
+  flex-shrink: 0;
+  border-radius: var(--r-sm);
+  overflow: hidden;
+}
+.specimen-thumb-wrap .ph {
+  width: 100%;
+  height: 100%;
+}
+
+.specimen-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.specimen-pubid {
+  font-size: 10px;
+  color: var(--ink-faint);
+}
+.specimen-name {
+  font-weight: 600;
+  font-size: 13px;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.specimen-tags {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+.specimen-tags .chip {
+  font-size: 10px;
+  padding: 1px 6px;
+}
+
+/* ── Step 2: 写真と説明 ──────────────────────────────────── */
+
+.picked-summary {
+  padding: 12px;
+  background: var(--accent-forest-soft, oklch(0.93 0.03 150));
+  border-radius: var(--r-md);
+  margin-bottom: 14px;
+}
+.picked-name {
+  font-weight: 600;
+  font-size: 14px;
+}
+.small {
+  font-size: 11px;
+}
+.mute { color: var(--ink-mute); }
+.forest { color: var(--accent-forest, oklch(0.45 0.08 150)); }
+
+.photo-placeholder {
+  display: grid;
+  place-items: center;
+  height: 80px;
+  border: 1.5px dashed var(--line-strong, var(--line));
+  border-radius: var(--r-md);
+  margin-bottom: 14px;
+  color: var(--ink-faint);
+  background: var(--bg-sunken);
+}
+
+/* ── 写真アップロード UI (4 スロット + ＋ ボタン) ─────────── */
+
+.photo-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-bottom: 8px;
+}
+@media (max-width: 480px) {
+  .photo-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+.photo-slot {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: var(--r-md);
+  overflow: hidden;
+  border: 1px solid var(--line);
+  background: var(--bg-sunken);
+}
+.photo-slot img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.photo-cover-badge {
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  font-size: 10px;
+  padding: 2px 7px;
+  background: var(--ink);
+  color: var(--ink-inverse, white);
+  border-radius: 99px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+}
+.photo-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 0;
+  background: oklch(0 0 0 / 0.55);
+  color: white;
+  font-size: 14px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  line-height: 1;
+}
+.photo-remove:hover {
+  background: oklch(0 0 0 / 0.75);
+}
+
+.photo-add {
+  aspect-ratio: 1;
+  border-radius: var(--r-md);
+  border: 1.5px dashed var(--line-strong, var(--line));
+  background: var(--bg-sunken);
+  color: var(--ink-faint);
+  font-family: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+}
+.photo-add:hover:not(:disabled) {
+  background: var(--accent-forest-soft, oklch(0.93 0.03 150));
+  border-color: var(--accent-forest, oklch(0.45 0.08 150));
+  color: var(--accent-forest, oklch(0.45 0.08 150));
+}
+.photo-add:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.photo-error {
+  margin: 8px 0 14px;
+  padding: 8px 12px;
+  background: var(--accent-rose-soft, #fde8e8);
+  color: var(--accent-rose, #b91c1c);
+  border-radius: var(--r-md);
+  font-size: 12px;
+}
+
+.desc-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+/* ── Step 3: 価格と販売方式 ─────────────────────────────── */
+
+.seg-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+.seg-btn {
+  padding: 10px 12px;
+  background: var(--bg-raised);
+  color: var(--ink-mute);
+  border: 0;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+.seg-btn:hover:not(.is-on) {
+  background: var(--bg-sunken);
+  color: var(--ink);
+}
+.seg-btn.is-on {
+  background: var(--ink);
+  color: var(--ink-inverse, white);
+}
+
+.price-input {
+  position: relative;
+}
+.price-yen {
+  position: absolute;
+  left: 12px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--ink-mute);
+}
+.price-input .input {
+  padding-left: 28px;
+}
+
+/* 配送方法チェックボックスリスト */
+.shipping-method-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+.shipping-method-item {
+  display: grid;
+  grid-template-columns: 18px 1fr auto;
+  gap: 12px;
+  align-items: start;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-raised);
+  cursor: pointer;
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.shipping-method-item:hover {
+  background: var(--bg-sunken);
+}
+.shipping-method-item.is-on {
+  border-color: var(--accent-forest, oklch(0.45 0.08 150));
+  background: var(--accent-forest-soft, oklch(0.93 0.03 150));
+}
+.shipping-method-item input[type="checkbox"] {
+  margin-top: 2px;
+  accent-color: var(--accent-forest, oklch(0.45 0.08 150));
+}
+.shipping-method-body {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.shipping-method-name {
+  font-weight: 600;
+  font-size: 13px;
+}
+.shipping-method-desc {
+  color: var(--ink-mute);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+.shipping-method-fee {
+  font-size: 12px;
+  color: var(--ink-mute);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.fee-note {
+  margin-top: 18px;
+  padding: 12px;
+  background: var(--bg-sunken);
+  border-radius: var(--r-md);
+  font-size: 11px;
+  color: var(--ink-mute);
+  line-height: 1.7;
+}
+.fee-note-head {
+  font-weight: 600;
+  color: var(--ink);
+  margin-bottom: 4px;
+}
+
+/* ── Step 4: 確認 → 出品 ───────────────────────────────── */
+
+.review-card {
+  display: grid;
+  grid-template-columns: 88px 1fr;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  background: var(--bg-raised);
+  margin-bottom: 16px;
+}
+.review-thumb {
+  width: 88px;
+  height: 88px;
+  border-radius: var(--r-sm);
+}
+.review-thumb-img {
+  width: 88px;
+  height: 88px;
+  border-radius: var(--r-sm);
+  object-fit: cover;
+  display: block;
+}
+
+.review-photo-strip {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  margin-bottom: 16px;
+  padding-bottom: 4px;
+}
+.review-photo-thumb {
+  width: 64px;
+  height: 64px;
+  border-radius: var(--r-sm);
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 1px solid var(--line);
+}
+.review-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+.review-title {
+  font-weight: 600;
+  font-size: 14px;
+  line-height: 1.3;
+}
+.review-price {
+  font-size: 20px;
+  font-weight: 700;
+  margin-top: 6px;
+}
+.review-price small {
+  font-size: 11px;
+  color: var(--ink-faint);
+  font-family: var(--font-sans, inherit);
+  font-weight: 400;
+  margin-left: 2px;
+}
+
+.fee-summary {
+  background: var(--bg-sunken);
+  border-radius: var(--r-md);
+  padding: 14px;
+  display: grid;
+  gap: 4px;
+}
+.fee-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  font-size: 13px;
+  padding: 4px 0;
+}
+.fee-row.mute {
+  color: var(--ink-mute);
+}
+.fee-row.total {
+  border-top: 1px solid var(--line);
+  margin-top: 6px;
+  padding-top: 12px;
+  font-weight: 600;
+}
+.fee-row.total .serif {
+  font-size: 18px;
+  color: var(--accent-forest, oklch(0.45 0.08 150));
+}
+
+.review-desc {
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: var(--r-md);
+  padding: 0;
+}
+.review-desc summary {
+  padding: 12px 14px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+}
+.review-desc-body {
+  margin: 0;
+  padding: 0 14px 14px;
+  font-family: var(--font-mono, monospace);
+  font-size: 11.5px;
+  white-space: pre-wrap;
+  color: var(--ink-mute);
+  line-height: 1.7;
+}
+
+.submit-error {
+  margin-top: 14px;
+  padding: 10px 14px;
+  background: var(--accent-rose-soft, #fde8e8);
+  color: var(--accent-rose, #b91c1c);
+  border-radius: var(--r-md);
+  font-size: 12px;
+}
+
+.empty-hint {
+  padding: 18px;
+  border: 1.5px dashed var(--line-strong, var(--line));
+  border-radius: var(--r-md);
+  color: var(--ink-faint);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* ── sticky bottom CTA ──────────────────────────────────── */
+
+.wizard-cta {
+  position: sticky;
+  bottom: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 16px;
+  background: var(--bg-glass-strong, var(--bg));
+  backdrop-filter: blur(8px);
+  border-top: 1px solid var(--line);
+  margin: 24px -16px -16px;
+}
+.wizard-cta-step {
+  flex: 1;
+  text-align: center;
+  font-size: 11px;
+  color: var(--ink-faint);
+}
+@media (max-width: 640px) {
+  .wizard-cta {
+    /* BottomTabBar (= 約 76px) の上に配置 */
+    bottom: 76px;
+    margin: 24px 0 0;
+    padding: 12px 12px max(12px, env(safe-area-inset-bottom));
+  }
+}

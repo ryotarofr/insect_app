@@ -1,23 +1,17 @@
-//! user_sessions への永続化 (Phase 9.C 補助 / DB設計書 v2 §3.3 / Phase 9.H で Argon2 化)
+//! user_sessions への永続化 (DB設計書 v2 §3.3)
 //!
 //! **責務**:
 //!   - sqlx で user_sessions テーブルへの INSERT / SELECT / UPDATE / DELETE を提供
 //!   - DB 不在時 (= pool=None) は in-memory fallback で動く
 //!   - cookie に乗る `<id>:<secret>` の SessionToken を生成 / parse / verify する
 //!
-//! **token 形式 (Phase 9.H 以降)**:
+//! **token 形式**:
 //!   - cookie 値 = `<UUID>:<hex32>` (= UUID v4 + 32-byte 暗号学的乱数の hex 表現)
 //!   - DB の `user_sessions.token_hash` には secret を Argon2id でハッシュした
 //!     phc 文字列を格納する (= `$argon2id$v=19$m=...,t=...,p=...$<salt>$<hash>`)
 //!   - 認証時は `id` で row を引いた後 `verify_secret(secret, row.token_hash)` で検証する。
 //!   - **設計上の含意**: DB 単体が漏れても cookie の secret は復元できない (= Argon2 一方向)。
 //!     cookie が漏れた時点で奪取は可能なので、SameSite=Lax + HttpOnly + Secure を併用する。
-//!
-//! **互換性 (= 旧 cookie の扱い)**:
-//!   - Phase 9.G までの cookie は単一 UUID 形式 (= `<UUID>` のみ) で、token_hash は
-//!     `$kochu$mvp$<UUID>` 固定文字列だった。
-//!   - 旧形式 cookie / DB row は **本 PR の verify で全て不一致** になり、middleware が
-//!     新規 session を発行しなおす (= silent rotation)。MVP 段階なので破壊的変更を許容。
 //!
 //! **未実装 (= 後続タスク)**:
 //!   - expires_at の TTL 管理 (= 30 日固定の延長 / GC バッチ)

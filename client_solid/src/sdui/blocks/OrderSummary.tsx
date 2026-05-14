@@ -1,4 +1,4 @@
-// OrderSummary.tsx — Block.type === "order_summary" のレンダラ (Phase 7)
+// OrderSummary.tsx — Block.type === "order_summary" のレンダラ
 //
 // 詳細: docs/sdui-three-layer-model-v5.md §4.11 (OrderSummary)
 //

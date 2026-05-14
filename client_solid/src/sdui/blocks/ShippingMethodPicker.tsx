@@ -1,4 +1,4 @@
-// ShippingMethodPicker.tsx — Block.type === "shipping_method_picker" のレンダラ (Phase 8)
+// ShippingMethodPicker.tsx — Block.type === "shipping_method_picker" のレンダラ
 //
 // 詳細: docs/sdui-three-layer-model-v6.md §5.8.2 (FormField + ShippingMethodPicker)
 //

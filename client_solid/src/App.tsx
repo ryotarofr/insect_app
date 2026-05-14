@@ -19,7 +19,7 @@ import {
 } from "./api";
 import { Shell } from "./components/Shell";
 import { AppErrorBoundary } from "./components/AppErrorBoundary";
-import { QuickLogFab } from "./components/QuickLogFab";
+// QuickLogSheet は「ログを記録」アクション選択時に開く。
 import { QuickLogSheet } from "./components/log/QuickLogSheet";
 import { ToastContainer } from "./components/Toast";
 import { CommandPalette } from "./components/CommandPalette";
@@ -40,9 +40,9 @@ import { CohortPromotePage } from "./pages/cohort/promote";
 import { CohortNewPage } from "./pages/cohort/new";
 import { EclosionPage } from "./pages/Eclosion";
 import { BloodlinePage } from "./pages/Bloodline";
-// C2C pivot: ShopPage / MarketPage は削除済 (= Market は /products に統合)
 import { ListingNewPage } from "./pages/listings/new";
 import { MyListingsPage } from "./pages/listings/MyListings";
+import { StripeConnectReturnPage } from "./pages/account/StripeConnectReturn";
 import { CartSduiPage } from "./pages/CartSdui";
 import { LoginPage } from "./pages/Login";
 import { MyOrdersPage } from "./pages/MyOrders";
@@ -51,8 +51,7 @@ import { WarrantyPage } from "./pages/help/Warranty";
 import { NotFoundPage } from "./pages/NotFound";
 import { cartCount } from "./store/cart";
 import { currentUser, refreshMe } from "./store/auth";
-// C2C pivot: store/products / store/productBloodlines は B2C 商品向けキャッシュなので削除済。
-//   出品 (listings) のキャッシュは store/listings.ts (= loadListings) が担当する。
+// 出品 (listings) のキャッシュは store/listings.ts (= loadListings) が担当する。
 import { loadSpecies } from "./store/species";
 import { clearMyLogs, refreshMyLogs } from "./store/myLogs";
 import { loadListings } from "./store/listings";
@@ -72,7 +71,6 @@ import {
 import { saveScroll, consumeScroll } from "./store/scrollMemory";
 
 // UX-1: 個体カルテ (specimen) は詳細ビューなのでサイドバー / ショートカットから外す。
-// C2C pivot: 旧 "market" / "shop" は削除済。1-6 を再割当。
 const SHORTCUT_MAP: Record<string, RouteKey> = {
   "1": "mypage",
   "2": "products",
@@ -289,14 +287,14 @@ export const App = () => {
     return productFallback();
   });
 
-  // Phase 9.G: /orders/:id 用に URL から id を取り出す。
+  // /orders/:id 用に URL から id を取り出す。
   //   存在性チェックは server 側 (= 404) に任せる (= 注文 UUID は client 側に
   //   全部の id 一覧を持たないため productExists 相当の whitelist は無い)。
   const currentOrderId = createMemo<string>(() => {
     return extractPathId(location.pathname, "/orders") ?? "";
   });
 
-  // Cohort Phase 1: /cohorts/:publicId と /cohorts/:publicId/promote の publicId 抽出。
+  // /cohorts/:publicId と /cohorts/:publicId/promote の publicId 抽出。
   //   /cohorts/:id/promote では末尾 /promote を削ってから decode する。
   const currentCohortPublicId = createMemo<string>(() => {
     const path = location.pathname.replace(/\/+$/, "");
@@ -366,7 +364,7 @@ export const App = () => {
   // 60 日以内に羽化予定の個体数（サイドバーバッジ用）
   const eclosionCount = createMemo(() => listUrgentEclosion(60).length);
 
-  // Phase 9.G: アプリ起動時に 1 回だけ /auth/me を叩いて cookie session の user を復元する。
+  // アプリ起動時に 1 回だけ /auth/me を叩いて cookie session の user を復元する。
   //   - anonymous (= 401) は store/auth が静かに null のままにする (= toast 出さない)
   //   - 5xx / network 障害は console.warn だけ残す (= 起動を妨げない / fetch の retry は別ロジック)
   onMount(() => {
@@ -375,14 +373,13 @@ export const App = () => {
       // App 起動は止めず、login が必要な画面で 401 を見て対応する。
       console.warn("auth refresh failed:", err);
     });
-    // C2C pivot: B2C の商品マスタ / 商品血統情報の起動時 fetch は廃止。
-    //   listings (= 出品一覧) を起動時に 1 回 fetch する (public 閲覧 OK / login 不要)。
+    // listings (= 出品一覧) を起動時に 1 回 fetch する (public 閲覧 OK / login 不要)。
     void loadSpecies();
     void loadListings();
   });
 
-  // Phase 9.D: login user の所有個体 (= /api/v1/specimens/me) を自動 sync する。
-  // PR #6: 飼育ログ (= /api/v1/me/logs) も同様に auth 連動で sync する。
+  // login user の所有個体 (= /api/v1/specimens/me) を自動 sync する。
+  // 飼育ログ (= /api/v1/me/logs) も同様に auth 連動で sync する。
   //   currentUser() の遷移を監視し、
   //     - null  → 非ログイン → 両 store を空にクリア
   //     - User  → /specimens/me + /me/logs を fetch して store に詰める
@@ -396,7 +393,7 @@ export const App = () => {
       refreshMyLogs().catch((err: unknown) => {
         console.warn("logs refresh failed:", err);
       });
-      // Phase 2: マイ出品 cache を auth 連動で同期する。
+      // マイ出品 cache を auth 連動で同期する。
       // refreshMyListings は内部で 401 を空配列に倒すので login 直後 / 過渡期でも安全。
       refreshMyListings().catch((err: unknown) => {
         console.warn("my listings refresh failed:", err);
@@ -464,7 +461,7 @@ export const App = () => {
         const p = getProduct(currentProductId());
         return p ? p.title : undefined;
       })(),
-      // Cohort Phase 1: 群詳細 / 個体化モードのパンくず用 LOT ID
+      // 群詳細 / 個体化モードのパンくず用 LOT ID
       cohortPublicId: currentCohortPublicId() || undefined,
     };
     return crumbFor(r, ids);
@@ -477,6 +474,7 @@ export const App = () => {
       crumbs={crumbs()}
       cartCount={cartCount}
       eclosionCount={eclosionCount}
+      onOpenLogSheet={() => setFabSheetOpen(true)}
     >
       <AppErrorBoundary label={route()}>
         <Show when={route() === "mypage"}>
@@ -519,20 +517,24 @@ export const App = () => {
             setSelectedSpecimen={setSelectedSpecimen}
           />
         </Show>
-        {/* C2C pivot: ShopPage / MarketPage は削除済。
-            "listing-new" は /listings/new (= 出品作成ページ) を描画する。 */}
+        {/* "listing-new" は /listings/new (= 出品作成ページ) を描画する。 */}
         <Show when={route() === "listing-new"}>
           <ListingNewPage />
         </Show>
         <Show when={route() === "my-listings"}>
-          {/* Phase 3: 自分の出品管理ページ (= /listings/me)。
+          {/* 自分の出品管理ページ (= /listings/me)。
               タブ式 (出品中 / 入札中 / 売却済 / 取消・期限切れ) で listings の縦リスト全件表示。
               login 必須 (anonymous は inline で「ログインへ →」リンクを表示)。 */}
           <MyListingsPage setRoute={setRoute} />
         </Show>
+        <Show when={route() === "stripe-connect-return"}>
+          {/* Stripe Connect onboarding 後の戻り URL ページ。
+              mount 時に /account/stripe_connect/status を叩いて状態を再同期し、
+              active なら「連携完了」、それ以外は再試行 / 続きから入力リンクを出す。 */}
+          <StripeConnectReturnPage setRoute={setRoute} />
+        </Show>
         <Show when={route() === "cart"}>
-          {/* Phase 9.1: SDUI 駆動カートに統一 (Strangler Fig 段階 2 完了)。
-              旧 CartPage は src/pages/Cart.legacy.tsx に退避済み (= 参照しない)。
+          {/* SDUI 駆動カート。
               shipping/Stripe は CartSduiPage 経由で /api/v1/checkout/submit が叩く。 */}
           <CartSduiPage />
         </Show>
@@ -540,17 +542,17 @@ export const App = () => {
           <WarrantyPage />
         </Show>
         <Show when={route() === "login"}>
-          {/* Phase 9.G: login / register UI。同 page 内で mode 切替。
+          {/* login / register UI。同 page 内で mode 切替。
               成功すると setRoute("mypage") で mypage に遷移する。 */}
           <LoginPage setRoute={setRoute} />
         </Show>
         <Show when={route() === "orders"}>
-          {/* Phase 9.G: 自分の注文履歴一覧 (= /api/v1/orders/me)。
+          {/* 自分の注文履歴一覧 (= /api/v1/orders/me)。
               anonymous は inline で「ログインが必要」表示 + /login への navigate。 */}
           <MyOrdersPage setRoute={setRoute} />
         </Show>
         <Show when={route() === "order-detail"}>
-          {/* Phase 9.G: 1 注文詳細 + line_items (= /api/v1/orders/{id})。
+          {/* 1 注文詳細 + line_items (= /api/v1/orders/{id})。
               所有者でない / 不存在は server 側 404 → inline error で「注文履歴に戻る」。 */}
           <OrderDetailPage orderId={currentOrderId()} setRoute={setRoute} />
         </Show>
@@ -559,8 +561,8 @@ export const App = () => {
         </Show>
       </AppErrorBoundary>
 
-      {/* モバイル専用 FAB + QuickLog シート (どのルートからでも起動可) */}
-      <QuickLogFab onClick={() => setFabSheetOpen(true)} />
+      {/* QuickLog シート単体。起動は BottomTabBar の中央 FAB ActionSheet 経由
+          (= Shell に onOpenLogSheet を渡し、Shell が BottomTabBar に橋渡し)。 */}
       <QuickLogSheet
         open={fabSheetOpen()}
         onClose={() => setFabSheetOpen(false)}

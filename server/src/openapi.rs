@@ -1,4 +1,4 @@
-//! OpenAPI 仕様書 (Phase 1 / A1)
+//! OpenAPI 仕様書
 //!
 //! **責務**:
 //!   - 全 handler / DTO を `#[derive(utoipa::OpenApi)]` で 1 つの `ApiDoc` に集約
@@ -6,29 +6,29 @@
 //!   - `/openapi.json` + `/swagger-ui` の Router を提供 (= axum と統合)
 //!
 //! **設計判断**:
-//!   - **段階的に handler を追加**: PR O-1 では空の `paths(...)` で skeleton のみ。
-//!     PR O-2 以降で `paths(handlers::auth::post_register, ...)` のように足していく。
+//!   - **段階的に handler を追加**: `paths(handlers::auth::post_register, ...)` の
+//!     ように 1 つずつ足していく。
 //!   - **error schema 統一**: `AppError` 由来の error response を `ErrorResponse` 1 種に固定
 //!     (= 全 endpoint で `{ "error": "..." }` 形式)
 //!   - **info 設定**: title / version は workspace metadata から取らず手動指定 (= MVP)。
 //!     将来 `cargo metadata` 経由で拾う
 //!
-//! ## Coverage matrix (= PR O-2 〜 O-13 終結時点)
+//! ## Coverage matrix
 //!
-//! | tag       | endpoints | PR    | DTO 戦略                                    |
-//! |-----------|-----------|-------|---------------------------------------------|
-//! | auth      | 6         | O-2   | フル型化                                    |
-//! | products  | 1 + watch | O-3,O-12 | フル型化                                  |
-//! | species   | 1         | O-3   | フル型化                                    |
-//! | specimens | 7 + 3 (logs) | O-4,O-6 | フル型化                              |
-//! | listings  | 6         | O-5   | フル型化                                    |
-//! | cart      | 3         | O-7   | フル型化                                    |
-//! | orders    | 2         | O-7   | フル型化 (= flatten は allOf で表現)       |
-//! | checkout  | 4         | O-8   | フル型化                                    |
-//! | uploads   | 4         | O-9   | フル型化 (binary は `String` + octet-stream) |
-//! | mating    | 4         | O-10  | フル型化                                    |
-//! | events    | 2         | O-11  | フル型化 (sdui::analytics への ToSchema 派生) |
-//! | cards     | 4         | O-13  | **opaque body** (= `serde_json::Value`)     |
+//! | tag       | endpoints | DTO 戦略                                    |
+//! |-----------|-----------|---------------------------------------------|
+//! | auth      | 6         | フル型化                                    |
+//! | products  | 1 + watch | フル型化                                  |
+//! | species   | 1         | フル型化                                    |
+//! | specimens | 7 + 3 (logs) | フル型化                              |
+//! | listings  | 6         | フル型化                                    |
+//! | cart      | 3         | フル型化                                    |
+//! | orders    | 2         | フル型化 (= flatten は allOf で表現)       |
+//! | checkout  | 4         | フル型化                                    |
+//! | uploads   | 4         | フル型化 (binary は `String` + octet-stream) |
+//! | mating    | 4         | フル型化                                    |
+//! | events    | 2         | フル型化 (sdui::analytics への ToSchema 派生) |
+//! | cards     | 4         | **opaque body** (= `serde_json::Value`)     |
 //!
 //! ## OpenAPI 非掲載 (= rationale 付き)
 //!
@@ -53,7 +53,7 @@
 //!
 //! そのため、cards の HTTP 経路は OpenAPI 上 `body = serde_json::Value` (= opaque object) で
 //! URL surface だけ documentate し、Block 内部構造は ts-rs 側に委ねる方針を採る。
-//! 後続で必要が出れば独立 PR (= "PR S-N") で SDUI 型の utoipa 化を進められる。
+//! 後続で必要が出れば独立して SDUI 型の utoipa 化を進められる。
 
 use axum::Router;
 use utoipa::OpenApi;
@@ -86,20 +86,24 @@ pub struct ErrorResponse {
         (url = "/api/v1", description = "v1 API base"),
     ),
     paths(
-        // PR O-2: auth (= 6 endpoint)
+        // auth (= 6 endpoint)
         crate::handlers::auth::post_register,
         crate::handlers::auth::post_login,
         crate::handlers::auth::post_logout,
         crate::handlers::auth::get_me,
         crate::handlers::auth::post_password_reset_request,
         crate::handlers::auth::post_password_reset_confirm,
-        // C2C pivot: 旧 products / product_bloodlines は削除済。
         crate::handlers::species::list_species,
-        // PR O-4: 飼育ログ (specimen_logs)
+        // 配送方法マスタ
+        crate::handlers::shipping_methods::list_active,
+        // Stripe Connect オンボーディング
+        crate::handlers::account_stripe_connect::post_onboarding,
+        crate::handlers::account_stripe_connect::get_status,
+        // 飼育ログ (specimen_logs)
         crate::handlers::specimen_logs::list_my_logs,
         crate::handlers::specimen_logs::list_logs,
         crate::handlers::specimen_logs::create_log,
-        // PR O-5: C2C marketplace (listings)
+        // C2C marketplace (listings)
         crate::handlers::listings::list_active,
         crate::handlers::listings::list_my_listings,
         crate::handlers::listings::create_listing,
@@ -107,7 +111,7 @@ pub struct ErrorResponse {
         crate::handlers::listings::cancel_listing,
         crate::handlers::listings::place_bid,
         crate::handlers::listings::toggle_watch_listing,
-        // PR O-6: 個体カルテ (specimens)
+        // 個体カルテ (specimens)
         crate::handlers::specimens::list_my_specimens,
         crate::handlers::specimens::create_specimen,
         crate::handlers::specimens::get_specimen,
@@ -115,33 +119,31 @@ pub struct ErrorResponse {
         crate::handlers::specimens::list_status_history,
         crate::handlers::specimens::patch_specimen_notes,
         crate::handlers::specimens::archive_specimen,
-        // PR O-7: cart + orders (= EC 閲覧フロー)
+        // cart + orders (= EC 閲覧フロー)
         crate::handlers::cart::add_to_cart,
         crate::handlers::cart::delete_cart_item,
         crate::handlers::cart::patch_cart_item,
         crate::handlers::orders::list_my_orders,
         crate::handlers::orders::get_order_detail,
-        // PR O-8: checkout (= 配送先 + Stripe submit)
+        // checkout (= 配送先 + Stripe submit)
         crate::handlers::checkout::patch_shipping_field,
         crate::handlers::checkout::patch_shipping_method,
         crate::handlers::checkout::get_checkout_snapshot,
         crate::handlers::checkout::post_checkout_submit,
-        // PR O-9: 画像アップロード基盤 (uploads + assets)
+        // 画像アップロード基盤 (uploads + assets)
         crate::handlers::uploads::post_sign,
         crate::handlers::uploads::put_local_upload,
         crate::handlers::uploads::post_complete,
         crate::handlers::uploads::get_asset,
-        // PR O-10: 交配記録 (mating_records)
+        // 交配記録 (mating_records)
         crate::handlers::mating_records::create_record,
         crate::handlers::mating_records::list_my_records,
         crate::handlers::mating_records::update_status_handler,
         crate::handlers::mating_records::update_egg_count_handler,
-        // PR O-11: SDUI analytics ingest (events)
+        // SDUI analytics ingest (events)
         crate::handlers::events::post_events,
         crate::handlers::events::list_events,
-        // C2C pivot: 旧 watch (商品ウォッチ) / cards (SDUI cards/products / cart) は削除済。
-        //   listing 用は handlers::listings::toggle_watch_listing (= 上で登録済) で代替。
-        // PR O-14: cohorts (= 群飼育 6 endpoint)。`/cohorts/me` 一覧 / 作成 / 詳細 /
+        // cohorts (= 群飼育 6 endpoint)。`/cohorts/me` 一覧 / 作成 / 詳細 /
         //   個体化 (promote) / archive / cohort_log 追加。詳細 DTO は handlers::cohorts。
         crate::handlers::cohorts::list_my_cohorts,
         crate::handlers::cohorts::create_cohort,
@@ -149,13 +151,12 @@ pub struct ErrorResponse {
         crate::handlers::cohorts::promote_cohort,
         crate::handlers::cohorts::archive_cohort,
         crate::handlers::cohorts::add_cohort_log,
-        // ── ここまでで A1 / OpenAPI 完全化シリーズは終結 ──
         // 非掲載 endpoint と rationale は本ファイルの module doc コメントを参照。
     ),
     components(
         schemas(
             ErrorResponse,
-            // PR O-2: auth DTO
+            // auth DTO
             crate::handlers::auth::RegisterRequest,
             crate::handlers::auth::RegisterResponse,
             crate::handlers::auth::LoginRequest,
@@ -163,13 +164,17 @@ pub struct ErrorResponse {
             crate::handlers::auth::MeResponse,
             crate::handlers::auth::PasswordResetRequest,
             crate::handlers::auth::PasswordResetConfirmRequest,
-            // C2C pivot: 旧 ProductResponse / ProductBloodlineResponse / AncestorResponse は削除済。
             crate::handlers::species::SpeciesResponse,
-            // PR O-4: 飼育ログ DTO
+            // 配送方法マスタ
+            crate::handlers::shipping_methods::ShippingMethodResponse,
+            // Stripe Connect DTO
+            crate::handlers::account_stripe_connect::OnboardingResponse,
+            crate::handlers::account_stripe_connect::ConnectStatusResponse,
+            // 飼育ログ DTO
             crate::handlers::specimen_logs::SpecimenLogView,
             crate::handlers::specimen_logs::CreateSpecimenLogRequest,
             crate::handlers::specimen_logs::CreateSpecimenLogResponse,
-            // PR O-5: marketplace DTO
+            // marketplace DTO
             crate::handlers::listings::ListingView,
             crate::handlers::listings::ListingViewWithCounts,
             crate::handlers::listings::CreateListingRequest,
@@ -177,14 +182,14 @@ pub struct ErrorResponse {
             crate::handlers::listings::PlaceBidRequest,
             crate::handlers::listings::PlaceBidResponse,
             crate::handlers::listings::ToggleWatchResponse,
-            // PR O-6: 個体カルテ DTO
+            // 個体カルテ DTO
             crate::handlers::specimens::SpecimenView,
             crate::handlers::specimens::CreateSpecimenRequest,
             crate::handlers::specimens::CreateSpecimenResponse,
             crate::handlers::specimens::ChangeLifeStatusRequest,
             crate::handlers::specimens::StatusHistoryView,
             crate::handlers::specimens::UpdateNotesRequest,
-            // PR O-7: cart + orders DTO
+            // cart + orders DTO
             crate::handlers::cart::AddToCartRequest,
             crate::handlers::cart::AddToCartResponse,
             crate::handlers::cart::PatchCartItemRequest,
@@ -192,31 +197,29 @@ pub struct ErrorResponse {
             crate::handlers::orders::OrderView,
             crate::handlers::orders::OrderLineView,
             crate::handlers::orders::OrderDetailView,
-            // PR O-8: checkout DTO
+            // checkout DTO
             crate::handlers::checkout::PatchShippingFieldRequest,
             crate::handlers::checkout::PatchShippingFieldResponse,
             crate::handlers::checkout::PatchShippingMethodRequest,
             crate::handlers::checkout::PatchShippingMethodResponse,
             crate::handlers::checkout::CheckoutSnapshotResponse,
             crate::handlers::checkout::CheckoutSubmitResponse,
-            // PR O-9: uploads DTO
+            // uploads DTO
             crate::handlers::uploads::SignRequest,
             crate::handlers::uploads::SignResponse,
             crate::handlers::uploads::CompleteRequest,
             crate::handlers::uploads::CompleteResponse,
-            // PR O-10: 交配記録 DTO
+            // 交配記録 DTO
             crate::handlers::mating_records::MatingRecordView,
             crate::handlers::mating_records::CreateMatingRequest,
             crate::handlers::mating_records::CreateMatingResponse,
             crate::handlers::mating_records::UpdateStatusRequest,
             crate::handlers::mating_records::UpdateEggCountRequest,
-            // PR O-11: SDUI analytics DTO
+            // SDUI analytics DTO
             crate::sdui::analytics::AnalyticsEvent,
             crate::sdui::analytics::AnalyticsEventBatch,
             crate::sdui::analytics::AnalyticsEventType,
-            // C2C pivot: 旧 WatchToggleResponse (= 商品ウォッチ) は削除済。
-            //   listing watch の戻り値は handlers::listings::ToggleWatchResponse を参照。
-            // PR O-14: cohorts DTO (= 群飼育)
+            // cohorts DTO (= 群飼育)
             crate::handlers::cohorts::CohortView,
             crate::handlers::cohorts::CohortLogView,
             crate::handlers::cohorts::CohortDetailView,
@@ -234,7 +237,6 @@ pub struct ErrorResponse {
     tags(
         // tag は handler 側で `tag = "..."` 指定で参照される。
         (name = "auth", description = "認証 / セッション"),
-        // C2C pivot: 旧 "products" tag は削除済 (= listings に統合)。
         (name = "specimens", description = "個体カルテ"),
         (name = "orders", description = "取引履歴"),
         (name = "cart", description = "カート (C2C 出品入り)"),

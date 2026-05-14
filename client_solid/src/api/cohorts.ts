@@ -1,15 +1,13 @@
-// api/cohorts.ts — cohort ドメインの API 層 (Phase 7: real fetch)
+// api/cohorts.ts — cohort ドメインの API 層
 //
-// **Phase 7 移行完了**:
-//   Phase 1〜5 は localStorage mock で動作していたが、Phase 7 で実 BE 接続に切替。
-//   関数 signature は維持しているので呼び出し側 (= store/cohorts.ts) は変更不要。
+// 実 BE に fetch する。関数 signature は呼び出し側 (= store/cohorts.ts) と固定。
 //
 // **エラー扱い**:
 //   `SduiFetchError` (status / body 付き) を throw する。
 //   呼び出し側は status で 401 (未ログイン) や 404 / 409 を判別できる。
 //
-// **未対応 (= 別 PR で詰める論点)**:
-//   - 楽観 lock 競合 (cohorts.version) 時の自動 refresh
+// **未対応**:
+//   - TODO: 楽観 lock 競合 (cohorts.version) 時の自動 refresh
 
 import { fetchJson, SduiFetchError } from "../sdui/api";
 import type {
@@ -89,7 +87,7 @@ export async function archiveCohort(
  * 代わりに /cohorts/{publicId} の detail から `promotedSpecimensCount` を見れば足りる。
  * 個別 specimens の一覧が必要になれば `/specimens?cohort_id=:id` の追加が必要。
  *
- * Phase 7 段階では本関数はスタブで空配列を返す。
+ * 本関数はスタブで空配列を返す。
  */
 export async function listPromotedFromCohort(
   _cohortPublicId: string,
@@ -128,7 +126,7 @@ export const STAGE_LABEL: Record<CohortStage, string> = {
   mixed: "混合",
 };
 
-/** Phase 7 では mock リセットは不要 (= 実 DB が真値)。後方互換のため空 stub を残す。 */
+/** mock リセットは不要 (= 実 DB が真値)。後方互換のため空 stub を残す。 */
 export const __resetCohortMocks = (): void => {
-  // no-op (= mock layer 廃止済み)
+  // no-op
 };

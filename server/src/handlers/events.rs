@@ -1,4 +1,4 @@
-//! `/api/v1/events` — SDUI Analytics ingest (Phase 3)。
+//! `/api/v1/events` — SDUI Analytics ingest。
 //!
 //! クライアントの `client_solid/src/sdui/analytics.ts` が定期的に batch で
 //! POST してくる Analytics イベントを、プロセス内 ring buffer に積む。
@@ -6,11 +6,11 @@
 //! **設計方針 (MVP)**:
 //!   - 永続化なし。`Mutex<VecDeque<AnalyticsEvent>>` を OnceLock で保持。
 //!   - 容量は 1000 件 (RING_CAP)。溢れたら最古から落とす。
-//!   - 集計や可視化は Phase 4 以降。今は debug 用に GET で生データを返すだけ。
+//!   - 集計や可視化は未実装。今は debug 用に GET で生データを返すだけ。
 //!   - batch 内に 1 件でも無効 (analyticsId 空) があれば 400 で全件リジェクト
 //!     (部分受理は debug を難しくするので避ける)。
 //!
-//! **将来 (Phase 4+)**:
+//! **将来**:
 //!   - SQLite/Postgres 永続化
 //!   - 集計テーブル (analyticsId × eventType × hour)
 //!   - 認証付きの GET (現状は debug 用に open)

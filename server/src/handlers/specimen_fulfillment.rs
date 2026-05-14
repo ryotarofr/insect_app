@@ -1,9 +1,9 @@
-//! 注文確定 → 個体カルテ譲渡 (C2C pivot 後の K1 相当)。
+//! 注文確定 → 個体カルテ譲渡。
 //!
-//! **C2C pivot 後の責務**:
+//! **責務**:
 //!   `orders.status = 'paid'` 遷移後に呼ばれ、`order_items.listing_id` から
 //!   listings.specimen_id を引き、その specimen の owner を seller → buyer に書き換える。
-//!   B2C 時代のように specimen を **新規生成** するのではなく、**既存個体を譲渡** する。
+//!   specimen を新規生成するのではなく、既存個体を譲渡する。
 //!
 //! **冪等性 (二段構え)**:
 //!   1. webhook 層: `stripe_webhook_events.event_id` の UNIQUE で同じ Stripe event の二重
@@ -81,7 +81,7 @@ pub async fn fulfill_paid_order(state: &AppState, order_id: Uuid) -> anyhow::Res
 
         let Some(specimen_id) = listing.specimen_id else {
             // 自由 title 出品 (= specimen 紐付け無し) は譲渡対象 specimen が存在しない。
-            // C2C pivot の MVP 範囲では specimen 紐付け listing のみが正規フロー。
+            // MVP 範囲では specimen 紐付け listing のみが正規フロー。
             tracing::warn!(
                 "fulfill_paid_order: listing {} has NULL specimen_id (item={}); skipping",
                 listing_id,
@@ -90,7 +90,7 @@ pub async fn fulfill_paid_order(state: &AppState, order_id: Uuid) -> anyhow::Res
             continue;
         };
 
-        // C2C pivot Step B: 譲渡を本実装。
+        // 譲渡:
         //   1. mark_item_fulfilled で fulfilled_specimen_id を埋め (= 行レベル冪等性ガード)
         //   2. 成功した場合のみ specimens.owner_user_id を seller → buyer に書き換える
         // 順序:
@@ -129,6 +129,26 @@ pub async fn fulfill_paid_order(state: &AppState, order_id: Uuid) -> anyhow::Res
                     specimen_id
                 ));
             }
+        }
+
+        // orders.seller_user_id を書き込む (= 取引履歴の販売側 role=seller 用)。
+        // - COALESCE 相当のロジック (= NULL の時だけ書く) で 2 度書きを避ける。
+        // - 失敗は warn 止め: 譲渡 (transfer_owner) は既に成立しているため、
+        //   seller_user_id 不在は role=seller タブで漏れるだけで取引整合性には影響しない。
+        // - 1 注文に複数 seller を含む場合は最初の seller が書かれる (= MVP の制約)。
+        if let Err(e) = orders::update_seller_user_id_if_null(
+            state.db(),
+            order_id,
+            listing.seller_user_id,
+        )
+        .await
+        {
+            tracing::warn!(
+                "fulfill_paid_order: update_seller_user_id_if_null failed for order {} (seller={}): {}",
+                order_id,
+                listing.seller_user_id,
+                e
+            );
         }
 
         // seller 通知メール (= 「出品が売れました」) を enqueue。
@@ -212,7 +232,7 @@ async fn enqueue_order_confirmation(
 
 /// `listing_sold` 種別の email を seller に enqueue する。
 ///
-/// **C2C pivot**: 注文確定 → 譲渡完了直後に呼ぶ。order_items 単位 (= 1 listing 単位) で
+/// 注文確定 → 譲渡完了直後に呼ぶ。order_items 単位 (= 1 listing 単位) で
 /// 1 通ずつ enqueue し、idempotency_key で 2 重 enqueue を排除する。
 ///
 /// **失敗ハンドリング**:

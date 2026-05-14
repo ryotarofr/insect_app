@@ -1,4 +1,4 @@
-//! prefectures (47 都道府県) への永続化 (Phase 9.B 段階 6)
+//! prefectures (47 都道府県) への永続化
 //!
 //! **責務**:
 //!   - sqlx で prefectures テーブルから 47 行を取得し sort_order 順で返す

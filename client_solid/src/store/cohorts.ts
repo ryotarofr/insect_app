@@ -7,7 +7,7 @@
 //
 // **現状の永続化**:
 //   api/cohorts.ts の mock 層が localStorage に書く。本 store は単に in-memory cache。
-//   Phase 7 で server 駆動に切り替わるが、署名は変えない。
+//   TODO: server 駆動に切り替える (署名は変えない)。
 //
 // **store/specimens.ts との違い**:
 //   specimens は SDUI fetch 直接呼出。本 store は mock 経由なので CohortView を
@@ -73,7 +73,7 @@ export async function refreshCohorts(): Promise<void> {
   }
 }
 
-/** 一覧 cache を localStorage 値で seed する (Phase 1 の起動時用) */
+/** 一覧 cache を localStorage 値で seed する (起動時用) */
 export function seedCohortsFromLocalStorage(): void {
   if (cohorts() !== null) return;
   void refreshCohorts();

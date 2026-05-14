@@ -2,7 +2,7 @@
 //!
 //! - `deny_unknown_fields` で「テンプレートが許容しないリージョン」を deserialize 時に弾く
 //! - 各リージョンは `Vec<Block>` で多重度を表現 (§9: 配列の長さで自然に表現)
-//! - Phase 1 では `ProductFeatureRegions` のみ実装
+//! - 現状は `ProductFeatureRegions` のみ実装
 //!
 //! 各リージョンは **常に配列としてシリアライズ** する (空配列でも `[]` を出力)。
 //! `skip_serializing_if = "Vec::is_empty"` を付けると JSON で undefined になり、
@@ -52,12 +52,12 @@ impl ProductFeatureRegions {
 ///
 /// **product_feature との違い**:
 ///   一覧カードは「画像 + 名前 + 価格」の濃縮表示だが、詳細ページは
-///   - gallery : 大画像 + サムネ列 (Phase 2 で複数 Media 対応 / 動画埋め込みは将来)
+///   - gallery : 大画像 + サムネ列 (複数 Media 対応 / 動画埋め込みは将来)
 ///   - hero    : 店舗 byline / タイトル / 学名 / chip 群
 ///   - spec    : 個体スペック (サイズ / 性別 / 羽化日 / 累代 / 産地 / ブリーダー)
 ///   - pricing : 価格 (税込 / 配送料注記)
 ///   - cta     : カートに追加 / カートを見る / ウォッチ など複数アクション
-///   - promise : 安心保証カード (Phase 2 / 死着補償・温度制御便など `text` + 末尾 `cta`)
+///   - promise : 安心保証カード (死着補償・温度制御便など `text` + 末尾 `cta`)
 ///
 /// **promise を独立 region にした理由**:
 ///   - 視覚的には「囲み card」として hero/cta とは別レイアウトで描画される
@@ -81,7 +81,7 @@ pub struct ProductDetailRegions {
     pub pricing: Vec<Block>,
     #[serde(default)]
     pub cta: Vec<Block>,
-    /// 安心保証など「保証・補償」を訴求する小さな card 領域 (Phase 2)。
+    /// 安心保証など「保証・補償」を訴求する小さな card 領域。
     /// 一般的に `text` (eyebrow / caption) を 3 〜 4 件並べ、末尾に `cta` を 1 件置く。
     #[serde(default)]
     pub promise: Vec<Block>,
@@ -102,15 +102,13 @@ impl ProductDetailRegions {
     }
 }
 
-/// `cart` テンプレートの許容リージョン (Phase 7 + Phase 8)。
-///
-/// **Phase 7**: header / items / summary / cta
-/// **Phase 8 追加**: shipping / shipping_method (チェックアウト統合)
+/// `cart` テンプレートの許容リージョン: header / items / shipping /
+/// shipping_method / summary / cta。
 ///
 ///   - header          : "あなたのカート (3 件)" などの見出し (= Text 1 件想定、空 OK)
 ///   - items           : LineItem の列 (空 = カート空)
-///   - shipping        : 配送先入力フォーム (Phase 8: FormField の列)
-///   - shipping_method : 配送方法ピッカー (Phase 8: ShippingMethodPicker 1 件)
+///   - shipping        : 配送先入力フォーム (= FormField の列)
+///   - shipping_method : 配送方法ピッカー (= ShippingMethodPicker 1 件)
 ///   - summary         : OrderSummary 1 件 (空カート時は [])
 ///   - cta             : "Stripe で決済" / "買い物を続ける" などの CTA
 ///
@@ -144,10 +142,10 @@ pub struct CartRegions {
     pub header: Vec<Block>,
     #[serde(default)]
     pub items: Vec<Block>,
-    /// Phase 8: 配送先入力フォーム (= FormField の列)。空配列なら section 省略。
+    /// 配送先入力フォーム (= FormField の列)。空配列なら section 省略。
     #[serde(default)]
     pub shipping: Vec<Block>,
-    /// Phase 8: 配送方法ピッカー (= ShippingMethodPicker 1 件)。空配列なら section 省略。
+    /// 配送方法ピッカー (= ShippingMethodPicker 1 件)。空配列なら section 省略。
     #[serde(default)]
     pub shipping_method: Vec<Block>,
     #[serde(default)]

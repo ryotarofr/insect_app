@@ -1,4 +1,4 @@
-// pages/listings/MyListings.tsx — 自分の出品管理ページ (Phase 3 / GET /api/v1/listings/me)
+// pages/listings/MyListings.tsx — 自分の出品管理ページ (GET /api/v1/listings/me)
 //
 // **責務**:
 //   - mount 時 + auth 連動で `refreshMyListings()` を呼んで signal に詰める
@@ -14,7 +14,7 @@
 //     これは store/specimens.ts の規律に合わせる (= server-driven state)。
 //   - 行クリックで `/products/{public_id}` (= 既存 ProductDetail = listing detail) に遷移。
 //     listings 専用詳細ルートは未追加のため。
-//   - i18n は当面 inline 日本語で。Phase 8 で SDUI / sdui/i18n 経由に切替予定。
+//   - i18n は当面 inline 日本語で。TODO: SDUI / sdui/i18n 経由に切替。
 
 import { createMemo, createSignal, For, Match, Show, Switch } from "solid-js";
 import { A } from "@solidjs/router";

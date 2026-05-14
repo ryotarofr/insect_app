@@ -4,7 +4,6 @@
 //   - `store/myLogs.ts` の `serverMyLogs()` (= /me/logs 経由) から legacy `LogEntry[]` を
 //     sync で公開する
 //   - `addLog()` は `postSpecimenLog` (= server POST) を叩き、成功後に myLogs を再 fetch する
-//   - localStorage 永続化は **PR #6 で廃止**
 //
 // **anonymous の扱い**:
 //   `serverMyLogs()` は anonymous で空配列。listLogs / listLogsBy* は空配列を返す。
@@ -19,31 +18,14 @@
 import type { LogEntry, LogType } from "../data";
 import {
   type CreateSpecimenLogRequest,
-  type SpecimenLogView,
   postSpecimenLog,
 } from "../sdui/api";
 import { serverMyLogs, triggerMyLogsRefresh } from "../store/myLogs";
+import { toLogEntry } from "../store/specimenLogs";
 import {
   findServerSpecimenByPublicId,
   serverSpecimens,
 } from "../store/specimens";
-
-const KNOWN_LOG_TYPES: ReadonlySet<LogType> = new Set([
-  "weight",
-  "feed",
-  "mat",
-  "molt",
-  "observation",
-] as const);
-
-const toLogType = (raw: string): LogType =>
-  (KNOWN_LOG_TYPES as Set<string>).has(raw) ? (raw as LogType) : "observation";
-
-const trimSeconds = (t: string | null): string => {
-  if (!t) return "";
-  const m = t.match(/^(\d{2}:\d{2})/);
-  return m ? m[1] : t;
-};
 
 /** UUID → publicId 解決。serverSpecimens cache を線形探索。
  *  cache miss は UUID 文字列をそのまま返す (= filter は publicId 一致なので最低限機能)。 */
@@ -53,27 +35,15 @@ const uuidToPublicId = (uuid: string): string => {
   return list.find((s) => s.id === uuid)?.publicId ?? uuid;
 };
 
-/** server `SpecimenLogView` を legacy `LogEntry` に変換。 */
-const toLogEntry = (v: SpecimenLogView): LogEntry => ({
-  date: v.loggedAt,
-  time: trimSeconds(v.loggedAtTime ?? null),
-  type: toLogType(v.logType),
-  title: v.title,
-  body: v.body,
-  photo: v.hasPhoto,
-  specimen: uuidToPublicId(v.specimenId),
-});
-
-/** 全ログを legacy 形式で返す。anonymous / 未取得は空配列。 */
-const allLogs = (): LogEntry[] => serverMyLogs().map(toLogEntry);
+/** 全ログを legacy 形式で返す。anonymous / 未取得は空配列。
+ *  specimen フィールドには publicId を解決して埋める (= LogTimeline の filter 互換性)。 */
+const allLogs = (): LogEntry[] =>
+  serverMyLogs().map((v) => toLogEntry(v, uuidToPublicId(v.specimenId)));
 
 export const listLogs = (): LogEntry[] => allLogs();
 
 export const listLogsBySpecimen = (specimenId: string): LogEntry[] =>
   allLogs().filter((l) => l.specimen === specimenId);
-
-export const listLogsByType = (type: LogType): LogEntry[] =>
-  allLogs().filter((l) => l.type === type);
 
 export interface NewLogInput {
   type: LogType;

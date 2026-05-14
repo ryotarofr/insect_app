@@ -1,4 +1,4 @@
-// CartContext.tsx — /cart 画面用の "カード再 fetch" 関数を子孫に流す Context (Phase 7)
+// CartContext.tsx — /cart 画面用の "カード再 fetch" 関数を子孫に流す Context
 //
 // 詳細: docs/sdui-three-layer-model-v5.md §5.5 (server-driven 状態の再 sync)
 //

@@ -1,4 +1,4 @@
-//! specimens (個体カルテ) への永続化 (Phase 9.D / DB設計書 v2 §3.4)
+//! specimens (個体カルテ) への永続化 (DB設計書 v2 §3.4)
 //!
 //! **責務 (本 PR / skeleton)**:
 //!   - sqlx で specimens テーブルから 1 件取得 / list / insert / archive を提供
@@ -225,7 +225,7 @@ pub async fn insert(
 
 /// `life_status` を遷移させる + 履歴を `specimen_status_history` に積む。
 ///
-/// **Medium #3 規律**: life_status の更新はこの関数経由で行うことで、UPDATE と
+/// **規律**: life_status の更新はこの関数経由で行うことで、UPDATE と
 /// 履歴 INSERT が **トランザクション内で原子的** に実行される。直接 UPDATE specimens
 /// SET life_status = ... をする SQL は避け、必ず本関数を通すこと。
 ///
@@ -318,7 +318,6 @@ pub async fn update_life_status(
 
 /// 個体メモ (notes) を更新する。owner_user_id 一致チェックを含む (= 他人の個体は弾く)。
 ///
-/// **PR #5b**: フロント `updateSpecimenMemo` の localStorage 永続化を server 化。
 /// 空文字列も許容する (= 「メモを消す」操作)。owner_user_id 不一致は `NotFound` を返して
 /// 他人の specimen の存在を隠す。
 pub async fn update_notes(
@@ -361,7 +360,7 @@ pub async fn update_notes(
 
 /// `owner_user_id` を `new_owner_user_id` に書き換える (= C2C 取引確定時の譲渡)。
 ///
-/// **C2C pivot Step B**: stripe webhook → specimen_fulfillment::fulfill_paid_order が
+/// stripe webhook → specimen_fulfillment::fulfill_paid_order が
 /// 注文確定時に呼ぶ。listing.specimen_id で指される specimen の owner を seller →
 /// buyer に書き換えるのが本質。
 ///
@@ -523,7 +522,7 @@ async fn find_by_owner_db(
 
 /// 親個体検索 (typeahead 用)。owner_user_id で絞り込み + sex / species_id / 部分一致 q。
 ///
-/// **本機能 (Cohort Phase 6)**: 個体登録 / 個体化モードの「父個体 / 母個体」selector が使用。
+/// 個体登録 / 個体化モードの「父個体 / 母個体」selector が使用。
 /// 部分一致は public_id / name に対して ILIKE。
 pub async fn search(
     pool: Option<&PgPool>,

@@ -1,4 +1,4 @@
-// pages/Login.tsx — login / register を切り替えできるフォーム (Phase 9.G)
+// pages/Login.tsx — login / register を切り替えできるフォーム
 //
 // **責務**:
 //   - email + password (+ register 時は publicId / name / avatarInitial) を入力

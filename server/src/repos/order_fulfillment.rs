@@ -1,8 +1,8 @@
-//! `order_items.fulfilled_specimen_id` 周りの薄い repo (K1 / 注文確定 → 個体カルテ自動生成)。
+//! `order_items.fulfilled_specimen_id` 周りの薄い repo (注文確定 → 個体カルテ自動生成)。
 //!
 //! **方針**:
 //!   - `repos::orders` を肥大化させないために、fulfillment 周辺のクエリだけをここに切り出す。
-//!   - 1 ヶ月計画 Week 1 の責務 (= 注文 paid 遷移時の specimen 生成) のみを支える。
+//!   - 注文 paid 遷移時の specimen 生成のみを支える。
 //!
 //! **DB 専用**:
 //!   in-memory fallback は持たない。理由:
@@ -21,7 +21,6 @@ use super::orders::OrderRepoError;
 
 /// fulfillment 専用 row。
 ///
-/// C2C pivot: 旧 product_id / product_uuid (= B2C 商品参照) を listing_id に置換。
 /// `listing_id` は ON DELETE SET NULL なので Option (= listing が消えた後でも item は残る)。
 #[derive(Debug, Clone, FromRow)]
 pub struct OrderItemFulfillmentRow {

@@ -1,14 +1,12 @@
 // MyPage.tsx — マイページ（KPI + 次のケア + 羽化レーダー）
 //
-// P2-6: Hero 4 枚の KPI カードを api.getUserMetrics() + createMemo で算出。
-//   - 従来はハードコード (今月のログ 28 件 / 血統ライン 4 等)。
-//   - 実データからのカウントに変更し、ログ追加 / メモ更新に reactive に追従。
+// Hero 4 枚の KPI カードを api.getUserMetrics() + createMemo で算出。
+// 実データからのカウントなので、ログ追加 / メモ更新に reactive に追従する。
 //
 // **所有個体カードについて**:
-//   旧 §02「所有個体」セクションは飼育画面 (/cohorts) に集約済み。
 //   マイページは KPI / 羽化レーダー / 次のケア にフォーカスし、個別の specimen
 //   カードは表示しない。所有個体の閲覧は飼育画面 → 個体カルテ から行う。
-import { createMemo, createSignal, For, onCleanup, onMount, Show } from "solid-js";
+import { createMemo, createSignal, For, Show } from "solid-js";
 import { A } from "@solidjs/router";
 import { type RouteKey } from "../data";
 import {
@@ -19,6 +17,7 @@ import {
   type UpcomingAction,
 } from "../api";
 import { Icons } from "../components/Icons";
+import { NewDropdown } from "../components/mypage/NewDropdown";
 import { Tooltip } from "../components/Tooltip";
 import { ROUTE_PATHS } from "../router";
 import { currentUser } from "../store/auth";
@@ -44,130 +43,7 @@ interface MyPageProps {
   setSelectedSpecimen: (id: string) => void;
 }
 
-// ──────────────────────────────────────────────────────────────────────
-// Cohort Phase 1: 「+ 新規 ▾」 dropdown
-// ──────────────────────────────────────────────────────────────────────
-//
-// 「自分の手元に新しいレコードを作る」アクションを 1 dropdown に集約。
-// 「+ 新しい個体を探す」(EC) は意味カテゴリが違うので別ボタンとして残す (上の親で並置)。
-//
-// 将来追加候補:
-//   - 交配記録を作成 (mating_records 直接作成)
-//   - PDF を取り込む (血統書 OCR)
-// dropdown は項目追加で自然に拡張できる構造を維持する。
-
-interface NewDropdownProps {
-  setRoute: (r: RouteKey) => void;
-}
-
-const NewDropdown = (props: NewDropdownProps) => {
-  const [open, setOpen] = createSignal(false);
-  let rootEl: HTMLDivElement | undefined;
-
-  const close = () => setOpen(false);
-
-  // click outside で閉じる
-  onMount(() => {
-    const onClick = (e: MouseEvent) => {
-      if (!open()) return;
-      if (!rootEl) return;
-      if (e.target instanceof Node && !rootEl.contains(e.target)) {
-        close();
-      }
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && open()) {
-        e.preventDefault();
-        close();
-      }
-    };
-    document.addEventListener("click", onClick);
-    document.addEventListener("keydown", onKey);
-    onCleanup(() => {
-      document.removeEventListener("click", onClick);
-      document.removeEventListener("keydown", onKey);
-    });
-  });
-
-  const select = (r: RouteKey) => {
-    close();
-    props.setRoute(r);
-  };
-
-  return (
-    <div ref={rootEl} style={{ position: "relative", display: "inline-block" }}>
-      <button
-        type="button"
-        class="btn"
-        aria-haspopup="menu"
-        aria-expanded={open()}
-        onClick={() => setOpen(!open())}
-      >
-        {Icons.plus()} 新規{" "}
-        <span style={{ "margin-left": "2px", "font-size": "10px" }}>▾</span>
-      </button>
-      <Show when={open()}>
-        <div
-          role="menu"
-          style={{
-            position: "absolute",
-            top: "calc(100% + 4px)",
-            right: 0,
-            "min-width": "200px",
-            background: "var(--bg-raised)",
-            border: "1px solid var(--line)",
-            "border-radius": "8px",
-            "box-shadow": "0 4px 16px oklch(0 0 0 / 0.08)",
-            "z-index": 30,
-            overflow: "hidden",
-          }}
-        >
-          <button
-            type="button"
-            role="menuitem"
-            class="dropdown-item"
-            onClick={() => select("specimen-new")}
-            style={{
-              display: "block",
-              width: "100%",
-              padding: "9px 14px",
-              "text-align": "left",
-              background: "transparent",
-              border: 0,
-              "font-size": "12px",
-              color: "var(--ink)",
-              cursor: "pointer",
-              "border-bottom": "1px solid var(--line)",
-            }}
-          >
-            個体を登録
-          </button>
-          <button
-            type="button"
-            role="menuitem"
-            class="dropdown-item"
-            onClick={() => select("cohort-new")}
-            style={{
-              display: "block",
-              width: "100%",
-              padding: "9px 14px",
-              "text-align": "left",
-              background: "transparent",
-              border: 0,
-              "font-size": "12px",
-              color: "var(--ink)",
-              cursor: "pointer",
-            }}
-          >
-            群を作成
-          </button>
-        </div>
-      </Show>
-    </div>
-  );
-};
-
-/** P4-9: UpcomingAction 表示用メタ。kind ごとに視覚トーンとアイコンを決める。 */
+/** UpcomingAction 表示用メタ。kind ごとに視覚トーンとアイコンを決める。 */
 const ACTION_META: Record<
   ActionKind,
   { tone: "forest" | "amber" | "indigo" | "rose"; emoji: string }
@@ -179,14 +55,13 @@ const ACTION_META: Record<
 };
 
 // ──────────────────────────────────────────────────────────────────────
-// Phase 2: マイ出品サマリ (= §01 マイページ統合)
+// マイ出品サマリ
 // ──────────────────────────────────────────────────────────────────────
 //
 // **責務**:
 //   - store/myListings の派生 (`myListingsByStatus`) からタブ別の listings 配列を取り、
 //     アクティブタブ 1 つの直近 3 件を表示する。
-//   - 詳細 CRUD は Phase 3 で `/listings/me` に追加するため、本コンポーネントは
-//     「サマリ」のみ。「すべて見る」リンクは Phase 3 まで disabled (= `aria-disabled`).
+//   - 本コンポーネントは「サマリ」のみ。詳細 CRUD は `/listings/me` に逃がす。
 //
 // **設計判断**:
 //   - タブの種類は `active / bidding / sold / canceledOrExpired` の 4 つ。
@@ -234,7 +109,7 @@ const MyListingsSummary = () => {
         <span class="num">§01</span>
         <h2>マイ出品 と 取引</h2>
         <span class="meta" style={{ "margin-left": "auto" }}>
-          {/* Phase 3 完了: /listings/me (= MyListingsPage) への導線を有効化。 */}
+          {/* /listings/me (= MyListingsPage) への導線。 */}
           <A
             href={ROUTE_PATHS["my-listings"]}
             style={{
@@ -456,7 +331,7 @@ export const MyPage = (props: MyPageProps) => {
   const eclosionSoon = createMemo(() =>
     listUrgentEclosion(60).sort((a, b) => a.eclosionInDays - b.eclosionInDays),
   );
-  // P4-9: 次のケア (エサ / マット / 体重 / 羽化) — 7日以内の予定 + 超過分
+  // 次のケア (エサ / マット / 体重 / 羽化) — 7日以内の予定 + 超過分
   //       羽化レーダーと重複する eclosion は除外。
   const upcoming = createMemo(() =>
     getUpcomingActions(7).filter((a) => a.kind !== "eclosion"),
@@ -468,7 +343,7 @@ export const MyPage = (props: MyPageProps) => {
 
   /** KPI の見せ方:
    *  - **飼育系 (forest/amber/indigo/ink)**: 既存 4 枚をそのまま維持。anonymous でも表示可。
-   *  - **販売系 (shop)**: Phase 2 で追加。login user のみ表示し、anonymous は枚数 0 にする
+   *  - **販売系 (shop)**: login user のみ表示し、anonymous は枚数 0 にする
    *    (= `cards()` の filter で除外)。
    *  - 表示順は飼育 → 販売の左→右。grid は md 以上で 4 列、xl で 6 列を目安。
    */
@@ -585,7 +460,7 @@ export const MyPage = (props: MyPageProps) => {
                 <h1>{u().name}</h1>
               </div>
               <div class="page-actions">
-                {/* Cohort Phase 1: 「+ ログを記録」を「+ 新規 ▾」dropdown に置換。
+                {/* 「+ ログを記録」は「+ 新規 ▾」dropdown に集約。
                     「+ 新しい個体を探す」(EC 動線) は別ボタンとして残す。 */}
                 <NewDropdown setRoute={props.setRoute} />
                 <button class="btn primary" onClick={() => props.setRoute("products")}>
@@ -597,10 +472,13 @@ export const MyPage = (props: MyPageProps) => {
         </Show>
       </div>
 
-      {/* Phase 2: KPI grid を `auto-fit` 化して 4 枚 (anonymous) / 7 枚 (login) どちらでも
+      {/* KPI grid を `auto-fit` 化して 4 枚 (anonymous) / 7 枚 (login) どちらでも
           自然に折り返すようにした。`minmax(176px, 1fr)` は localhost 1568px で 7 枚 1 行に
-          収まり、~1280px 未満で 4+3 / 3+3+1 と段階的に折り返す。 */}
+          収まり、~1280px 未満で 4+3 / 3+3+1 と段階的に折り返す。
+          mobile では .kpi-strip クラスで横スクロールに切替
+          (= 7 枚縦積み = 500px+ の縦スクロールを回避する swipe pattern)。 */}
       <div
+        class="kpi-strip"
         style={{
           display: "grid",
           "grid-template-columns": "repeat(auto-fit, minmax(176px, 1fr))",
@@ -723,8 +601,8 @@ export const MyPage = (props: MyPageProps) => {
         </div>
       </Show>
 
-      {/* Phase 2: マイ出品サマリ。login user 限定で表示し、anonymous は丸ごと非表示。
-          詳細 CRUD は Phase 3 で追加する `/listings/me` (= MyListingsPage) に逃がし、
+      {/* マイ出品サマリ。login user 限定で表示し、anonymous は丸ごと非表示。
+          詳細 CRUD は `/listings/me` (= MyListingsPage) に逃がし、
           ここではタブ + 直近 3 件 + 「すべて見る」リンクのみ。 */}
       <Show when={currentUser()}>
         <MyListingsSummary />

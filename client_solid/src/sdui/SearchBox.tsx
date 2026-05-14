@@ -1,4 +1,4 @@
-// SearchBox.tsx — Server-Driven 検索 box のレンダラ (Phase 6)
+// SearchBox.tsx — Server-Driven 検索 box のレンダラ
 //
 // 詳細: docs/sdui-three-layer-model-v5.md §5.6 (List shell + Search)
 //

@@ -1,5 +1,5 @@
 // SpecimenMemoCard.tsx — 個体メモ（自動保存）
-// 保存ボタンを廃止し、600ms debounce で server PATCH (PR #5b 以降)。
+// 600ms debounce で server PATCH する。保存ボタンは無い。
 // ステータスは「保存中…」→「● 保存済み · HH:mm」と遷移する。エラー時は「保存失敗」。
 import { createEffect, createSignal, onCleanup, Show } from "solid-js";
 import { getSpecimenMemo, updateSpecimenMemo } from "../../api";

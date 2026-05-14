@@ -1,4 +1,4 @@
-//! `POST /api/v1/stripe/webhook` (Phase 9.1 / Stripe7)
+//! `POST /api/v1/stripe/webhook`
 //!
 //! Stripe からの webhook を受け取って orders.status を更新する。
 //!
@@ -232,7 +232,7 @@ pub async fn post_stripe_webhook(
         // 直接 id 指定 → status 更新するだけ
         Some(oid)
     } else if let Some(sid) = event.data.object.id.as_deref() {
-        // cs_xxx 経由で order を引く (Phase 9.x: AppState 経由で pool 利用 / 不在時 in-memory)
+        // cs_xxx 経由で order を引く (AppState 経由で pool 利用 / 不在時 in-memory)
         match orders::find_by_stripe_session_id(state.db(), sid).await {
             Ok(Some(rec)) => Some(rec.id),
             Ok(None) => {
@@ -305,7 +305,7 @@ pub async fn post_stripe_webhook(
         )));
     }
 
-    // ── K1: paid 遷移時のみ live 商品の specimens を自動生成 (Week 1) ──
+    // ── K1: paid 遷移時のみ live 商品の specimens を自動生成 ──
     // 行レベル冪等性 (= order_items.fulfilled_specimen_id IS NULL ガード) で重複生成を防止。
     // 失敗時は idempotency キャッシュを rollback して Stripe retry に任せる。
     if new_status == "paid"
@@ -405,7 +405,7 @@ mod tests {
                 amount_jpy: 96000,
                 shipping_jpy: Some(1800),
                 line_items: vec![OrderLineInsert {
-                    listing_id: None, // C2C pivot test fixture: listing 解決スキップ
+                    listing_id: None, // test fixture: listing 解決スキップ
                     title: "Test".to_string(),
                     unit_price_jpy: 48000,
                     qty: 2,

@@ -1,4 +1,4 @@
-//! species + species_translations への永続化 (Phase 9.x / フロント data.ts 移行)
+//! species + species_translations への永続化
 //!
 //! **責務**:
 //!   - sqlx で species と species_translations を join し locale 別に解決した

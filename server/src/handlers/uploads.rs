@@ -1,4 +1,4 @@
-//! `/api/v1/uploads/*` + `/api/v1/assets/{id}` (Week 2 / F4 / 画像アップロード基盤)。
+//! `/api/v1/uploads/*` + `/api/v1/assets/{id}` (画像アップロード基盤)。
 //!
 //! **責務**:
 //!   3 リクエスト構成のダイレクトアップロード:
@@ -38,21 +38,14 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::AppError;
-use crate::repos::{assets, user_sessions};
+use crate::handlers::require_user_id;
+use crate::repos::assets;
 use crate::session::SessionId;
 use crate::state::AppState;
 
 // ──────────────────────────────────────────────────────────────────────
 // helpers
 // ──────────────────────────────────────────────────────────────────────
-
-async fn require_user_id(state: &AppState, session_id: Uuid) -> Result<Uuid, AppError> {
-    let session = user_sessions::find_by_id(state.db(), session_id)
-        .await
-        .map_err(|e| AppError::BadRequest(format!("session lookup: {e}")))?
-        .ok_or(AppError::Unauthorized)?;
-    session.user_id.ok_or(AppError::Unauthorized)
-}
 
 /// ローカルストレージのルート dir を返す (= env 上書き or default)。
 fn local_storage_dir() -> PathBuf {

@@ -358,7 +358,7 @@
   letter-spacing: .04em;
 }
 
-/* ── 商品一覧カード上のオーバーレイバッジ (Phase 2) ─────────────
+/* ── 商品一覧カード上のオーバーレイバッジ ─────────────
    /products のグリッド側で <BloodlineCardChips> をカードに重ねる。
    .pbl-card-wrap が `position: relative` の親、.pbl-card-chips が
    絶対配置の子。pointer-events: none でカードクリックは透過する。
@@ -450,7 +450,7 @@
   color: var(--pbl-dense);
 }
 
-/* ── カート画面の血統リマインダ (Phase 3) ───────────────────────
+/* ── カート画面の血統リマインダ ───────────────────────
    /cart-sdui の SDUI CartCard の直下に挿入される。CartCard は
    max-width: 640px / margin: 0 auto なので、リマインダも同じ
    横幅 / 中央寄せにして連続して見える視覚を作る。

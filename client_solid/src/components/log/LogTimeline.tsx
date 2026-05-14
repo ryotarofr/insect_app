@@ -15,9 +15,9 @@ interface LogTimelineProps {
 export interface Group {
   date: string;
   items: LogEntry[];
-  /** P3-23: 前のグループ (日付降順で一つ新しい) と月が変わる境界か */
+  /** 前のグループ (日付降順で一つ新しい) と月が変わる境界か */
   isMonthBoundary: boolean;
-  /** P3-23: 0=日, 6=土。土日なら背景を薄く色付け */
+  /** 0=日, 6=土。土日なら背景を薄く色付け */
   dow: number;
   /** 月見出しに表示する "2026-04" ラベル */
   yearMonth: string;
@@ -38,7 +38,7 @@ export const groupByDate = (logs: LogEntry[]): Group[] => {
     byDate[l.date].push(l);
   });
   const sortedDates = Object.keys(byDate).sort().reverse();
-  // P3-23: 月区切り検出 — 新しい順に走査し、前日 (= i-1) と月が変わるタイミングで境界。
+  // 月区切り検出 — 新しい順に走査し、前日 (= i-1) と月が変わるタイミングで境界。
   // 最初 (最新) の要素は常に境界とみなし、月見出しを先頭に必ず 1 本描く。
   return sortedDates.map((d, i) => {
     const date = parseISO(d);
@@ -80,7 +80,7 @@ export const LogTimeline = (p: LogTimelineProps) => {
       <For each={groups()}>
         {(g) => (
           <>
-            {/* P3-23: 月区切り — 新しい月に入るところに月見出しを挿入 */}
+            {/* 月区切り — 新しい月に入るところに月見出しを挿入 */}
             <Show when={g.isMonthBoundary}>
               <div class="tl-month" aria-label={`月区切り: ${g.yearMonth}`}>
                 <span class="tl-month-label mono">{g.yearMonth}</span>

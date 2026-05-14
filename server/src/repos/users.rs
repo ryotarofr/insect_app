@@ -1,9 +1,9 @@
-//! users + user_sessions への永続化 (Phase 9.C / DB設計書 v2 §3.3 / Phase 9.G で password 拡張)
+//! users + user_sessions への永続化 (DB設計書 v2 §3.3)
 //!
 //! **責務**:
 //!   - sqlx で users テーブルへの SELECT / INSERT を提供
 //!   - DB 不在時 (= pool=None) は in-memory fallback で動く
-//!   - Argon2id ベースの password hash 生成 / 検証 ヘルパを提供 (= Phase 9.G で追加)
+//!   - Argon2id ベースの password hash 生成 / 検証 ヘルパを提供
 //!
 //! **設計判断**:
 //!   - id = UUID, public_id = handle ("t_yamada") 文字列
@@ -34,6 +34,12 @@ pub struct UserRow {
     pub avatar_initial: String,
     pub is_active: bool,
     pub joined_at: DateTime<Utc>,
+    /// migration 0026: Stripe Connect Express の account ID (= "acct_xxxxx")。
+    /// 未連携は NULL。連携完了後も Stripe 側で account 削除されたら NULL に戻す。
+    pub stripe_connect_account_id: Option<String>,
+    /// Connect 連携状態 FSM (`unlinked` / `pending` / `active` / `restricted`)。
+    /// account.updated webhook で同期。出品 / 受取は status='active' のみ許可。
+    pub stripe_connect_status: String,
 }
 
 /// register 時の INSERT payload。`password_plain` は呼び出し側が握り、
@@ -162,6 +168,9 @@ pub async fn create_with_password(
                     avatar_initial: input.avatar_initial,
                     is_active: true,
                     joined_at: Utc::now(),
+                    // 新規登録時は未連携で開始
+                    stripe_connect_account_id: None,
+                    stripe_connect_status: "unlinked".to_string(),
                 },
                 Some(hash),
             ));
@@ -210,6 +219,120 @@ pub async fn update_password_hash(
     }
 }
 
+// ──────────────────────────────────────────────────────────────────────
+// Stripe Connect 連携
+// ──────────────────────────────────────────────────────────────────────
+
+/// `stripe_connect_account_id` (= "acct_xxx") を user に書き込む (= UNIQUE 違反は Db error)。
+/// 状態は呼び出し側で別途 `set_stripe_connect_status` で更新する規律。
+pub async fn set_stripe_connect_account_id(
+    pool: Option<&PgPool>,
+    user_id: Uuid,
+    account_id: &str,
+) -> Result<(), UserRepoError> {
+    if account_id.trim().is_empty() {
+        return Err(UserRepoError::Invalid("account_id empty".to_string()));
+    }
+    match pool {
+        Some(p) => {
+            let res = sqlx::query(
+                r#"
+                UPDATE users
+                SET stripe_connect_account_id = $2
+                WHERE id = $1
+                "#,
+            )
+            .bind(user_id)
+            .bind(account_id)
+            .execute(p)
+            .await
+            .map_err(UserRepoError::Db)?;
+            if res.rows_affected() == 0 {
+                return Err(UserRepoError::NotFound);
+            }
+            Ok(())
+        }
+        None => {
+            let mut store = memory_dynamic_lock_mut();
+            for entry in store.iter_mut() {
+                if entry.0.id == user_id {
+                    entry.0.stripe_connect_account_id = Some(account_id.to_string());
+                    return Ok(());
+                }
+            }
+            Err(UserRepoError::NotFound)
+        }
+    }
+}
+
+/// `stripe_connect_status` を更新する FSM 遷移。値域は migration 0026 の CHECK と一致。
+/// `account.updated` webhook で `charges_enabled` / `payouts_enabled` を見て呼ぶ想定。
+pub async fn set_stripe_connect_status(
+    pool: Option<&PgPool>,
+    user_id: Uuid,
+    new_status: &str,
+) -> Result<(), UserRepoError> {
+    if !["unlinked", "pending", "active", "restricted"].contains(&new_status) {
+        return Err(UserRepoError::Invalid(format!(
+            "invalid stripe_connect_status: {new_status}"
+        )));
+    }
+    match pool {
+        Some(p) => {
+            let res = sqlx::query(
+                r#"
+                UPDATE users
+                SET stripe_connect_status = $2
+                WHERE id = $1
+                "#,
+            )
+            .bind(user_id)
+            .bind(new_status)
+            .execute(p)
+            .await
+            .map_err(UserRepoError::Db)?;
+            if res.rows_affected() == 0 {
+                return Err(UserRepoError::NotFound);
+            }
+            Ok(())
+        }
+        None => {
+            let mut store = memory_dynamic_lock_mut();
+            for entry in store.iter_mut() {
+                if entry.0.id == user_id {
+                    entry.0.stripe_connect_status = new_status.to_string();
+                    return Ok(());
+                }
+            }
+            Err(UserRepoError::NotFound)
+        }
+    }
+}
+
+/// Stripe Connect の account_id (= "acct_xxx") から user を逆引き (= webhook 用)。
+pub async fn find_by_stripe_connect_account_id(
+    pool: Option<&PgPool>,
+    account_id: &str,
+) -> Result<Option<UserRow>, UserRepoError> {
+    match pool {
+        Some(p) => sqlx::query_as::<_, UserRow>(
+            r#"
+            SELECT id, public_id, name, role, email, avatar_initial, is_active, joined_at,
+                   stripe_connect_account_id, stripe_connect_status
+            FROM users
+            WHERE stripe_connect_account_id = $1
+            "#,
+        )
+        .bind(account_id)
+        .fetch_optional(p)
+        .await
+        .map_err(UserRepoError::Db),
+        None => Ok(memory_users()
+            .into_iter()
+            .find(|u| u.stripe_connect_account_id.as_deref() == Some(account_id))),
+    }
+}
+
 /// Argon2id で平文 password を hash 化し、phc 文字列を返す。
 ///
 /// パラメータは Argon2 default (= m=19456, t=2, p=1) を使う。production で安全側に倒すなら
@@ -239,17 +362,18 @@ pub fn verify_password(hash: &str, plain: &str) -> Result<bool, UserRepoError> {
 // DB 実装
 // ──────────────────────────────────────────────────────────────────────
 
+/// `users` テーブルの SELECT カラム列 (= `UserRow` の field 順と一致)。
+/// スキーマ変更時にここ 1 箇所だけ直せば全 find_* クエリに反映される。
+const USER_COLUMNS: &str = "id, public_id, name, role, email, avatar_initial, \
+     is_active, joined_at, stripe_connect_account_id, stripe_connect_status";
+
 async fn find_by_public_id_db(
     pool: &PgPool,
     public_id: &str,
 ) -> Result<Option<UserRow>, UserRepoError> {
-    sqlx::query_as::<_, UserRow>(
-        r#"
-        SELECT id, public_id, name, role, email, avatar_initial, is_active, joined_at
-        FROM users
-        WHERE public_id = $1
-        "#,
-    )
+    sqlx::query_as::<_, UserRow>(&format!(
+        "SELECT {USER_COLUMNS} FROM users WHERE public_id = $1"
+    ))
     .bind(public_id)
     .fetch_optional(pool)
     .await
@@ -257,13 +381,9 @@ async fn find_by_public_id_db(
 }
 
 async fn find_by_id_db(pool: &PgPool, id: Uuid) -> Result<Option<UserRow>, UserRepoError> {
-    sqlx::query_as::<_, UserRow>(
-        r#"
-        SELECT id, public_id, name, role, email, avatar_initial, is_active, joined_at
-        FROM users
-        WHERE id = $1
-        "#,
-    )
+    sqlx::query_as::<_, UserRow>(&format!(
+        "SELECT {USER_COLUMNS} FROM users WHERE id = $1"
+    ))
     .bind(id)
     .fetch_optional(pool)
     .await
@@ -271,14 +391,9 @@ async fn find_by_id_db(pool: &PgPool, id: Uuid) -> Result<Option<UserRow>, UserR
 }
 
 async fn find_all_active_db(pool: &PgPool) -> Result<Vec<UserRow>, UserRepoError> {
-    sqlx::query_as::<_, UserRow>(
-        r#"
-        SELECT id, public_id, name, role, email, avatar_initial, is_active, joined_at
-        FROM users
-        WHERE is_active = true
-        ORDER BY public_id
-        "#,
-    )
+    sqlx::query_as::<_, UserRow>(&format!(
+        "SELECT {USER_COLUMNS} FROM users WHERE is_active = true ORDER BY public_id"
+    ))
     .fetch_all(pool)
     .await
     .map_err(UserRepoError::Db)
@@ -288,13 +403,9 @@ async fn find_by_email_db(
     pool: &PgPool,
     email: &str,
 ) -> Result<Option<UserRow>, UserRepoError> {
-    sqlx::query_as::<_, UserRow>(
-        r#"
-        SELECT id, public_id, name, role, email, avatar_initial, is_active, joined_at
-        FROM users
-        WHERE email = $1
-        "#,
-    )
+    sqlx::query_as::<_, UserRow>(&format!(
+        "SELECT {USER_COLUMNS} FROM users WHERE email = $1"
+    ))
     .bind(email)
     .fetch_optional(pool)
     .await
@@ -315,21 +426,31 @@ async fn find_password_hash_by_email_db(
         String,
         bool,
         DateTime<Utc>,
-        Option<String>,
-    )> = sqlx::query_as(
-        r#"
-        SELECT id, public_id, name, role, email, avatar_initial, is_active, joined_at, password_hash
-        FROM users
-        WHERE email = $1
-        "#,
-    )
+        Option<String>,           // stripe_connect_account_id
+        String,                   // stripe_connect_status
+        Option<String>,           // password_hash
+    )> = sqlx::query_as(&format!(
+        "SELECT {USER_COLUMNS}, password_hash FROM users WHERE email = $1"
+    ))
     .bind(email)
     .fetch_optional(pool)
     .await
     .map_err(UserRepoError::Db)?;
 
     Ok(row.map(
-        |(id, public_id, name, role, email, avatar_initial, is_active, joined_at, password_hash)| {
+        |(
+            id,
+            public_id,
+            name,
+            role,
+            email,
+            avatar_initial,
+            is_active,
+            joined_at,
+            stripe_connect_account_id,
+            stripe_connect_status,
+            password_hash,
+        )| {
             (
                 UserRow {
                     id,
@@ -340,6 +461,8 @@ async fn find_password_hash_by_email_db(
                     avatar_initial,
                     is_active,
                     joined_at,
+                    stripe_connect_account_id,
+                    stripe_connect_status,
                 },
                 password_hash,
             )
@@ -435,6 +558,9 @@ fn memory_seed_users() -> Vec<UserRow> {
         joined_at: chrono::TimeZone::with_ymd_and_hms(&Utc, 2024, 3, 15, 0, 0, 0)
             .single()
             .expect("valid timestamp"),
+        // seed user は in-memory モード (= dev / test) では未連携。
+        stripe_connect_account_id: None,
+        stripe_connect_status: "unlinked".to_string(),
     }]
 }
 

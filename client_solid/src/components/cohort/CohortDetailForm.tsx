@@ -261,12 +261,12 @@ export const CohortDetailForm = (props: Props) => {
         </Show>
         <Show when={originKind() === "purchase"}>
           <p class="reg-form__hint">
-            購入元・購入日・購入価格の入力は Phase 5 で実装予定 (現状は記録のみ)。
+            購入元・購入日・購入価格の入力は実装予定 (現状は記録のみ)。
           </p>
         </Show>
         <Show when={originKind() === "field_collected"}>
           <p class="reg-form__hint">
-            採集地・採集日の入力は Phase 5 で実装予定 (現状は記録のみ)。
+            採集地・採集日の入力は実装予定 (現状は記録のみ)。
           </p>
         </Show>
       </section>

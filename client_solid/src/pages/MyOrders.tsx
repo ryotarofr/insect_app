@@ -1,4 +1,4 @@
-// pages/MyOrders.tsx — 自分の注文履歴一覧 (Phase 9.G / `GET /api/v1/orders/me`)
+// pages/MyOrders.tsx — 自分の注文履歴一覧 (`GET /api/v1/orders/me`)
 //
 // **責務**:
 //   - mount 時に `fetchMyOrders()` を 1 回呼んで signal に詰める
@@ -11,32 +11,50 @@
 //   - status filter / 期間フィルタ
 //   - ページネーション (現状は 1 リクエストで全件返す前提)
 
-import { createResource, For, Match, Show, Switch } from "solid-js";
+import { createResource, createSignal, For, Match, Show, Switch } from "solid-js";
 
 import type { RouteKey } from "../data";
 import {
+  type OrderRole,
   type OrderSummary,
   SduiFetchError,
   fetchMyOrders,
 } from "../sdui/api";
 import { ROUTE_PATHS, orderUrl } from "../router";
+import { currentUserId } from "../store/auth";
 
 interface Props {
   setRoute: (k: RouteKey) => void;
 }
 
+const TAB_LABEL: Record<OrderRole, string> = {
+  buyer: "購入",
+  seller: "売却",
+  all: "すべて",
+};
+const TAB_ORDER: OrderRole[] = ["buyer", "seller", "all"];
+
 export const MyOrdersPage = (props: Props) => {
-  // createResource で fetch を suspense っぽく扱う。再 mount で再 fetch される。
-  const [orders] = createResource<OrderSummary[]>(async () => {
-    return fetchMyOrders();
+  const [role, setRole] = createSignal<OrderRole>("buyer");
+
+  // role 切替で createResource を再 fetch させるため、source に role() を渡す。
+  // role が変わると Solid が自動で fetcher を再実行する。
+  const [orders] = createResource<OrderSummary[], OrderRole>(role, async (r) => {
+    return fetchMyOrders(r);
   });
+
+  // 自分の userId (= role=all のときに「これは購入か売却か」を 1 行ずつ判別するのに使う)
+  const myUserId = () => currentUserId();
 
   return (
     <div class="my-orders" style={{ padding: "24px", "max-width": "720px" }}>
       <div class="cat" style={{ "margin-bottom": "8px" }}>
-        マイページ / 注文履歴
+        マイページ / 取引履歴
       </div>
-      <h1 style={{ "margin-bottom": "16px" }}>注文履歴</h1>
+      <h1 style={{ "margin-bottom": "16px" }}>取引履歴</h1>
+
+      {/* role タブ (購入 / 売却 / すべて) */}
+      <RoleTabs current={role()} onChange={setRole} />
 
       <Show
         when={orders.error}
@@ -47,15 +65,11 @@ export const MyOrdersPage = (props: Props) => {
           >
             <Show
               when={(orders() ?? []).length > 0}
-              fallback={
-                <p style={{ color: "var(--ink-faint, #888)" }}>
-                  注文履歴はまだありません。
-                </p>
-              }
+              fallback={<EmptyState role={role()} />}
             >
               <ul class="order-list" style={{ "list-style": "none", padding: "0" }}>
                 <For each={orders() ?? []}>
-                  {(o) => <OrderRow order={o} />}
+                  {(o) => <OrderRow order={o} myUserId={myUserId()} />}
                 </For>
               </ul>
               {/* note: OrderRow は内部で `<a href={orderUrl(o.id)}>` リンクなので、
@@ -70,8 +84,87 @@ export const MyOrdersPage = (props: Props) => {
   );
 };
 
-const OrderRow = (props: { order: OrderSummary }) => {
+// ──────────────────────────────────────────────────────────────────────
+// role タブ
+// ──────────────────────────────────────────────────────────────────────
+
+const RoleTabs = (props: {
+  current: OrderRole;
+  onChange: (r: OrderRole) => void;
+}) => (
+  <div
+    role="tablist"
+    aria-label="取引履歴のロールタブ"
+    style={{
+      display: "flex",
+      gap: "4px",
+      "border-bottom": "1px solid var(--line, #ddd)",
+      "margin-bottom": "12px",
+    }}
+  >
+    <For each={TAB_ORDER}>
+      {(r) => {
+        const isActive = () => props.current === r;
+        return (
+          <button
+            role="tab"
+            type="button"
+            aria-selected={isActive()}
+            onClick={() => props.onChange(r)}
+            style={{
+              border: "none",
+              background: "transparent",
+              padding: "10px 14px",
+              "font-size": "13px",
+              "font-weight": isActive() ? 600 : 500,
+              "border-bottom": isActive()
+                ? "2px solid var(--accent-forest, oklch(0.45 0.08 150))"
+                : "2px solid transparent",
+              color: isActive()
+                ? "var(--accent-forest, oklch(0.45 0.08 150))"
+                : "var(--ink-mute, #666)",
+              cursor: "pointer",
+              "font-family": "inherit",
+              "margin-bottom": "-1px",
+            }}
+          >
+            {TAB_LABEL[r]}
+          </button>
+        );
+      }}
+    </For>
+  </div>
+);
+
+const EmptyState = (props: { role: OrderRole }) => {
+  const message = () => {
+    switch (props.role) {
+      case "buyer":
+        return "購入履歴はまだありません。";
+      case "seller":
+        return "売却履歴はまだありません。出品が落札・購入されると表示されます。";
+      case "all":
+        return "取引履歴はまだありません。";
+    }
+  };
+  return (
+    <p style={{ color: "var(--ink-faint, #888)" }}>
+      {message()}
+    </p>
+  );
+};
+
+const OrderRow = (props: { order: OrderSummary; myUserId: string | null }) => {
   const o = props.order;
+
+  // role=all のとき各行が「購入」か「売却」かを判定する。
+  // - 自分が seller なら「売却」(緑、+¥) / 自分が buyer なら「購入」(青、−¥)
+  // - sellerUserId / buyerUserId が不在の response に備えて optional chain で読む。
+  const isSell = () =>
+    props.myUserId != null && o.sellerUserId === props.myUserId;
+  const isBuy = () =>
+    props.myUserId != null && o.buyerUserId === props.myUserId;
+
   return (
     <li class="order-row">
       {/* 行全体を `<a>` にして SPA navigation を有効化 (= middle-click も効く)。
@@ -93,10 +186,39 @@ const OrderRow = (props: { order: OrderSummary }) => {
           <div style={{ "font-size": "12px", color: "var(--ink-faint, #888)" }}>
             {formatDate(o.createdAt)} · #{shorten(o.id)}
           </div>
-          <div style={{ "margin-top": "4px" }}>
+          <div style={{ "margin-top": "4px", display: "flex", "align-items": "center", gap: "8px" }}>
             <StatusBadge status={o.status} />
-            <span style={{ "margin-left": "8px" }}>
-              ¥{o.amountJpy.toLocaleString("ja-JP")}
+            {/* 売却/購入の方向タグ (= role=all で見やすくする) */}
+            <Show when={isSell()}>
+              <span
+                style={{
+                  padding: "2px 8px",
+                  "border-radius": "4px",
+                  background: "var(--accent-forest-soft, oklch(0.93 0.03 150))",
+                  color: "var(--accent-forest, oklch(0.45 0.08 150))",
+                  "font-size": "11px",
+                  "font-weight": 600,
+                }}
+              >
+                売却
+              </span>
+            </Show>
+            <Show when={isBuy() && !isSell()}>
+              <span
+                style={{
+                  padding: "2px 8px",
+                  "border-radius": "4px",
+                  background: "var(--accent-blue-soft, oklch(0.95 0.03 240))",
+                  color: "var(--accent-blue, oklch(0.55 0.10 240))",
+                  "font-size": "11px",
+                  "font-weight": 600,
+                }}
+              >
+                購入
+              </span>
+            </Show>
+            <span style={{ "font-weight": isSell() ? 600 : 400 }}>
+              {isSell() ? "+" : isBuy() ? "−" : ""}¥{o.amountJpy.toLocaleString("ja-JP")}
             </span>
           </div>
           <Show when={o.stripeSessionId}>

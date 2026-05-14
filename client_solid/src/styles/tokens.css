@@ -28,8 +28,7 @@
   --accent-forest-soft: oklch(0.93 0.03 150);
   --accent-amber: oklch(0.70 0.12 70);
   --accent-amber-soft: oklch(0.94 0.04 70);
-  /* P4-7: amber 系のテキスト色として使われていた oklch(0.45 0.1 70) を
-     semantic 変数化 (chip.amber / KPI accent / ind-id など多数で参照)。
+  /* amber 系のテキスト色 (chip.amber / KPI accent / ind-id など多数で参照)。
      ダークモードでは lightness を上げて視認性を確保する。 */
   --accent-amber-ink: oklch(0.45 0.1 70);
   --accent-rose: oklch(0.60 0.12 25);
@@ -37,7 +36,7 @@
   --accent-indigo: oklch(0.50 0.08 265);
   --accent-indigo-soft: oklch(0.94 0.02 265);
 
-  /* P4-7: topbar のすりガラス用。--bg にアルファを付与した色。
+  /* topbar のすりガラス用。--bg にアルファを付与した色。
      ダークモードで bg が変わるのでハードコード禁止。 */
   --bg-glass: oklch(0.985 0.004 80 / 0.75);
   --bg-glass-strong: oklch(0.985 0.004 80 / 0.85);
@@ -48,14 +47,14 @@
   --shadow-lg: 0 2px 6px oklch(0 0 0 / 0.06), 0 16px 40px oklch(0 0 0 / 0.08);
 
   /* Radius — restrained
-     基本 3 段階 (sm/md/lg/pill) + 用途別セマンティック変数 (P3-12)
+     基本 3 段階 (sm/md/lg/pill) + 用途別セマンティック変数
      全コンポーネントは用途別変数を参照する。中間値は出さない。 */
   --r-sm: 3px;
   --r-md: 6px;
   --r-lg: 10px;
   --r-pill: 999px;
 
-  /* Semantic radii (P3-12) */
+  /* Semantic radii */
   --r-card: 12px;   /* card / modal / dialog */
   --r-btn: 8px;    /* button / input / select / textarea / pill-less interactive */
   --r-chip: 999px; /* chip / badge / pill */
@@ -75,7 +74,7 @@
   --header-h: 56px;
   --page-max: 1440px;
 
-  /* Focus ring (P3-1) */
+  /* Focus ring */
   --ring: 2px solid var(--accent-indigo);
   --ring-offset: 2px;
 }
@@ -97,7 +96,7 @@ button { font-family: inherit; cursor: pointer; border: none; background: none; 
 input, textarea, select { font-family: inherit; font-size: inherit; color: inherit; }
 
 /* ==========================================================================
-   Focus ring (P3-1) — unified :focus-visible style
+   Focus ring — unified :focus-visible style
    :where() で specificity を 0 にしておく。個別に outline: none; を指定した
    要素は既存ルールが勝つので、設計済みの search 等の動作は維持される。
    キーボード操作時 (=:focus-visible) のみ出るため、マウスクリックでは出ない。
@@ -119,7 +118,7 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
 .mono { font-family: var(--font-mono); font-feature-settings: "tnum" 1; }
 .serif { font-family: var(--font-serif); }
 
-/* P3-14: 価格表示の標準パターン
+/* 価格表示の標準パターン
  *   <span class="price"><span class="price-yen">¥</span>48,000</span>
  * 桁揃え用に tabular-nums + feature-settings "tnum" を適用。
  * ¥ は mono 0.7em で分離し、数字の高さに対して主張しすぎないようにする。
@@ -141,7 +140,7 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
 .hair { border: 0; border-top: 1px solid var(--line); margin: 0; }
 .hair-v { border: 0; border-left: 1px solid var(--line); align-self: stretch; }
 
-/* P3-10: chip を 1 本化 (height 24px / padding 0 10px / font-size 11px)
+/* chip を 1 本化 (height 24px / padding 0 10px / font-size 11px)
    色は modifier クラス (forest/amber/rose/indigo/ink) のみで差別化する。
    ドット (.chip .dot) もこのサイズに合わせて調整。 */
 .chip {
@@ -166,21 +165,20 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
 .chip.indigo { background: var(--accent-indigo-soft); color: var(--accent-indigo); border-color: transparent; }
 .chip.ink    { background: var(--bg-inverse); color: var(--ink-inverse); border-color: transparent; }
 
-/* P4-2: life-badge — 故個体は黒地 / それ以外は通常の chip tone 併用 */
+/* life-badge — 故個体は黒地 / それ以外は通常の chip tone 併用 */
 .chip.life-badge[data-life="deceased"] {
   background: var(--ink);
   color: var(--bg);
   border-color: transparent;
 }
 
-/* P3-10: chip は --r-chip を参照 (999px 固定) */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
   padding: 8px 14px;
-  /* P3-12: radius は semantic 変数を参照 */
+  /* radius は semantic 変数を参照 */
   border-radius: var(--r-btn);
   background: var(--bg-raised);
   border: 1px solid var(--line-strong);
@@ -191,9 +189,9 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
   white-space: nowrap;
 }
 .btn:hover { background: var(--bg-sunken); border-color: var(--ink-mute); }
-/* Cohort UX フィードバック: 押下時のスケール (押し込み感) を削除。
- *   active 状態は現状ブラウザ既定の visual feedback (focus ring 等) に委ねる。 */
-/* P3-11: primary を森緑 (forest) に。CTA に自然な緑が主役として登場 */
+/* 押下時のスケール (押し込み感) は持たせない。
+ *   active 状態はブラウザ既定の visual feedback (focus ring 等) に委ねる。 */
+/* primary を森緑 (forest) に。CTA に自然な緑が主役として登場 */
 .btn.primary {
   background: var(--accent-forest);
   color: var(--ink-inverse);
@@ -210,7 +208,7 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
 .btn.lg { padding: 12px 20px; font-size: 14px; }
 .btn.block { width: 100%; }
 
-/* P4-15: カート削除ボタンは .btn.sm だが 44×44 のタップ領域を確保する。
+/* カート削除ボタンは .btn.sm だが 44×44 のタップ領域を確保する。
  *   視覚的には sm のままだが、透明な ::after を中央に 44×44 張って hitbox を拡大し、
  *   指タップ精度を上げる (WCAG 2.5.5 Target Size AAA / Apple HIG 44pt)。
  *   色は faint でサイレント、hover/focus で rose に上がる。 */
@@ -266,7 +264,7 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
   display: block;
   width: 100%;
   padding: 10px 12px;
-  /* P3-12: form 入力 radius は btn と揃える */
+  /* form 入力 radius は btn と揃える */
   border-radius: var(--r-btn);
   background: var(--bg-raised);
   border: 1px solid var(--line-strong);
@@ -291,9 +289,9 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
   margin-bottom: 6px;
 }
 
-/* P3-2 → Cohort UX フィードバック: 押下時の縮小 / hover lift を廃止。
+/* 押下時の縮小 / hover lift は持たせない。
  *   transform を一切使わず、シャドウの濃淡だけで hover を示す。
- * P3-12: radius は semantic --r-card */
+ * radius は semantic --r-card */
 .card {
   background: var(--bg-raised);
   border: 1px solid var(--line);
@@ -377,7 +375,7 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
 }
 .spec dd { margin: 0; }
 
-/* P3-17: 2×2 spec grid — 商品カードなど狭い領域で 4 つの属性を
+/* 2×2 spec grid — 商品カードなど狭い領域で 4 つの属性を
  * スキャナブルに並べるためのレイアウト。ラベルは mono uppercase 9px、
  * 値は 12px。背景をごく薄いサンクンにしてスペック塊として分離する。 */
 .spec-grid-2 {
@@ -508,7 +506,7 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
 
 /* ==========================================================================
    Reduced motion — ユーザーがモーション抑制を希望している場合は
-   P3-3 の press / P3-2 の lift / fade-enter を静かにする。
+   press / lift / fade-enter を静かにする。
    ========================================================================== */
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after {
@@ -520,7 +518,7 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
 }
 
 /* ==========================================================================
-   Dark mode (P4-7)
+   Dark mode
    OS 設定が "dark" の時に有効化。すべての変数を上書きするだけで
    コンポーネント側の CSS は触らない方針 (bg/ink/line/accent 変数に
    依存している限り自動で切り替わる)。
@@ -634,7 +632,7 @@ input, textarea, select { font-family: inherit; font-size: inherit; color: inher
 }
 
 /* ==========================================================================
-   Night-red theme (P4-8)
+   Night-red theme
    夜間、カブトムシ / クワガタの飼育ケア時に青色光を避けるためのモード。
    赤色は昆虫の複眼の感度が低いため、刺激を与えずに観察・作業ができる。
 

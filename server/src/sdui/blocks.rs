@@ -2,7 +2,7 @@
 //!
 //! 詳細は `docs/sdui-three-layer-model-v6.md` §4 / §5 / §7 参照。
 //!
-//! Phase 1 では `CardBlock::ProductFeature` のみ実装。
+//! 現状は `CardBlock::ProductFeature` のみ実装。
 //! ブロック型 (`Block`) は将来のテンプレートでも共通利用するため全種類を定義する。
 
 use chrono::NaiveDate;
@@ -88,7 +88,7 @@ pub enum MetaItemAlign {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Currency: Phase 1 は JPY のみ (§17 で多通貨対応を予約)
+// Currency: 現状は JPY のみ (§17 で多通貨対応を予約)
 // ──────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
@@ -117,7 +117,7 @@ pub enum HrefError {
 }
 
 impl Href {
-    /// Phase 1 簡易版: 内部パス (`/...`) と https のみ許容。
+    /// 簡易版: 内部パス (`/...`) と https のみ許容。
     /// 詳細ルール (utm 禁止 / トラッキングパラメータ排除 等) は §10.2 で別途実装予定。
     pub fn parse(raw: &str) -> Result<Self, HrefError> {
         if raw.is_empty() {
@@ -143,7 +143,7 @@ pub struct I18nKey(String);
 
 impl I18nKey {
     pub fn new(raw: impl Into<String>) -> Self {
-        // Phase 1 ではフォーマット検証は行わない（§12.4 で別途）。
+        // 現状はフォーマット検証は行わない（§12.4 で別途）。
         Self(raw.into())
     }
 
@@ -219,7 +219,7 @@ pub struct MetaItem {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// CtaAction: CTA をクリックした時のサーバ反映アクション (Phase 2.5)
+// CtaAction: CTA をクリックした時のサーバ反映アクション
 //
 // 既存の `Block::Cta.href` だけでは「ページ遷移」しか表現できなかったため、
 // 「ページ遷移はせずサーバ状態を更新したい」(カート追加 / ウォッチ切替) を
@@ -256,7 +256,7 @@ pub enum CtaAction {
     AddToCart { product_id: String, qty: u32 },
     /// ウォッチリストへの追加 / 削除トグル。`/api/v1/watch/:productId` に POST する想定。
     ToggleWatch { product_id: String },
-    /// Stripe Checkout を開始 (Phase 9.1)。
+    /// Stripe Checkout を開始。
     /// `/api/v1/checkout/submit` に POST し、レスポンスの `sessionUrl` に redirect する。
     /// payload-less (= server 側 cart_store + checkout_store の snapshot を使う)。
     /// `STRIPE_PROVIDER=mock` の時は `/checkout/mock/{order_id}` を返す。
@@ -264,7 +264,7 @@ pub enum CtaAction {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// LineItemAction: cart 内 LineItem の +/- / 削除 (Phase 7)
+// LineItemAction: cart 内 LineItem の +/- / 削除
 //
 // CtaAction と同じ tag = "type" 方式で discriminate。クライアント側 LineItemView は:
 //   - SetQty       → POST /api/v1/cart/items/{token}/qty?qty=<n>
@@ -307,11 +307,11 @@ pub enum LineItemAction {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// CheckoutFieldAction / CheckoutMethodAction: チェックアウトの配送先 / 配送方法 (Phase 8)
+// CheckoutFieldAction / CheckoutMethodAction: チェックアウトの配送先 / 配送方法
 //
 // **設計方針**:
 //   - Cart は `LineItemAction` (token + qty/remove) で server 側 cart_store を更新する。
-//     Phase 8 で同じ思想を「配送先フォーム」「配送方法ピッカー」に持ち込む:
+//     同じ思想を「配送先フォーム」「配送方法ピッカー」に持ち込む:
 //     入力 (debounce) / radio 切替 → server に PATCH → server がカード再 build → client
 //     が再 fetch して画面に反映。client 側にフォーム state を握らせない (= server-driven)。
 //   - フィールド名 (name = "addressName" / "addressTel" / ...) は Block::FormField.name
@@ -365,7 +365,7 @@ pub enum CheckoutMethodAction {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// FormFieldKind / SelectOption: フォーム入力欄の入力種別 (Phase 8)
+// FormFieldKind / SelectOption: フォーム入力欄の入力種別
 //
 // **HTML <input type=...> との対応**:
 //   - Text       → <input type="text">
@@ -375,7 +375,7 @@ pub enum CheckoutMethodAction {
 // 個別 enum variant にする理由は client renderer 側で「Tel と PostalCode で
 // inputmode を変える / Select で option を <For> で展開する」を型で安全に分岐させるため。
 //
-// **将来 (Phase 8+)**:
+// **将来**:
 //   - Email / Number / Date variant
 //   - クライアント側 validation (regex, min/max length) を server から下ろす
 // ──────────────────────────────────────────────────────────────────────
@@ -420,7 +420,7 @@ pub enum FormFieldKind {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// ShippingMethodOption: 配送方法ピッカーの 1 候補 (Phase 8)
+// ShippingMethodOption: 配送方法ピッカーの 1 候補
 //
 // 価格表示は client 側で `amount` を locale formatter に通す (`¥1,800` 等)。
 // `description` は「生体含むため必須設定 · 15〜25℃」のような補足文 (= 1 行想定)。
@@ -483,7 +483,7 @@ pub enum Block {
         intent: CtaIntent,
         label: Localizable,
         href: Href,
-        /// サーバ反映アクション (Phase 2.5)。None なら href への純粋なナビゲート。
+        /// サーバ反映アクション。None なら href への純粋なナビゲート。
         /// 詳細は `CtaAction` のドキュメントを参照。
         #[serde(default, skip_serializing_if = "Option::is_none")]
         #[ts(optional)]
@@ -564,7 +564,7 @@ pub enum Block {
     Divider {
         key: String,
     },
-    // ── Phase 7: cart 専用 block ─────────────────────────────────
+    // ── cart 専用 block ─────────────────────────────────
     /// カート 1 行ぶん (= 1 商品)。画像 + 商品名 + 単価 + qty + 小計 + +/- + 削除を
     /// まとめて持つ "fat block"。複数の小 primitive (Media + Text + QtyStepper + Cta) に
     /// 分けず 1 ブロックにした理由:
@@ -615,7 +615,7 @@ pub enum Block {
         #[ts(optional)]
         analytics_id: Option<String>,
     },
-    // ── Phase 8: checkout 用 block (FormField / ShippingMethodPicker) ──
+    // ── checkout 用 block (FormField / ShippingMethodPicker) ──
     /// チェックアウトの配送先入力 1 フィールド分。input + label + 任意の
     /// validation_error をひとまとめにする "fat block"。
     ///
@@ -759,7 +759,7 @@ impl Block {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// CardBlock: テンプレートで判別される共用体 (Phase 1 は ProductFeature のみ)
+// CardBlock: テンプレートで判別される共用体 (現状は ProductFeature のみ)
 // ──────────────────────────────────────────────────────────────────────
 
 /// `product_feature` テンプレートの variant (マーチャンダイジング用)。
@@ -773,7 +773,7 @@ pub enum ProductFeatureVariant {
 }
 
 /// `product_detail` テンプレートの variant。
-/// MVP では Default のみ。Phase 2 で「ペア販売」「予約商品」等の表示差を
+/// MVP では Default のみ。将来「ペア販売」「予約商品」等の表示差を
 /// バリアントで切り替える可能性に備えて enum で型を切っておく。
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, TS, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -781,7 +781,7 @@ pub enum ProductDetailVariant {
     Default,
 }
 
-/// `cart` テンプレートの variant (Phase 7)。
+/// `cart` テンプレートの variant。
 ///
 /// **Default vs Empty を分けない理由**:
 ///   "0 件" の判定は `regions.items.len() == 0` で renderer 側が決められる。
@@ -810,7 +810,7 @@ pub enum CartVariant {
     rename_all_fields = "camelCase"
 )]
 pub enum CardBlock {
-    /// Phase 1: 商品ハイライトカード。
+    /// 商品ハイライトカード。
     #[ts(rename_all = "camelCase")]
     ProductFeature {
         /// §4.6 の規約に従う不変 ID (データ主キー / 構造化 ID / 複合 ID のいずれか)。
@@ -827,7 +827,7 @@ pub enum CardBlock {
         analytics_id: Option<String>,
         regions: ProductFeatureRegions,
     },
-    /// Phase 2 (MVP): 商品詳細ページ。一覧カード (`product_feature`) と同じ商品でも、
+    /// 商品詳細ページ。一覧カード (`product_feature`) と同じ商品でも、
     /// 詳細はリージョン構成が違う (gallery / hero / spec / pricing / cta) ため別 variant。
     /// 1 つの id に対して `product_feature` と `product_detail` が並立しうる。
     #[ts(rename_all = "camelCase")]
@@ -844,7 +844,7 @@ pub enum CardBlock {
         analytics_id: Option<String>,
         regions: ProductDetailRegions,
     },
-    /// Phase 7: カート画面。1 ユーザにつき 1 枚 (server 側 cart store の現状を
+    /// カート画面。1 ユーザにつき 1 枚 (server 側 cart store の現状を
     /// snapshot して返す)。`id` は固定で "cart" (= 単一カートしかないので一意)。
     /// 将来 multi-cart (= ギフトリスト等) を持つなら id を分ける。
     #[ts(rename_all = "camelCase")]
@@ -861,8 +861,8 @@ pub enum CardBlock {
         analytics_id: Option<String>,
         regions: CartRegions,
     },
-    // Phase 3: HeroIntro { ... }
-    // Phase 4: PromiseStep { ... }
+    // TODO: HeroIntro { ... }
+    // TODO: PromiseStep { ... }
 }
 
 impl CardBlock {

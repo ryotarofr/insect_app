@@ -5,7 +5,7 @@
 //! - **Region → Block → Role** の三層モデル
 //! - Rust 側を型の単一ソース。`ts-rs` で TypeScript 型を、
 //!   `schemars` で JSON Schema を生成 (コンパイル時 + 実行時の二重防御)
-//! - Phase 1 では `product_feature` テンプレートのみ実装
+//! - 現状は `product_feature` テンプレートのみ実装
 //! - `Block.key` のカード内一意性は `ValidateKeys` で deserialize 後に検証
 
 pub mod analytics;
@@ -15,7 +15,7 @@ pub mod list;
 pub mod regions;
 pub mod validate;
 
-// Phase 1 では一部しか直接利用しないが、SDUI モジュールの公開 API として
+// 現状は一部しか直接利用しないが、SDUI モジュールの公開 API として
 // 揃えて re-export しておく (binary crate のため `unused_imports` を抑制)。
 #[allow(unused_imports)]
 pub use analytics::{AnalyticsEvent, AnalyticsEventBatch, AnalyticsEventType};

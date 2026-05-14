@@ -1,9 +1,9 @@
-//! メール送信 abstraction (Sprint 2 / N1-N2)
+//! メール送信 abstraction
 //!
 //! **責務**:
 //!   - `Mailer` trait で送信抽象を切り、実装を差し替え可能にする
 //!   - `StubMailer` は dev / test 既定: 送信内容を tracing log + 内部 Vec に貯めるだけ
-//!   - production では `lettre::AsyncSmtpTransport` ラッパ実装を別途作る (= PR N-3 以降)
+//!   - production では `lettre::AsyncSmtpTransport` ラッパ実装を別途作る
 //!
 //! **設計判断**:
 //!   - lettre の `Message` builder で MIME を組み立てる (= 自前 RFC 5322 実装は避ける)

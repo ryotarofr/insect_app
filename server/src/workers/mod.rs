@@ -1,4 +1,4 @@
-//! バックグラウンド worker (Sprint 2 / N1-N2)
+//! バックグラウンド worker
 //!
 //! **設計判断** (= 別途調査の結論 / docs/sdui-three-layer-model* と独立):
 //!   - apalis を採用しない / 自前 `FOR UPDATE SKIP LOCKED` relay loop で十分
@@ -7,8 +7,8 @@
 //!
 //! **モジュール構成 (= 段階的に追加)**:
 //!   - `mailer`        : `Mailer` trait + `StubMailer` (= log 出力 only / dev 既定)
-//!   - `email_send`    : (PR N-3 で追加) email_outbox の relay loop
-//!   - `eclosion_daily`: (PR N-4 で追加) 03:00 JST daily で eclosion 7 日前を outbox enqueue
+//!   - `email_send`    : email_outbox の relay loop
+//!   - `eclosion_daily`: 03:00 JST daily で eclosion 7 日前を outbox enqueue
 //!
 //! **spawn 戦略**:
 //!   `spawn_all(state)` は `KOCHU_WORKER_ENABLE` env を読み、`true` の時だけ全 worker を spawn。
@@ -28,8 +28,8 @@ use crate::workers::mailer::{Mailer, StubMailer};
 /// 起動順序は冪等で、worker 同士に依存はない。
 ///
 /// **現在 spawn 中**:
-///   - email_send     (PR N-3): email_outbox の relay loop
-///   - eclosion_daily (PR N-4): 03:00 JST の羽化予測 daily job
+///   - email_send     : email_outbox の relay loop
+///   - eclosion_daily : 03:00 JST の羽化予測 daily job
 pub fn spawn_all(state: AppState) {
     if !is_worker_enabled() {
         tracing::info!("workers disabled (KOCHU_WORKER_ENABLE != true)");

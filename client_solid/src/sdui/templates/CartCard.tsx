@@ -1,4 +1,4 @@
-// CartCard.tsx — `template === "cart"` のレイアウト (Phase 7)
+// CartCard.tsx — `template === "cart"` のレイアウト
 //
 // 詳細: docs/sdui-three-layer-model-v5.md §5.6 (Cart)
 //

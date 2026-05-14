@@ -1,4 +1,4 @@
-//! listings (C2C 出品) への永続化 (Phase 9.E / DB設計書 v2 §3.7)
+//! listings (C2C 出品) への永続化 (DB設計書 v2 §3.7)
 //!
 //! **責務 (本 PR / skeleton)**:
 //!   - sqlx で listings テーブルへの基本 CRUD
@@ -27,6 +27,9 @@ pub struct ListingRow {
     pub is_auction: bool,
     pub starting_price_jpy: i64,
     pub current_price_jpy: Option<i64>,
+    /// migration 0024: auction 限定の即決価格 (= Buy It Now)。
+    /// is_auction=false の listing では NULL 強制 (= CHECK で握る)。
+    pub buyout_price_jpy: Option<i64>,
     pub ends_at: Option<DateTime<Utc>>,
     pub status: String,                                 // "active" / "sold" / "canceled" / "expired"
     pub is_verified: bool,
@@ -41,6 +44,8 @@ pub struct ListingInsert {
     pub description: Option<String>,
     pub is_auction: bool,
     pub starting_price_jpy: i64,
+    /// 即決価格 (= auction かつ starting_price_jpy より厳格に大きい場合のみ有効)。
+    pub buyout_price_jpy: Option<i64>,
     pub ends_at: Option<DateTime<Utc>>,
 }
 
@@ -112,6 +117,8 @@ pub struct ListingWithCounts {
     pub is_auction: bool,
     pub starting_price_jpy: i64,
     pub current_price_jpy: Option<i64>,
+    /// 即決価格 (= auction の Buy It Now)。
+    pub buyout_price_jpy: Option<i64>,
     pub ends_at: Option<DateTime<Utc>>,
     pub status: String,
     pub is_verified: bool,
@@ -134,7 +141,7 @@ pub async fn find_by_public_id_with_counts(
                 v.id, v.public_id, v.seller_user_id,
                 u.name AS seller_name,
                 v.specimen_id, v.title, v.description,
-                v.is_auction, v.starting_price_jpy, v.current_price_jpy,
+                v.is_auction, v.starting_price_jpy, v.current_price_jpy, v.buyout_price_jpy,
                 v.ends_at, v.status, v.is_verified,
                 v.bid_count, v.watcher_count
             FROM v_listings_with_counts v
@@ -181,6 +188,7 @@ pub async fn find_by_public_id_with_counts(
                         is_auction: r.is_auction,
                         starting_price_jpy: r.starting_price_jpy,
                         current_price_jpy: r.current_price_jpy,
+                        buyout_price_jpy: r.buyout_price_jpy,
                         ends_at: r.ends_at,
                         status: r.status,
                         is_verified: r.is_verified,
@@ -204,7 +212,7 @@ pub async fn find_active_with_counts(
                 v.id, v.public_id, v.seller_user_id,
                 u.name AS seller_name,
                 v.specimen_id, v.title, v.description,
-                v.is_auction, v.starting_price_jpy, v.current_price_jpy,
+                v.is_auction, v.starting_price_jpy, v.current_price_jpy, v.buyout_price_jpy,
                 v.ends_at, v.status, v.is_verified,
                 v.bid_count, v.watcher_count
             FROM v_listings_with_counts v
@@ -223,7 +231,7 @@ pub async fn find_active_with_counts(
 /// 自分の出品 (seller_user_id 指定) を返す。`status_filter=None` なら全 status、
 /// `Some("active")` 等を渡すと CHECK 制約と同じ集合 (`active|sold|canceled|expired`) で絞る。
 ///
-/// **Phase 1 / マイ出品**: GET /api/v1/listings/me が叩く。bid_count / watcher_count /
+/// **マイ出品**: GET /api/v1/listings/me が叩く。bid_count / watcher_count /
 /// seller_name 込みの `ListingWithCounts` を返し、FE 側 (= `MyListings.tsx`) でタブ
 /// (`入札中` = active && bid_count > 0 等) は派生計算する。
 ///
@@ -247,7 +255,7 @@ pub async fn find_by_seller(
                 v.id, v.public_id, v.seller_user_id,
                 u.name AS seller_name,
                 v.specimen_id, v.title, v.description,
-                v.is_auction, v.starting_price_jpy, v.current_price_jpy,
+                v.is_auction, v.starting_price_jpy, v.current_price_jpy, v.buyout_price_jpy,
                 v.ends_at, v.status, v.is_verified,
                 v.bid_count, v.watcher_count
             FROM v_listings_with_counts v
@@ -309,6 +317,7 @@ async fn fallback_collect_with_counts(
             is_auction: r.is_auction,
             starting_price_jpy: r.starting_price_jpy,
             current_price_jpy: r.current_price_jpy,
+            buyout_price_jpy: r.buyout_price_jpy,
             ends_at: r.ends_at,
             status: r.status,
             is_verified: r.is_verified,
@@ -339,6 +348,7 @@ pub async fn insert(
                 is_auction: payload.is_auction,
                 starting_price_jpy: payload.starting_price_jpy,
                 current_price_jpy: None,
+                buyout_price_jpy: payload.buyout_price_jpy,
                 ends_at: payload.ends_at,
                 status: "active".to_string(),
                 is_verified: false,
@@ -435,6 +445,24 @@ fn validate(p: &ListingInsert) -> Result<(), ListingRepoError> {
             "auction listing requires ends_at".to_string(),
         ));
     }
+    // 即決価格の整合性 (= migration 0024 の CHECK と同じ条件を server 側でも先に弾く)。
+    if let Some(buyout) = p.buyout_price_jpy {
+        if buyout < 0 {
+            return Err(ListingRepoError::Invalid(
+                "buyout_price_jpy must be >= 0".to_string(),
+            ));
+        }
+        if !p.is_auction {
+            return Err(ListingRepoError::Invalid(
+                "buyout_price_jpy is only valid for auction listings".to_string(),
+            ));
+        }
+        if buyout <= p.starting_price_jpy {
+            return Err(ListingRepoError::Invalid(
+                "buyout_price_jpy must be greater than starting_price_jpy".to_string(),
+            ));
+        }
+    }
     Ok(())
 }
 
@@ -444,7 +472,8 @@ fn validate(p: &ListingInsert) -> Result<(), ListingRepoError> {
 
 const SELECT_FIELDS: &str = r#"
     id, public_id, seller_user_id, specimen_id, title, description,
-    is_auction, starting_price_jpy, current_price_jpy, ends_at, status, is_verified
+    is_auction, starting_price_jpy, current_price_jpy, buyout_price_jpy,
+    ends_at, status, is_verified
 "#;
 
 async fn find_by_id_db(pool: &PgPool, id: Uuid) -> Result<Option<ListingRow>, ListingRepoError> {
@@ -488,9 +517,9 @@ async fn insert_db(pool: &PgPool, p: ListingInsert) -> Result<Uuid, ListingRepoE
         r#"
         INSERT INTO listings (
             public_id, seller_user_id, specimen_id, title, description,
-            is_auction, starting_price_jpy, ends_at
+            is_auction, starting_price_jpy, buyout_price_jpy, ends_at
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         RETURNING id
         "#,
     )
@@ -501,6 +530,7 @@ async fn insert_db(pool: &PgPool, p: ListingInsert) -> Result<Uuid, ListingRepoE
     .bind(p.description.as_deref())
     .bind(p.is_auction)
     .bind(p.starting_price_jpy)
+    .bind(p.buyout_price_jpy)
     .bind(p.ends_at)
     .fetch_one(pool)
     .await
@@ -572,12 +602,47 @@ mod tests {
             description: None,
             is_auction,
             starting_price_jpy: 50000,
+            // テスト fixture では即決価格は付けない (= 別テストで個別検証)。
+            buyout_price_jpy: None,
             ends_at: if is_auction {
                 Some(Utc::now() + chrono::Duration::days(7))
             } else {
                 None
             },
         }
+    }
+
+    #[tokio::test]
+    async fn validate_rejects_buyout_below_starting() {
+        let _g = memory_guard();
+        let mut p = payload("L-bo-1", true);
+        p.buyout_price_jpy = Some(40000); // starting=50000 より低い
+        match insert(None, p).await {
+            Err(ListingRepoError::Invalid(msg)) => assert!(msg.contains("buyout_price_jpy")),
+            other => panic!("expected Invalid, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn validate_rejects_buyout_on_fixed_listing() {
+        let _g = memory_guard();
+        let mut p = payload("L-bo-2", false);
+        p.buyout_price_jpy = Some(60000);
+        match insert(None, p).await {
+            Err(ListingRepoError::Invalid(msg)) => assert!(msg.contains("auction")),
+            other => panic!("expected Invalid, got {other:?}"),
+        }
+    }
+
+    #[tokio::test]
+    async fn validate_accepts_buyout_above_starting_for_auction() {
+        let _g = memory_guard();
+        reset_memory_for_test();
+        let mut p = payload("L-bo-3", true);
+        p.buyout_price_jpy = Some(80000); // starting=50000 より高い
+        let id = insert(None, p).await.unwrap();
+        let row = find_by_id(None, id).await.unwrap().unwrap();
+        assert_eq!(row.buyout_price_jpy, Some(80000));
     }
 
     #[tokio::test]

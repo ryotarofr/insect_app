@@ -1,7 +1,6 @@
-// api/specimens-search.ts — 親個体検索 typeahead (Phase 7: real fetch)
+// api/specimens-search.ts — 親個体検索 typeahead
 //
-// **Phase 7**: mock layer (= 旧 SEED_SPECIMENS) を削除し、`/api/v1/specimens/search`
-// に実 fetch する。
+// `/api/v1/specimens/search` に実 fetch する。
 //
 // **server 側 DTO** (= handlers::specimens::SpecimenView):
 //   typeahead 表示に必要なフィールドは server 側 SpecimenView と一部のみ重なる

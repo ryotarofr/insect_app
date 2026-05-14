@@ -23,11 +23,6 @@ export const consumeScroll = (pathname: string): number | null => {
   return y;
 };
 
-export const peekScroll = (pathname: string): number | null => {
-  const y = memory.get(pathname);
-  return y == null ? null : y;
-};
-
 export const _clearScrollMemory = (): void => {
   memory.clear();
 };

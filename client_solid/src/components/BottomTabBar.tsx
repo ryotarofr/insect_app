@@ -1,55 +1,62 @@
-// BottomTabBar.tsx — モバイル用下部タブ (5 タブ + More シート)
+// BottomTabBar.tsx — モバイル用下部タブ (4 nav + 中央 FAB + ActionSheet)
 //
-// 設計方針:
-//   - 主要 5 タブ: ホーム / 羽化 / 記録 / 市場 / カート
-//   - それ以外 (商品一覧・個体カルテ・血統・ショップ管理) は "More" シートから辿る
-//   - タップ領域 48×48 以上を確保 (Material の推奨値)
-//   - バッジ (カート点数 / 羽化予定数) は数値で表示し、99+ に丸める
-//   - active の current route が More 内のページの場合は More タブをハイライト
+// **C2C モバイル動線の中核**:
+//   サイドバー 8 項目を 4 主要ナビ + 中央 FAB に集約。FAB を押すと「作る」アクションを束ねた
+//   ActionSheet (出品する / 個体登録 / 群を作成 / ログを記録 / カートを見る) が立ち上がる。
 //
-// iOS は対象外なので safe-area-inset-bottom は扱うが過剰な HIG 準拠はしない。
+// **5 スロット構成**:
+//   ホーム (mypage) | 探す (products) | + (FAB) | 飼育 (cohort) | マイ出品 (my-listings)
+//
+// **設計判断**:
+//   - 旧 5 primary + More dropdown を撤廃。「探す/カート/羽化/血統」を上位ナビに残すと
+//     モバイル幅 ~360px でラベルが潰れるため、4 ナビに絞る。
+//   - 羽化 / 血統 / カート は MyPage (= ホーム) 経由 + sidebar (desktop) で到達。
+//   - カートは ActionSheet 内に「カートを見る」を 1 行入れて常時アクセス可能にする
+//     (= 取引フローの中で頻出するため)。
+//   - 中央 FAB は ink (= 黒) の丸ボタン + 縁取りでタブ列から浮かせる。z-index は
+//     bottom-tab (40) より上の 41。
+//   - 「ログを記録」は既存 QuickLogSheet を呼ぶため、親から `onOpenLogSheet` callback で受ける。
+//
+// **active 判定**:
+//   `sidebarRouteKey(props.current)` で詳細ビュー (specimen / order-detail 等) を親に丸めてから
+//   一致判定する。order-detail / cohort-detail / specimen 等が drill-in 中もタブの active が
+//   ぶれない。
+//
+// iOS は対象外なので safe-area-inset-bottom は CSS 側で max(6px, env(...)) 程度。
+
 import { For, Show, createSignal, type JSX } from "solid-js";
-import { A } from "@solidjs/router";
+import { A, useNavigate } from "@solidjs/router";
 import { type RouteKey } from "../data";
 import { Icons } from "./Icons";
 import { ROUTE_PATHS, sidebarRouteKey } from "../router";
 
-type PrimaryKey = RouteKey | "more";
-
-interface PrimaryTab {
-  key: PrimaryKey;
+interface NavTab {
+  key: RouteKey;
   label: string;
   icon: () => JSX.Element;
   badge?: () => number | undefined;
 }
 
-interface MoreItem {
-  key: RouteKey;
+interface ActionItem {
+  key: string;
   label: string;
-  icon: () => JSX.Element;
   hint?: string;
+  icon: () => JSX.Element;
+  /** href があれば router 経由遷移、無ければ onClick が呼ばれる (= QuickLogSheet 起動等) */
+  href?: string;
+  onClick?: () => void;
 }
 
 interface BottomTabBarProps {
   current: RouteKey;
-  /**
-   * P2-2 以降: 実際のナビゲーションは <A> が router.navigate で行うため、
-   * setRoute は primary/more タブからは呼ばれない。
-   * 外部 (キーボードショートカット等) との互換のため残しているが現在未使用。
-   */
+  /** 旧 API 互換 (= 現状未使用)。 keyboard shortcut 等の外部からの遷移は App 側で処理。 */
   setRoute?: (r: RouteKey) => void;
   cartCount?: () => number;
   eclosionCount?: () => number;
+  /** 中央 FAB の ActionSheet「ログを記録」が呼ぶ callback。
+   *  App.tsx 側の QuickLogSheet を開くのに使う (= 既存挙動を継承)。 */
+  onOpenLogSheet?: () => void;
 }
-
-/** More シート側にまわすルート (= 下部バーに primary として出さないもの) */
-// 個体カルテ (specimen) は詳細ビューなので More からは出さない。
-// C2C pivot: 旧 "shop" は廃止 (= ショップ管理機能なし)。
-const MORE_ROUTES: RouteKey[] = [
-  "products",
-  "product-detail", // 単独で飛ぶ導線はない (商品一覧経由)
-  "bloodline",
-];
 
 const formatBadge = (n: number | undefined): string | null => {
   if (!n || n <= 0) return null;
@@ -58,38 +65,79 @@ const formatBadge = (n: number | undefined): string | null => {
 };
 
 export const BottomTabBar = (props: BottomTabBarProps) => {
-  const [moreOpen, setMoreOpen] = createSignal(false);
+  const [actionsOpen, setActionsOpen] = createSignal(false);
+  const navigate = useNavigate();
 
-  const primary: PrimaryTab[] = [
+  // 4 主要ナビ。中央 FAB の左右に 2 つずつ配置する (= 順序固定)。
+  const navTabs: NavTab[] = [
     { key: "mypage", label: "ホーム", icon: Icons.home },
-    {
-      key: "eclosion",
-      label: "羽化",
-      icon: Icons.bell,
-      badge: () => props.eclosionCount?.(),
-    },
-    // Cohort Phase 1: 旧「記録 (= /log)」を「飼育 (= /cohorts)」に置換。
+    { key: "products", label: "探す", icon: Icons.beetle },
     { key: "cohort", label: "飼育", icon: Icons.timeline },
-    // C2C pivot: 旧 "market" (= C2Cマーケット) は廃止。/products に統合済。
-    { key: "products", label: "市場", icon: Icons.beetle },
+    { key: "my-listings", label: "マイ出品", icon: Icons.tag },
+  ];
+
+  // ActionSheet の中身 (= 「+」FAB を押した時に出る create アクション)。
+  // 順序: 出品 → 個体登録 → 群作成 → ログ記録 → カート (= EC 完結性のため最後にカートを残す)。
+  const actions: ActionItem[] = [
     {
-      key: "cart",
-      label: "カート",
+      key: "listing-new",
+      label: "出品する",
+      hint: "C2C マーケットに個体を出品",
+      icon: Icons.tag,
+      href: ROUTE_PATHS["listing-new"],
+    },
+    {
+      key: "specimen-new",
+      label: "個体を登録",
+      hint: "個体カルテを新規作成",
+      icon: Icons.card,
+      href: ROUTE_PATHS["specimen-new"],
+    },
+    {
+      key: "cohort-new",
+      label: "群を作成",
+      hint: "卵 / 幼虫のロットを開始",
+      icon: Icons.grid,
+      href: ROUTE_PATHS["cohort-new"],
+    },
+    {
+      key: "log-record",
+      label: "ログを記録",
+      hint: "餌・マット・体重・脱皮を記録",
+      icon: Icons.plus,
+      onClick: () => {
+        if (props.onOpenLogSheet) {
+          props.onOpenLogSheet();
+        }
+      },
+    },
+    {
+      key: "cart-open",
+      label: "カートを見る",
+      hint: "未決済の購入を確認",
       icon: Icons.cart,
-      badge: () => props.cartCount?.(),
+      href: ROUTE_PATHS.cart,
     },
   ];
 
-  const moreItems: MoreItem[] = [
-    // C2C pivot: 旧 "shop" (= ショップ管理) は廃止。
-    { key: "products", label: "出品中の生体", icon: Icons.grid, hint: "C2Cマーケット" },
-    { key: "bloodline", label: "血統系図", icon: Icons.tree, hint: "系譜・近交係数" },
-  ];
+  const isActive = (key: RouteKey) => sidebarRouteKey(props.current) === key;
+  const closeActions = () => setActionsOpen(false);
 
-  // UX-1: specimen 等の詳細ビューは親ルートに丸めてから判定する。
-  const isMoreActive = () => MORE_ROUTES.includes(sidebarRouteKey(props.current));
+  /** ActionSheet 行クリック時のハンドリング:
+   *  href があれば navigate、onClick があれば呼び出し、いずれにせよシートを閉じる。 */
+  const onActionClick = (a: ActionItem) => (e: MouseEvent) => {
+    e.preventDefault();
+    closeActions();
+    if (a.href) {
+      navigate(a.href);
+    } else if (a.onClick) {
+      a.onClick();
+    }
+  };
 
-  const closeMore = () => setMoreOpen(false);
+  // 左 2 タブ / 右 2 タブに分けてレンダ (中央 FAB を中央に配置するため)
+  const leftTabs = () => navTabs.slice(0, 2);
+  const rightTabs = () => navTabs.slice(2);
 
   return (
     <>
@@ -98,98 +146,84 @@ export const BottomTabBar = (props: BottomTabBarProps) => {
         role="navigation"
         aria-label="モバイルナビゲーション"
       >
-        <For each={primary}>
-          {(t) => {
-            // primary には "more" が含まれないよう key は RouteKey に限定
-            const routeKey = t.key as RouteKey;
-            // UX-1: 詳細ビュー (specimen) はマイページの子として扱い、ホームを active のままにする。
-            const isActive = () => sidebarRouteKey(props.current) === routeKey;
-            const badge = () => formatBadge(t.badge?.());
-            return (
-              <A
-                href={ROUTE_PATHS[routeKey]}
-                class={"bt-tab" + (isActive() ? " active" : "")}
-                aria-current={isActive() ? "page" : undefined}
-                aria-label={t.label}
-                onClick={closeMore}
-              >
-                <span class="bt-icon" aria-hidden="true">{t.icon()}</span>
-                <span class="bt-label">{t.label}</span>
-                <Show when={badge()}>
-                  <span class="bt-badge" aria-hidden="true">{badge()}</span>
-                </Show>
-              </A>
-            );
-          }}
-        </For>
+        <For each={leftTabs()}>{(t) => <NavLink t={t} active={isActive(t.key)} />}</For>
+
+        {/* 中央 FAB (= 「作る」アクションの起点) */}
         <button
           type="button"
-          class={"bt-tab" + (isMoreActive() || moreOpen() ? " active" : "")}
-          aria-expanded={moreOpen()}
+          class={"bt-fab" + (actionsOpen() ? " is-open" : "")}
           aria-haspopup="menu"
-          aria-label="その他"
-          onClick={() => setMoreOpen((o) => !o)}
+          aria-expanded={actionsOpen()}
+          aria-label="新規作成メニュー"
+          onClick={() => setActionsOpen((o) => !o)}
         >
-          <span class="bt-icon" aria-hidden="true">
-            <svg
-              class="nav-icon"
-              width="16"
-              height="16"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              stroke-width="1.7"
-              stroke-linecap="round"
-              stroke-linejoin="round"
-            >
-              <circle cx="5" cy="12" r="1.3" fill="currentColor" />
-              <circle cx="12" cy="12" r="1.3" fill="currentColor" />
-              <circle cx="19" cy="12" r="1.3" fill="currentColor" />
-            </svg>
+          <span class="bt-fab-ico" aria-hidden="true">
+            {Icons.plus()}
           </span>
-          <span class="bt-label">その他</span>
         </button>
+
+        <For each={rightTabs()}>
+          {(t) => (
+            <NavLink
+              t={t}
+              active={isActive(t.key)}
+              badge={
+                t.key === "cart"
+                  ? formatBadge(props.cartCount?.())
+                  : t.key === "eclosion"
+                    ? formatBadge(props.eclosionCount?.())
+                    : null
+              }
+            />
+          )}
+        </For>
       </nav>
 
-      <Show when={moreOpen()}>
+      {/* ActionSheet (= 中央 FAB を押した時のシート) */}
+      <Show when={actionsOpen()}>
         <div
-          class="bt-more-backdrop"
-          onClick={() => setMoreOpen(false)}
+          class="bt-actions-backdrop"
+          onClick={closeActions}
           role="presentation"
         />
-        <div class="bt-more-sheet" role="menu" aria-label="その他のメニュー">
-          <div class="bt-more-head">
-            <span class="section-label">その他</span>
+        <div
+          class="bt-actions-sheet"
+          role="menu"
+          aria-label="新規作成メニュー"
+        >
+          <div class="bt-actions-head">
+            <span class="section-label">作成 / 開く</span>
             <button
               type="button"
-              class="bt-more-close"
+              class="bt-actions-close"
               aria-label="閉じる"
-              onClick={() => setMoreOpen(false)}
+              onClick={closeActions}
             >
               ×
             </button>
           </div>
-          <ul class="bt-more-list">
-            <For each={moreItems}>
-              {(m) => (
+          <ul class="bt-actions-list">
+            <For each={actions}>
+              {(a) => (
                 <li>
-                  <A
-                    href={ROUTE_PATHS[m.key]}
-                    class={
-                      "bt-more-item" +
-                      (sidebarRouteKey(props.current) === m.key ? " active" : "")
-                    }
+                  {/* href がある場合は <a> + onClick の preventDefault で SPA navigate。
+                      無い場合 (= ログを記録) は button 相当として onClick だけ起動。 */}
+                  <a
+                    href={a.href ?? "#"}
                     role="menuitem"
-                    onClick={closeMore}
+                    class="bt-actions-item"
+                    onClick={onActionClick(a)}
                   >
-                    <span class="bt-more-ico" aria-hidden="true">{m.icon()}</span>
-                    <span class="bt-more-body">
-                      <span class="bt-more-label">{m.label}</span>
-                      <Show when={m.hint}>
-                        <span class="bt-more-hint">{m.hint}</span>
+                    <span class="bt-actions-ico" aria-hidden="true">
+                      {a.icon()}
+                    </span>
+                    <span class="bt-actions-body">
+                      <span class="bt-actions-label">{a.label}</span>
+                      <Show when={a.hint}>
+                        <span class="bt-actions-hint">{a.hint}</span>
                       </Show>
                     </span>
-                  </A>
+                  </a>
                 </li>
               )}
             </For>
@@ -199,3 +233,30 @@ export const BottomTabBar = (props: BottomTabBarProps) => {
     </>
   );
 };
+
+// ──────────────────────────────────────────────────────────────────────
+// 1 タブ (= 左右の主要ナビ用)
+// ──────────────────────────────────────────────────────────────────────
+
+const NavLink = (props: {
+  t: NavTab;
+  active: boolean;
+  badge?: string | null;
+}) => (
+  <A
+    href={ROUTE_PATHS[props.t.key]}
+    class={"bt-tab" + (props.active ? " active" : "")}
+    aria-current={props.active ? "page" : undefined}
+    aria-label={props.t.label}
+  >
+    <span class="bt-icon" aria-hidden="true">
+      {props.t.icon()}
+    </span>
+    <span class="bt-label">{props.t.label}</span>
+    <Show when={props.badge}>
+      <span class="bt-badge" aria-hidden="true">
+        {props.badge}
+      </span>
+    </Show>
+  </A>
+);

@@ -1,4 +1,4 @@
-//! 商品一覧ページの response shell (Phase 4 + Phase 5 + Phase 6 — Search / Filter / Sort / Pagination)。
+//! 商品一覧ページの response shell (Search / Filter / Sort / Pagination)。
 //!
 //! 詳細: docs/sdui-three-layer-model-v6.md §5.6 (List shell + Filter + Sort + Pagination)
 //!
@@ -13,12 +13,12 @@
 //!   - `FilterGroup { key, label, chips: [..] }` — 1 軸ぶんのチップ群
 //!   - `FilterChipItem { key, label, selected, href, count?, analyticsId? }` — 個々のチップ
 //!
-//! **sort_bar の表現** (Phase 5):
+//! **sort_bar の表現**:
 //!   - `SortBar { current, options: [..] }` — 1 ページに 1 つの並び替え軸
 //!   - `SortOption { key, label, selected, href, analyticsId? }` — 1 つの並び順候補
 //!   - 選択は単独 (= radio 的 / segmented control 想定)。multi-sort はやらない。
 //!
-//! **count (faceted) の表現** (Phase 5):
+//! **count (faceted) の表現**:
 //!   - `FilterChipItem.count = Some(n)` — 「他軸の絞り込みは維持したまま、この軸の値を
 //!     **この chip に切り替えた** 場合に何件マッチするか」。chip クリック前に件数が見える。
 //!   - 自分のグループ内の他チップを置き換える方式 (= single-select の自然な「if I picked this」)。
@@ -39,13 +39,13 @@
 //!   現在のクエリ (`?category=live` 等) に対してこの chip 値が選択中なら true。
 //!   client renderer は selected=true を「primary inverted」、false を「outlined」として描く。
 //!
-//! **Pagination の表現** (Phase 6):
+//! **Pagination の表現**:
 //!   - `Pagination { page, perPage, totalCount, totalPages, prevHref?, nextHref?, pages: [..] }`
 //!   - `pages: Vec<PageLink>` は最大 7 件 (1 / current ±2 / last) で省略は ellipsis (PageLink.kind = Ellipsis)
 //!   - default の `?page=1`, `?per_page=20` は URL から省略 (canonical URL 維持)
 //!   - first page は `prevHref = None`, last page は `nextHref = None` (= disabled)
 //!
-//! **SearchBox の表現** (Phase 6):
+//! **SearchBox の表現**:
 //!   - `SearchBox { query?, placeholder, submitHref, paramName }`
 //!   - `query` は現在の `?q=` の値 (空 / 未指定なら None)
 //!   - `submitHref` は「検索 box を空にした時の base URL」(= q= を取り除いた URL)
@@ -81,18 +81,18 @@ pub struct ProductListResponse {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub filter_bar: Option<FilterBar>,
-    /// 並び替え UI (Phase 5)。
+    /// 並び替え UI。
     /// `None` の時はフロント側で sort dropdown を描かない (= 並び替え機能 OFF)。
     /// MVP では常に Some で返す。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub sort_bar: Option<SortBar>,
-    /// 検索 box (Phase 6)。`None` の時は SearchBox 非表示。
+    /// 検索 box。`None` の時は SearchBox 非表示。
     /// 現クエリの `?q=` の値もここに入って戻ってくる (= controlled input の初期値)。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
     pub search_box: Option<SearchBox>,
-    /// ページング情報 (Phase 6)。`None` の時はフロント側で PageBar を描かない。
+    /// ページング情報。`None` の時はフロント側で PageBar を描かない。
     /// 結果が 1 ページ以下でも返す (PageBar 側で「<=1 ならコンパクト表示 / 非表示」を選ぶ)。
     #[serde(default, skip_serializing_if = "Option::is_none")]
     #[ts(optional)]
@@ -145,7 +145,7 @@ pub struct FilterChipItem {
     ///   - 自分が selected → 自分を除いた URL (= 解除)
     ///   - 自分が not selected → 自分を追加した URL (= 適用)
     pub href: Href,
-    /// 現クエリ条件下でこの値を選んだ場合の該当件数 (faceted search / Phase 5)。
+    /// 現クエリ条件下でこの値を選んだ場合の該当件数 (faceted search)。
     /// 「他軸の絞り込みは維持し、この軸の値を **この chip に切り替えた** ら何件か」。
     /// 0 件のチップも非表示にせず `Some(0)` を返す (= UI 側で disabled 表示する余地)。
     /// 集計を切る (= 全削除して None に戻す) 場合は handler 側の build_filter_bar を変える。
@@ -158,7 +158,7 @@ pub struct FilterChipItem {
     pub analytics_id: Option<String>,
 }
 
-/// 並び替え UI 全体 (Phase 5)。1 ページに 1 つだけ。
+/// 並び替え UI 全体。1 ページに 1 つだけ。
 ///
 /// **current** はクエリ未指定時のデフォルトを含めた「現在適用中の sort key」を返す。
 /// クライアントは current === option.key で selected を判定できるが、
@@ -195,7 +195,7 @@ pub struct SortOption {
     pub analytics_id: Option<String>,
 }
 
-/// 検索 box (Phase 6)。
+/// 検索 box。
 ///
 /// **submitHref** はクエリから `q` を「抜いた」base URL を返す。フロントは:
 ///   - JS 無し: `<form action="{submitHref}" method="get">` + 内部の input name=`paramName`
@@ -257,7 +257,7 @@ pub enum PageLink {
     Ellipsis,
 }
 
-/// ページング UI 全体 (Phase 6)。
+/// ページング UI 全体。
 ///
 /// **prevHref / nextHref が None** の時は disabled (first/last page を超えるリンクを描かない)。
 /// クライアントは `data-disabled="true"` 付きの span などで render すればよい。
@@ -425,8 +425,6 @@ mod tests {
         );
     }
 
-    // ── Phase 6 ──────────────────────────────────────────────────
-
     #[test]
     fn search_box_serializes_with_query_omit_when_none() {
         let sb = SearchBox {
@@ -521,7 +519,7 @@ mod tests {
 
     #[test]
     fn empty_pagination_and_search_box_omit_fields() {
-        // Phase 4 までの response shape との後方互換性確認
+        // 以前の response shape との後方互換性確認
         let resp = ProductListResponse {
             filter_bar: None,
             sort_bar: None,

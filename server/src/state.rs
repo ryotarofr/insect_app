@@ -1,4 +1,4 @@
-//! axum AppState: handler 共有状態 (Phase 9.x / DB pool 配線)
+//! axum AppState: handler 共有状態 (DB pool 配線)
 //!
 //! **責務**:
 //!   - PgPool (= sqlx 接続プール) を `Option<PgPool>` で持ち、handler から

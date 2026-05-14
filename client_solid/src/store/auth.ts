@@ -1,4 +1,4 @@
-// store/auth.ts — login user の reactive state (Phase 9.G)
+// store/auth.ts — login user の reactive state
 //
 // **責務**:
 //   - 現在 login 中の `AuthUser` を module-scope signal で保持

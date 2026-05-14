@@ -6,7 +6,7 @@
 //   gallery → hero → spec → pricing → promise → cta
 //   (画面上は左右 2 カラムで再構成: gallery が左、残りが右で縦積み)
 //
-// **Phase 2 (UX 強化) で追加された要素**:
+// **UX 強化要素**:
 //   - Gallery: hero image + thumbnail strip。1 枚目を hero として大きく出し、
 //     2 枚目以降を下にサムネ列で並べる。サムネクリックで hero を入れ替え (createSignal)。
 //   - Promise: 安心保証の mini card 区画。eyebrow text + caption text 数行 + 末尾 CTA。
@@ -14,10 +14,10 @@
 //   - Watch CTA: cta region に intent=tertiary で並ぶだけ。renderer 側は touch 不要
 //     (CtaBlockView が intent ごとのスタイル分岐を持っている)。
 //
-// **延期項目** (Phase 2.5+):
+// **TODO (未対応)**:
 //   - Gallery に動画 (Media kind=video) を混在させる
 //   - ウォッチ状態の永続化 (現状は href 遷移のみ)
-//   - カート追加 → Toast + Undo 連携 (cta.action contract を別 PR で導入)
+//   - カート追加 → Toast + Undo 連携
 
 import { For, Show, createMemo, createSignal } from "solid-js";
 import type { Block, CardBlock } from "../branded";

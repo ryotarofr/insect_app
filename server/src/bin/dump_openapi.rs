@@ -1,4 +1,4 @@
-//! OpenAPI 仕様を stdout に dump する CLI binary (Phase 1 / A1 / PR O-6)。
+//! OpenAPI 仕様を stdout に dump する CLI binary。
 //!
 //! **使い方**:
 //!   ```bash

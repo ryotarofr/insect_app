@@ -1,4 +1,4 @@
-//! `/api/v1/mating_records/*` (Phase 9.D / 交配記録 HTTP API)
+//! `/api/v1/mating_records/*` (交配記録 HTTP API)
 //!
 //! - `POST /api/v1/mating_records`              → 新規記録 (= login 必須 / breeder = current user)
 //! - `GET  /api/v1/mating_records/me`           → 自分の交配記録一覧 (= login 必須)
@@ -15,17 +15,10 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::AppError;
-use crate::repos::{mating_records, user_sessions};
+use crate::handlers::require_user_id;
+use crate::repos::mating_records;
 use crate::session::SessionId;
 use crate::state::AppState;
-
-async fn require_user_id(state: &AppState, session_id: Uuid) -> Result<Uuid, AppError> {
-    let session = user_sessions::find_by_id(state.db(), session_id)
-        .await
-        .map_err(|e| AppError::BadRequest(format!("session lookup: {e}")))?
-        .ok_or(AppError::Unauthorized)?;
-    session.user_id.ok_or(AppError::Unauthorized)
-}
 
 #[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]

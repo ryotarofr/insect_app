@@ -1,8 +1,6 @@
-// Breadcrumb.tsx — パンくずナビ (P2-14)
+// Breadcrumb.tsx — パンくずナビ
 //
 // 各階層をタップ/クリックで親に戻れるようにする。
-// 旧実装は topbar に "マイページ / 所有個体" のようなテキストを流し込むだけで
-// リンクになっておらず、深い階層からの脱出が難しかった。
 //
 // crumbFor(route, ids) で pages/route ごとに階層構造を組み立て、
 // Breadcrumb がそれを <nav aria-label="breadcrumb"> として描画する。

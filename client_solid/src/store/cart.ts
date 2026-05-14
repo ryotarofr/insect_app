@@ -1,12 +1,11 @@
 // store/cart.ts — minimal reactive cart state
 //
-// **Phase 9.1 以降の役割** (Strangler Fig 段階 2 完了後):
-//   旧 Cart.tsx が削除されて /cart は CartSduiPage に切り替わったが、本 store は
-//   以下の用途で**現役で残す**:
+// **役割**:
+//   /cart 画面そのものは CartSduiPage が担うが、本 store は以下の用途で残す:
 //
 //   1. **cartCount badge**: Shell / BottomTabBar の「カート」タブに件数を出す
 //      - GET /cards/cart で毎回件数を取るより local mirror の方が UX 軽い
-//      - Phase 9.x で WebSocket push が入ったら mirror 更新を server-driven 化検討
+//      - TODO: WebSocket push が入ったら mirror 更新を server-driven 化検討
 //
 //   2. **add-to-cart Undo の即時 rollback**:
 //      Cta.tsx の runAddToCart が POST /api/v1/cart 成功後に local store にも反映、
@@ -30,7 +29,6 @@ export interface CartItem {
   tone: "forest" | "amber";
 }
 
-// Phase 9.1 Strangler Fig 完了後: /cart は server-driven (CartSduiPage) に切替済。
 // 初期種データは「サイドバーバッジが server cart と乖離する」UI バグを生むため空で起動する。
 // 追加は addItem* 経由 (= POST /api/v1/cart 成功後の local mirror 反映) のみ。
 const INITIAL: CartItem[] = [];

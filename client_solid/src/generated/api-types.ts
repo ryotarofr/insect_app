@@ -25,21 +25,16 @@
 import type { components } from "./openapi";
 
 // ──────────────────────────────────────────────────────────────────────
-// 商品マスタ / 種マスタ
+// 種マスタ
 // ──────────────────────────────────────────────────────────────────────
-
-/** server `GET /api/v1/products` の 1 行。`kind` / `badge` は ja に整形済。 */
-export type ProductSummary = components["schemas"]["ProductResponse"];
+//
+// **C2C pivot (migration 0021) で削除**:
+//   - `ProductSummary` (= ProductResponse) → 商品マスタ自体が廃止
+//   - `ProductBloodlineSummary` (= ProductBloodlineResponse) / `ProductBloodlineAncestor`
+//     (= AncestorResponse) → B2C 血統情報は廃止 (= 出品の親情報は specimens 経由)
 
 /** server `GET /api/v1/species` の 1 行。`name` は locale 別、`sciName` は学名。 */
 export type SpeciesSummary = components["schemas"]["SpeciesResponse"];
-
-/** server `GET /api/v1/product_bloodlines` の 1 行 (= 1 商品の血統情報)。 */
-export type ProductBloodlineSummary =
-  components["schemas"]["ProductBloodlineResponse"];
-
-/** server `GET /api/v1/product_bloodlines` の ancestor 1 件 (= 親 / 祖父母)。 */
-export type ProductBloodlineAncestor = components["schemas"]["AncestorResponse"];
 
 // ──────────────────────────────────────────────────────────────────────
 // auth (= request / response それぞれ per-call-site で alias)
@@ -55,7 +50,14 @@ export type RegisterRequest = components["schemas"]["RegisterRequest"];
 export type RegisterResponse = components["schemas"]["RegisterResponse"];
 export type LoginRequest = components["schemas"]["LoginRequest"];
 export type LoginResponse = components["schemas"]["LoginResponse"];
-export type MeResponse = components["schemas"]["MeResponse"];
+/**
+ * Phase 7: `stripeConnectStatus` を intersection で任意付与。
+ * 次回 `bun run gen:openapi` 実行で正規化されたら intersection を外す。
+ */
+export type MeResponse = components["schemas"]["MeResponse"] & {
+  /** 'unlinked' / 'pending' / 'active' / 'restricted' のいずれか。 */
+  stripeConnectStatus?: string;
+};
 /** `POST /api/v1/auth/password_reset_request` の body。 */
 export type PasswordResetRequest = components["schemas"]["PasswordResetRequest"];
 /** `POST /api/v1/auth/password_reset_confirm` の body。 */
@@ -69,7 +71,21 @@ export type PasswordResetConfirmRequest =
 export type AddToCartResponse = components["schemas"]["AddToCartResponse"];
 export type PatchCartItemResponse = components["schemas"]["PatchCartItemResponse"];
 
-export type OrderSummary = components["schemas"]["OrderView"];
+/**
+ * Phase 4: 取引履歴の販売側統合のため、`sellerUserId` / `buyerUserId` を任意フィールドとして
+ * intersection で付与する。
+ *
+ * **本来は server 側の OpenAPI schema を `bun run gen:openapi` で再生成すれば
+ * `components["schemas"]["OrderView"]` に正規に乗る** が、サンドボックス環境で
+ * `cargo run --bin dump_openapi` を走らせられないため、暫定でこちらに足している。
+ * 次回 codegen が走ったら本 intersection は削除して直接 generated 側で管理する。
+ */
+export type OrderSummary = components["schemas"]["OrderView"] & {
+  /** orders.seller_user_id (= paid 遷移時に listings 経由で書かれる)。pending は null。 */
+  sellerUserId?: string | null;
+  /** orders.user_id (= 買い手)。anonymous 注文は null。 */
+  buyerUserId?: string | null;
+};
 export type OrderLineSummary = components["schemas"]["OrderLineView"];
 /** server `GET /api/v1/orders/{id}` の戻り値。`OrderView & { lineItems }` の intersection で
  *  serde flatten を表現 (= server 側 `#[serde(flatten)]` と整合)。 */
@@ -166,21 +182,64 @@ export type CreateMatingRequest = Omit<
 // ──────────────────────────────────────────────────────────────────────
 
 export type ListingView = components["schemas"]["ListingView"];
-export type ListingViewWithCounts = components["schemas"]["ListingViewWithCounts"];
-export type CreateListingRequest = components["schemas"]["CreateListingRequest"];
+/**
+ * Phase 6c-1/6c-2: `buyoutPriceJpy` / `shippingMethodIds` を intersection で任意付与。
+ * 次回 `bun run gen:openapi` で正規化されたら intersection を外す。
+ */
+export type ListingViewWithCounts = components["schemas"]["ListingViewWithCounts"] & {
+  /** auction の Buy It Now 価格。null は未設定。 */
+  buyoutPriceJpy?: number | null;
+  /** Phase 6c-2: 対応配送方法 ID 集合。空配列 = 「全方法 OK」。 */
+  shippingMethodIds?: string[];
+};
+
+// ──────────────────────────────────────────────────────────────────────
+// Phase 6c-2: 配送方法マスタ
+// ──────────────────────────────────────────────────────────────────────
+
+/** server `GET /api/v1/shipping_methods` の 1 行。 */
+export type ShippingMethodResponse = components["schemas"]["ShippingMethodResponse"];
+
+// ──────────────────────────────────────────────────────────────────────
+// Phase 7: Stripe Connect オンボーディング
+// ──────────────────────────────────────────────────────────────────────
+//
+// `MeResponse.stripeConnectStatus` は上の MeResponse に intersection で追加済。
+
+/** server `POST /api/v1/account/stripe_connect/onboarding` の戻り値。 */
+export interface StripeConnectOnboardingResponse {
+  onboardingUrl: string;
+  accountId: string;
+}
+
+/** server `GET /api/v1/account/stripe_connect/status` の戻り値。 */
+export interface StripeConnectStatusResponse {
+  status: string;
+  accountId?: string | null;
+}
+/**
+ * Phase 6b/6c-1/6c-2: 出品作成 wizard で追加された任意フィールドを intersection で付与する。
+ * 次回 `bun run gen:openapi` で生成側に乗ったら本 intersection は外す。
+ */
+export type CreateListingRequest = components["schemas"]["CreateListingRequest"] & {
+  /** Phase 6b: /uploads/complete を通過した asset の UUID リスト。listing 作成成功時に attach。 */
+  assetIds?: string[];
+  /** Phase 6c-1: 即決価格 (auction の Buy It Now)。auction かつ starting_price_jpy 超過のみ有効。 */
+  buyoutPriceJpy?: number | null;
+  /** Phase 6c-2: 出品者が対応可能な配送方法 ID 集合。空配列 = 「全方法 OK」。 */
+  shippingMethodIds?: string[];
+};
 export type PlaceBidResponse = components["schemas"]["PlaceBidResponse"];
 
 // ──────────────────────────────────────────────────────────────────────
-// watch (= product watch toggle / listing watch toggle)
+// watch (= listing watch toggle)
 // ──────────────────────────────────────────────────────────────────────
-
-/** `POST /api/v1/watch/{productId}` の戻り値。
- *  server 側 schema は `WatchToggleResponse` (PR O-12 で `listings::ToggleWatchResponse` との
- *  名前衝突を避けるためリネーム済) → client 側 legacy 名 `ToggleWatchResponse` に再 alias。 */
-export type ToggleWatchResponse = components["schemas"]["WatchToggleResponse"];
+//
+// C2C pivot (migration 0021): 旧 `/watch/{productId}` (= 商品ウォッチ) は削除済。
+// 現在のウォッチ endpoint は `/listings/{id}/watch` のみ。
 
 /** `POST /api/v1/listings/{id}/watch` の戻り値。 */
-export type ListingWatchResponse = components["schemas"]["ToggleWatchResponse"];
+export type ToggleWatchResponse = components["schemas"]["ToggleWatchResponse"];
 
 // ──────────────────────────────────────────────────────────────────────
 // uploads

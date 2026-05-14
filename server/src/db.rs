@@ -1,4 +1,4 @@
-//! PostgreSQL connection pool + migration ヘルパ (Phase 9 / DB4)
+//! PostgreSQL connection pool + migration ヘルパ
 //!
 //! **責務**:
 //!   - `DATABASE_URL` 環境変数から `sqlx::PgPool` を作る
@@ -7,7 +7,7 @@
 //!     `try_init_pool()` は `Result<Option<PgPool>>` を返す
 //!     (= MVP 段階では DB 無しでも動くハンドラがあるため)
 //!
-//! **将来 (Phase 9.2+)**:
+//! **将来**:
 //!   - production では env が必ず設定される前提なので、`require_init_pool` で
 //!     DB 不在を fatal error にするように切り替える
 //!   - read replica 用に `PgPool` を 2 系統持つ (RO / RW)

@@ -1,13 +1,12 @@
 // components/market/ListingCard.tsx — C2C 出品 1 件のカード表示
 //
-// 旧 pages/Market.tsx::MarketBrowse からカード JSX を抽出。
 // /products (= 統合一覧) と他ページから再利用する。
 //
 // **データ源**:
 //   `Listing` (= api/market.ts で server `ListingViewWithCounts` を正規化したもの)。
-//   将来 SDUI 化したら branded.ts の Card 型に置き換える予定。
+//   SDUI 化したら branded.ts の Card 型に置き換える予定。
 //
-// **状態色分け** (= 旧 deriveListingState を内蔵):
+// **状態色分け**:
 //   - ending-soon: オークションで残時間が "日" を含まない (= 24h 以内、rose)
 //   - auction    : オークションで "日" を含む (= 1 日以上あり、amber)
 //   - buynow     : 即決のみ (forest)

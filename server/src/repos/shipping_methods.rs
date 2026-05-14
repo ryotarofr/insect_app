@@ -1,4 +1,4 @@
-//! shipping_methods + shipping_method_translations への永続化 (Phase 9.B 段階 6)
+//! shipping_methods + shipping_method_translations への永続化
 //!
 //! **責務**:
 //!   - sqlx で shipping_methods + 翻訳を JOIN して 1 配送方法ビューを返す
@@ -12,7 +12,7 @@
 //!   - cards.rs::build_shipping_method_picker / checkout.rs::shipping_amount_for から
 //!     使うため、`cached_methods()` は warm 後の HashMap<String, ShippingMethodView> を返す
 //!
-//! **段階 6 で予定する handler 切替**:
+//! **TODO: handler 切替**:
 //!   - `checkout.rs::SHIPPING_METHODS` const を関数化 → 本 cache から組む
 //!   - `cards.rs::method_name_ja` / `method_desc_ja` 関数を削除し view から直接取得
 

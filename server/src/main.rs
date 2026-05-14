@@ -28,11 +28,10 @@ async fn main() -> anyhow::Result<()> {
     // PostgreSQL pool を best-effort で初期化。DB 不在でもサーバは起動する (MVP)。
     // production では `db::init_pool` 直接呼び出しに切り替えて DB 不在 = fatal にする。
     let db_pool = db::try_init_pool().await;
-    // Phase 9.x: pool は AppState 経由で全 handler に届く (`State<AppState>` extractor)。
+    // pool は AppState 経由で全 handler に届く (`State<AppState>` extractor)。
     //   pool=None でも個々の repo が in-memory fallback を持っているのでサーバは起動可能。
 
-    // C2C pivot: products の warm cache は廃止 (= repos::products 自体が無い)。
-    //   shipping_methods / prefectures は配送先入力で引き続き使うため warm 維持。
+    // shipping_methods / prefectures は配送先入力で引き続き使うため warm 維持。
     if let Err(e) = repos::shipping_methods::warm_methods_cache(db_pool.as_ref()).await {
         tracing::warn!("warm_methods_cache failed: {e} (using in-memory fallback)");
     }
@@ -42,7 +41,7 @@ async fn main() -> anyhow::Result<()> {
 
     let state = AppState { db: db_pool.clone() };
 
-    // Sprint 2 / N1-N2: バックグラウンド worker (= email_send relay loop /
+    // バックグラウンド worker (= email_send relay loop /
     // eclosion_daily 等) を `KOCHU_WORKER_ENABLE=true` 時のみ spawn する。
     //   - dev / `cargo test`: env 未設定 → 何もしない (= worker 起動なし)
     //   - prod web task     : env=false → web のみ
@@ -76,7 +75,7 @@ fn init_tracing() {
 fn build_app(state: AppState) -> Router {
     Router::new()
         .route("/health", get(handlers::health::health))
-        // Phase 1 / A1: /openapi.json + /swagger-ui を提供 (= dev / CI 用)。
+        // /openapi.json + /swagger-ui を提供 (= dev / CI 用)。
         // 本番では reverse proxy で外部公開を絞る運用想定。
         .merge(openapi::router())
         .nest("/api/v1", routes::api_v1(state))

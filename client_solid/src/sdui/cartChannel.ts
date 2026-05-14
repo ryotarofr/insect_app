@@ -1,4 +1,4 @@
-// cartChannel.ts — cart cross-tab 同期用 BroadcastChannel ラッパ (Phase 9 前 / M7)
+// cartChannel.ts — cart cross-tab 同期用 BroadcastChannel ラッパ
 //
 // 詳細: docs/sdui-three-layer-model-v6.md §11.8.2 (Cross-tab 同期)
 //

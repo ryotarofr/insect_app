@@ -49,7 +49,7 @@ export type Block =
   | Extract<G.Block, { type: "price" }>
   | Extract<G.Block, { type: "eclosion_forecast" }>
   | Extract<G.Block, { type: "divider" }>
-  // ── Phase 7: cart 専用 block ─────────────────────────────────
+  // ── cart 専用 block ─────────────────────────────────
   // LineItem は detailHref を Href に、title / imageAlt を branded Localizable に置換。
   // LineItemAction は token しか持たないため (string) branded 化不要 → そのまま流用。
   | (Omit<Extract<G.Block, { type: "line_item" }>, "detailHref" | "title" | "imageAlt"> & {
@@ -59,7 +59,7 @@ export type Block =
     })
   // OrderSummary は branded すべき外向き値が無い (= 全て number / Currency)。
   | Extract<G.Block, { type: "order_summary" }>
-  // ── Phase 8: checkout (shipping form / shipping method) 専用 block ─
+  // ── checkout (shipping form / shipping method) 専用 block ─
   // FormField は label / placeholder / validationError を branded Localizable に置換。
   // kind が select の時は options 内の label も branded 化する (FormFieldKind 参照)。
   // patchAction (CheckoutFieldAction) は fieldName: string のみなので branded 化不要。
@@ -78,13 +78,13 @@ export type Block =
       options: ShippingMethodOption[];
     });
 
-// ── Phase 8: SelectOption (= form_field/select の選択肢 1 件) を branded 化 ─
+// ── SelectOption (= form_field/select の選択肢 1 件) を branded 化 ─
 // label を branded Localizable に置換。
 export type SelectOption = Omit<G.SelectOption, "label"> & {
   label: Localizable;
 };
 
-// ── Phase 8: FormFieldKind を branded 化 (select variant の options を branded SelectOption[] に) ─
+// ── FormFieldKind を branded 化 (select variant の options を branded SelectOption[] に) ─
 // text / tel / postal_code variant は payload を持たないので G から流用。
 export type FormFieldKind =
   | Extract<G.FormFieldKind, { inputType: "text" }>
@@ -94,14 +94,14 @@ export type FormFieldKind =
       options: SelectOption[];
     });
 
-// ── Phase 8: ShippingMethodOption (= shipping_method_picker の選択肢 1 件) を branded 化 ─
+// ── ShippingMethodOption (= shipping_method_picker の選択肢 1 件) を branded 化 ─
 // name / description を branded Localizable に置換。amount / currency はそのまま。
 export type ShippingMethodOption = Omit<G.ShippingMethodOption, "name" | "description"> & {
   name: Localizable;
   description: Localizable;
 };
 
-// ── Phase 8: CheckoutFieldAction / CheckoutMethodAction を re-export ─
+// ── CheckoutFieldAction / CheckoutMethodAction を re-export ─
 // どちらも payload は string / 空なので branded 化不要 (G から流用)。
 // FormFieldView / ShippingMethodPickerView 側から型として直接掴めるようにする。
 export type CheckoutFieldAction = G.CheckoutFieldAction;
@@ -138,7 +138,7 @@ export type CardBlock =
   | (Omit<Extract<G.CardBlock, { template: "product_detail" }>, "regions"> & {
       regions: ReplaceBlock<G.ProductDetailRegions>;
     })
-  // ── Phase 7: cart テンプレート ───────────────────────────────
+  // ── cart テンプレート ───────────────────────────────
   | (Omit<Extract<G.CardBlock, { template: "cart" }>, "regions"> & {
       regions: ReplaceBlock<G.CartRegions>;
     });
@@ -147,7 +147,6 @@ export type TemplateName = CardBlock["template"];
 
 // ── FilterChipItem: href を Href に、label を Localizable に置換 ──────
 //
-// Phase 4 (Search / Filter SDUI)。
 // `href` は **toggle 後の URL** を表す (selected → 自分を抜いた URL、
 // not selected → 自分を追加した URL)。フロントは `<a href>` するだけ。
 export type FilterChipItem = Omit<G.FilterChipItem, "href" | "label"> & {
@@ -166,7 +165,7 @@ export type FilterBar = Omit<G.FilterBar, "groups"> & {
   groups: FilterGroup[];
 };
 
-// ── SortOption: href を Href、label を Localizable に置換 (Phase 5) ───
+// ── SortOption: href を Href、label を Localizable に置換 ───
 //
 // 1 つの並び順候補。filter chip と似ているが、selected 切替時に
 // 「自分を抜く / 自分を追加する」のではなく「自分に置き換える」のが違い。
@@ -175,14 +174,14 @@ export type SortOption = Omit<G.SortOption, "href" | "label"> & {
   label: Localizable;
 };
 
-// ── SortBar: options を branded SortOption[] に置換 (Phase 5) ─────────
+// ── SortBar: options を branded SortOption[] に置換 ─────────
 //
 // `current` はクエリ未指定時のデフォルトを含めた現在適用中の sort key。
 export type SortBar = Omit<G.SortBar, "options"> & {
   options: SortOption[];
 };
 
-// ── SearchBox: submitHref を Href、placeholder を Localizable に置換 (Phase 6) ─
+// ── SearchBox: submitHref を Href、placeholder を Localizable に置換 ─
 //
 // JS 無し fallback: `<form action={submitHref} method="get">` + input name={paramName}
 // で素朴に submit すれば動く。submitHref は filter / sort を維持しつつ q を抜いた URL。
@@ -192,14 +191,14 @@ export type SearchBox = Omit<G.SearchBox, "submitHref" | "placeholder"> & {
   placeholder: Localizable;
 };
 
-// ── PageLink: page variant の href を Href に置換 (Phase 6) ──────────
+// ── PageLink: page variant の href を Href に置換 ──────────
 //
 // kind discriminator はそのまま流用。ellipsis variant にはペイロード無しなのでそのまま。
 export type PageLink =
   | (Omit<Extract<G.PageLink, { kind: "page" }>, "href"> & { href: Href })
   | Extract<G.PageLink, { kind: "ellipsis" }>;
 
-// ── Pagination: prevHref / nextHref / pages を branded 版に置換 (Phase 6) ─
+// ── Pagination: prevHref / nextHref / pages を branded 版に置換 ─
 //
 // `prevHref` / `nextHref` は first/last page で undefined (= disabled)。
 // `pages` は server 側で collapse 済み (1 / current±2 / last + ellipsis)。

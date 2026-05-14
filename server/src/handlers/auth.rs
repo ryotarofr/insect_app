@@ -1,4 +1,4 @@
-//! `/api/v1/auth/*` エンドポイント (Phase 9.G / login flow)
+//! `/api/v1/auth/*` エンドポイント (login flow)
 //!
 //! - `POST /api/v1/auth/register` → 新規ユーザを Argon2id で hash した password で登録
 //! - `POST /api/v1/auth/login`    → email + password を verify して session を user に昇格
@@ -23,7 +23,6 @@ use std::sync::OnceLock;
 use uuid::Uuid;
 
 use crate::error::AppError;
-// C2C pivot: product_watches は削除済 (= listings 用は repos::listing_watches)
 use crate::repos::{
     cart_items, email_outbox, listing_watches, password_resets, user_sessions, users,
 };
@@ -41,7 +40,7 @@ async fn promote_session_to_user(db: Option<&PgPool>, session: Uuid, user: Uuid)
             e
         );
     }
-    // C2C pivot Step C: listing_watches 承継 (= 現状 no-op stub)。
+    // listing_watches 承継 (= 現状 no-op stub)。
     //   listing_watches スキーマは login user only (= session_id 列を持たない) なので
     //   引き継ぐ行は無いが、将来 session 対応に拡張する余地のためフックだけ残す。
     if let Err(e) = listing_watches::promote_session_to_user(db, session, user).await {
@@ -151,9 +150,9 @@ pub async fn post_register(
         );
     }
 
-    // ── 3. cart_items / product_watches の session → user 承継 ────
+    // ── 3. cart_items / listing_watches の session → user 承継 ────
     //   匿名で投入した cart / 押した watch を、ログインユーザの user_id に紐付け直す。
-    //   失敗しても warn ログだけで 200 を返す (= review fix: minor, 共通 helper に集約)。
+    //   失敗しても warn ログだけで 200 を返す (= 共通 helper に集約)。
     promote_session_to_user(state.db(), session_id.0, new_user_id).await;
 
     Ok(Json(RegisterResponse {
@@ -250,7 +249,7 @@ pub async fn post_login(
         );
     }
 
-    // ── 4. cart_items / product_watches の session → user 承継 ───
+    // ── 4. cart_items / listing_watches の session → user 承継 ───
     promote_session_to_user(state.db(), session_id.0, user.id).await;
 
     Ok(Json(LoginResponse {
@@ -323,6 +322,9 @@ pub struct MeResponse {
     /// アカウント開設日時 (= users.joined_at)。client は YYYY.MM 形式に整形して
     /// 「登録 2024.03 より」のような表示に使う。
     pub joined_at: chrono::DateTime<chrono::Utc>,
+    /// Stripe Connect 連携状態 (= 'unlinked' / 'pending' / 'active' / 'restricted')。
+    /// 出品 wizard では 'active' でないと「出品する」を disabled にする。
+    pub stripe_connect_status: String,
 }
 
 /// `GET /api/v1/auth/me` — 現在 session の user 情報を返す。
@@ -359,6 +361,8 @@ pub async fn get_me(
         role: user.role,
         avatar_initial: user.avatar_initial,
         joined_at: user.joined_at,
+        // Stripe Connect 連携状態 (= unlinked / pending / active / restricted)
+        stripe_connect_status: user.stripe_connect_status,
     }))
 }
 
@@ -498,7 +502,6 @@ mod tests {
     /// `cart_items::promote_session_to_user` を呼ぶため、それぞれの `memory_guard()` も
     /// **同じ順序** で取得して逐次化する。
     /// 順序: users → user_sessions → cart_items (= 全テストで統一)。
-    /// C2C pivot: 旧 product_watches は削除済 (= 4 番目の guard を撤去)。
     fn lock_guards() -> (
         std::sync::MutexGuard<'static, ()>,
         std::sync::MutexGuard<'static, ()>,
@@ -798,10 +801,8 @@ mod tests {
         }
     }
 
-    // C2C pivot: 旧 product_watches の session→user 承継テスト
-    // (register_promotes_session_watches_to_user / login_promotes_session_watches_to_user) は
-    // product_watches テーブルの廃止に伴い削除した。listing_watches 用の同等テストは
-    // listing_watches::promote_session_to_user が実装され次第 follow-up PR で追加する。
+    // TODO: listing_watches::promote_session_to_user が実装され次第、
+    // session→user 承継テスト (register / login) を追加する。
 
     #[tokio::test]
     async fn login_then_logout_then_me_chain_returns_401() {
@@ -826,11 +827,10 @@ mod tests {
         }
     }
 
-    // ── PR N-5 / password reset ──────────────────────────────────
+    // ── password reset ───────────────────────────────────────────
 
     /// password_reset テストは users + outbox + password_resets の memory store を弄るので
     /// 通常 lock + outbox / password_resets の guard を一気に取る。
-    /// C2C pivot: 旧 product_watches guard は削除済 (= 5 タプルに縮約)。
     fn lock_guards_with_reset() -> (
         std::sync::MutexGuard<'static, ()>,
         std::sync::MutexGuard<'static, ()>,

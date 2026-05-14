@@ -1,4 +1,4 @@
-//! `/api/v1/specimens/*` (Phase 9.D / 個体カルテ HTTP API)
+//! `/api/v1/specimens/*` (個体カルテ HTTP API)
 //!
 //! - `GET    /api/v1/specimens/me`              → current user の specimens 一覧
 //! - `POST   /api/v1/specimens`                  → 新規 specimen を登録
@@ -21,25 +21,10 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::AppError;
-use crate::repos::{specimens, user_sessions};
+use crate::handlers::require_user_id;
+use crate::repos::specimens;
 use crate::session::SessionId;
 use crate::state::AppState;
-
-// ──────────────────────────────────────────────────────────────────────
-// auth guard helper
-// ──────────────────────────────────────────────────────────────────────
-
-/// session_id から user_id を引く。anonymous (= session.user_id が None) や session 行未登録は 401。
-async fn require_user_id(
-    state: &AppState,
-    session_id: Uuid,
-) -> Result<Uuid, AppError> {
-    let session = user_sessions::find_by_id(state.db(), session_id)
-        .await
-        .map_err(|e| AppError::BadRequest(format!("session lookup: {e}")))?
-        .ok_or(AppError::Unauthorized)?;
-    session.user_id.ok_or(AppError::Unauthorized)
-}
 
 // ──────────────────────────────────────────────────────────────────────
 // DTO
@@ -64,7 +49,7 @@ pub struct SpecimenView {
     pub eclosion_eta: Option<NaiveDate>,
     pub life_status: String,
     pub is_archived: bool,
-    /// 個体メモ (= 自由テキスト)。PR #5b で localStorage から server 永続化に移行。
+    /// 個体メモ (= 自由テキスト)。
     pub notes: Option<String>,
 }
 
@@ -232,7 +217,7 @@ pub async fn create_specimen(
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// 親個体検索 typeahead (Cohort Phase 6)
+// 親個体検索 typeahead
 // ──────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Deserialize)]
@@ -296,7 +281,7 @@ pub async fn get_specimen(
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// life_status 遷移 + 履歴 (Phase 9.D / Medium #3)
+// life_status 遷移 + 履歴
 // ──────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
@@ -338,7 +323,7 @@ impl From<crate::repos::specimen_status_history::StatusHistoryRow> for StatusHis
 
 /// `POST /api/v1/specimens/{id}/life_status` — life_status 遷移。所有者のみ操作可。
 ///
-/// **Medium #3**: specimens.life_status の更新時は必ず本 endpoint 経由で
+/// specimens.life_status の更新時は必ず本 endpoint 経由で
 /// `repos::specimens::update_life_status` を呼び、specimen_status_history への履歴
 /// INSERT が原子的に走る規律にしている。直接 UPDATE する経路は作らない。
 #[utoipa::path(
@@ -426,7 +411,7 @@ pub async fn list_status_history(
 }
 
 /// `PATCH /api/v1/specimens/{id}/notes` — 個体メモ更新 (= 自由テキスト)。
-/// PR #5b で localStorage 永続化を廃止して server 化。空文字列は「メモ削除」として許容。
+/// 空文字列は「メモ削除」として許容。
 /// 他人の specimen は 404 (= 存在隠し)。
 #[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

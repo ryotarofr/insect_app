@@ -1,4 +1,4 @@
-//! `/api/v1/specimens/{id}/logs` (Phase 9.D / 飼育ログ HTTP API)
+//! `/api/v1/specimens/{id}/logs` (飼育ログ HTTP API)
 //!
 //! - `GET  /api/v1/specimens/{id}/logs`  → 公開閲覧。logged_at 降順で返す。
 //! - `POST /api/v1/specimens/{id}/logs`  → 自分の specimen にログ追加 (= login 必須)。
@@ -19,17 +19,10 @@ use serde_json::Value;
 use uuid::Uuid;
 
 use crate::error::AppError;
-use crate::repos::{specimen_logs, specimens, user_sessions};
+use crate::handlers::require_user_id;
+use crate::repos::{specimen_logs, specimens};
 use crate::session::SessionId;
 use crate::state::AppState;
-
-async fn require_user_id(state: &AppState, session_id: Uuid) -> Result<Uuid, AppError> {
-    let session = user_sessions::find_by_id(state.db(), session_id)
-        .await
-        .map_err(|e| AppError::BadRequest(format!("session lookup: {e}")))?
-        .ok_or(AppError::Unauthorized)?;
-    session.user_id.ok_or(AppError::Unauthorized)
-}
 
 #[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]

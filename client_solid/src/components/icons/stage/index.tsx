@@ -1,6 +1,6 @@
 // icons/stage/index.tsx — カブトムシのライフステージ 7 種アイコン (SVG)
 //
-// P4-1: StageBar で使っていた絵文字 (🥚🐛🛋🦋) を専用 SVG に置き換える。
+// StageBar 用のライフステージ アイコンを専用 SVG で提供する。
 // 全アイコンは:
 //   - 24x24 viewBox で、大枠はタイトに 2-22 の内寸
 //   - stroke: currentColor / fill: currentColor に統一し、CSS で色を乗せる

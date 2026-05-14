@@ -1,4 +1,4 @@
-//! email_outbox の relay worker (Sprint 2 / N1-N2 / PR N-3)
+//! email_outbox の relay worker
 //!
 //! **責務**:
 //!   - 一定間隔で `claim_pending` を呼び、各行を `Mailer::send` に渡す
@@ -13,9 +13,9 @@
 //!
 //! **テンプレート (= 暫定)**:
 //!   - order_confirmation: 注文番号 + 金額 (= buyer 宛)
-//!   - listing_sold      : 出品が売れた通知 (= seller 宛 / C2C pivot で追加)
-//!   - eclosion_reminder : 個体名 + 羽化予測日 (= PR N-4 で配線)
-//!   - password_reset    : reset link (= PR N-5 で配線)
+//!   - listing_sold      : 出品が売れた通知 (= seller 宛)
+//!   - eclosion_reminder : 個体名 + 羽化予測日
+//!   - password_reset    : reset link
 
 use std::sync::Arc;
 use std::time::Duration;
@@ -153,7 +153,7 @@ fn render_template(kind: &str, args: &Value) -> (String, String) {
             );
             (subject, body)
         }
-        // C2C pivot: 出品が売れた時に seller に飛ぶ通知。
+        // 出品が売れた時に seller に飛ぶ通知。
         // template_args:
         //   listing_public_id : "L-A1B2C" (= human-readable 出品 ID)
         //   listing_title     : "ヘラクレスオオカブト ♂ 142mm CBF2"

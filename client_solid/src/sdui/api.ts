@@ -24,6 +24,8 @@ import type {
   AddToCartResponse,
   ChangeLifeStatusRequest,
   CheckoutSubmitResponse,
+  CompleteRequest,
+  CompleteResponse,
   CreateListingRequest,
   CreateMatingRequest,
   CreateSpecimenLogRequest,
@@ -43,12 +45,14 @@ import type {
   PatchShippingFieldResponse,
   PatchShippingMethodResponse,
   PlaceBidResponse,
-  ProductBloodlineAncestor,
-  ProductBloodlineSummary,
-  ProductSummary,
   RegisterRequest,
   RegisterResponse,
+  ShippingMethodResponse,
+  SignRequest,
+  SignResponse,
   SpeciesSummary,
+  StripeConnectOnboardingResponse,
+  StripeConnectStatusResponse,
   SpecimenLogType,
   SpecimenLogView,
   SpecimenView,
@@ -63,6 +67,8 @@ export type {
   AddToCartResponse,
   ChangeLifeStatusRequest,
   CheckoutSubmitResponse,
+  CompleteRequest,
+  CompleteResponse,
   CreateListingRequest,
   CreateMatingRequest,
   CreateSpecimenLogRequest,
@@ -82,12 +88,14 @@ export type {
   PatchShippingFieldResponse,
   PatchShippingMethodResponse,
   PlaceBidResponse,
-  ProductBloodlineAncestor,
-  ProductBloodlineSummary,
-  ProductSummary,
   RegisterRequest,
   RegisterResponse,
+  ShippingMethodResponse,
+  SignRequest,
+  SignResponse,
   SpeciesSummary,
+  StripeConnectOnboardingResponse,
+  StripeConnectStatusResponse,
   SpecimenLogType,
   SpecimenLogView,
   SpecimenView,
@@ -112,7 +120,7 @@ export class SduiFetchError extends Error {
   }
 }
 
-/** 共通 JSON fetch。Cohort Phase 7 で `api/cohorts.ts` 等からも使うため export。
+/** 共通 JSON fetch。`api/cohorts.ts` 等からも使うため export。
  *  path は `/cohorts/me` のように先頭スラッシュ付き、API_BASE が前置される。 */
 export const fetchJson = async <T>(path: string, init?: RequestInit): Promise<T> => {
   let res: Response;
@@ -204,7 +212,7 @@ export const fetchProductDetailCard = async (id: string): Promise<CardBlock> => 
   return fetchJson<CardBlock>(`/cards/products/${safe}/detail`);
 };
 
-/** Phase 4 + 5 + 6: filter chip + sort + 検索 + pagination クエリ。
+/** filter chip + sort + 検索 + pagination クエリ。
  *  - filter (category / difficulty) は各 group につき 0 件 or 1 件 (single-select)。
  *  - sort は単一値 (`name` / `price_asc` / `price_desc` / `new`)。
  *  - q は検索キーワード (前後 trim はサーバ側でも実施)。
@@ -215,18 +223,18 @@ export const fetchProductDetailCard = async (id: string): Promise<CardBlock> => 
 export interface ProductListQuery {
   category?: string;
   difficulty?: string;
-  /** Phase 5: 並び替えキー。サーバ側 SORT_OPTIONS と同じ文字列を渡す。 */
+  /** 並び替えキー。サーバ側 SORT_OPTIONS と同じ文字列を渡す。 */
   sort?: string;
-  /** Phase 6: 検索キーワード (前後空白はサーバ側で trim される)。 */
+  /** 検索キーワード (前後空白はサーバ側で trim される)。 */
   q?: string;
-  /** Phase 6: 1 始まりのページ番号。1 (= default) なら省略推奨 (canonical URL)。 */
+  /** 1 始まりのページ番号。1 (= default) なら省略推奨 (canonical URL)。 */
   page?: number;
-  /** Phase 6: 1 ページあたり件数。20 (= default) なら省略推奨 (canonical URL)。 */
+  /** 1 ページあたり件数。20 (= default) なら省略推奨 (canonical URL)。 */
   perPage?: number;
 }
 
 /** `GET /api/v1/cards/products?q=&category=&difficulty=&sort=&page=&perPage=` を叩いて
- *  filter bar + sort bar + search box + pagination 付きのページシェルを取得する (Phase 4-6)。
+ *  filter bar + sort bar + search box + pagination 付きのページシェルを取得する。
  *
  *  - サーバ側 (handlers::cards::list_product_cards) が filter → search → sort → paginate の順で適用して返す。
  *  - 失敗時は `SduiFetchError` を throw する。
@@ -257,17 +265,8 @@ export const fetchProductList = async (
   return fetchJson<ProductListResponse>(path);
 };
 
-/** @deprecated Phase 4 で `fetchProductList` に置き換え予定。
- *  互換目的で `cards` だけを返すラッパとして残してある。
- *  - 内部で `fetchProductList()` を呼んで `.cards` を返す。
- *  - filter chip を表示しない場面 (= ホームの「おすすめ」枠など) で使う想定。 */
-export const fetchProductCardList = async (): Promise<CardBlock[]> => {
-  const resp = await fetchProductList();
-  return resp.cards;
-};
-
 // ──────────────────────────────────────────────────────────────────────
-// SDUI Action endpoints (Phase 2.5)
+// SDUI Action endpoints
 //
 // CtaBlockView (sdui/blocks/Cta.tsx) が `block.action` を見て呼び分ける。
 // レスポンスは camelCase JSON。サーバ側 DTO と完全に対応している。
@@ -275,7 +274,7 @@ export const fetchProductCardList = async (): Promise<CardBlock[]> => {
 
 /** `POST /api/v1/cart` — listing をカートに追加し、Undo トークンを取得する。
  *
- *  - C2C pivot: server は `{ listingId, qty }` を受ける (= cart_items.listing_id FK to listings)。
+ *  - server は `{ listingId, qty }` を受ける (= cart_items.listing_id FK to listings)。
  *  - 失敗時は `SduiFetchError` を throw。
  *  - body の `listingId` は listings.public_id (= "L-0421") の形式で送る (server 側で UUID 解決)。 */
 export const postCartAdd = async (
@@ -312,12 +311,12 @@ export const postWatchToggle = async (
 };
 
 // ──────────────────────────────────────────────────────────────────────
-// Phase 7: Cart card endpoints
+// Cart card endpoints
 //
 // /cart 画面用の SDUI 取得 + LineItem 内 +/- ボタンが叩く PATCH。
 // ──────────────────────────────────────────────────────────────────────
 
-/** `GET /api/v1/cards/cart` — 現在のカート画面 SDUI を取得する (Phase 7)。
+/** `GET /api/v1/cards/cart` — 現在のカート画面 SDUI を取得する。
  *
  *  - 1 ユーザにつき 1 枚しかないので path に id を取らない。
  *  - 返り値の template は常に `cart`。
@@ -327,7 +326,7 @@ export const fetchCartCard = async (): Promise<CardBlock> => {
   return fetchJson<CardBlock>(`/cards/cart`);
 };
 
-/** `PATCH /api/v1/cart/items/:token` — qty を直接書き換える (Phase 7)。
+/** `PATCH /api/v1/cart/items/:token` — qty を直接書き換える。
  *
  *  - LineItem の +/- ボタン (LineItemAction::SetQty) が叩く。
  *  - サーバ側で `1 <= qty <= 99` をチェック。0 を投げたい時は `deleteCartItem` を使う。
@@ -345,7 +344,7 @@ export const patchCartItemQty = async (
   });
 };
 
-/** `PATCH /api/v1/checkout/shipping_field/:name` — 配送先 1 フィールドを更新 (Phase 8)。
+/** `PATCH /api/v1/checkout/shipping_field/:name` — 配送先 1 フィールドを更新。
  *
  *  - FormField (CheckoutFieldAction::PatchField) が叩く。
  *  - `name` は `Block::FormField.name` (= camelCase, addressName / addressTel / etc.)。
@@ -367,7 +366,7 @@ export const patchCheckoutShippingField = async (
   );
 };
 
-/** `PATCH /api/v1/checkout/shipping_method` — 配送方法を切り替え (Phase 8)。
+/** `PATCH /api/v1/checkout/shipping_method` — 配送方法を切り替え。
  *
  *  - ShippingMethodPicker (CheckoutMethodAction::PatchMethod) が叩く。
  *  - `id` は server 側 SHIPPING_METHODS の id ("cold" / "normal" 等) のいずれか。未知は 400。
@@ -382,7 +381,7 @@ export const patchCheckoutShippingMethod = async (
   });
 };
 
-/** `POST /api/v1/checkout/submit` — Stripe Checkout Session を作成する (Phase 9.1)。
+/** `POST /api/v1/checkout/submit` — Stripe Checkout Session を作成する。
  *
  *  クライアントは `window.location.href = sessionUrl` で Stripe Hosted Checkout
  *  (もしくは mock landing) に遷移する。orderId は orders テーブルの UUID で、
@@ -401,7 +400,7 @@ export const postCheckoutSubmit = async (): Promise<CheckoutSubmitResponse> => {
 };
 
 // ──────────────────────────────────────────────────────────────────────
-// Phase 9.G: 認証 (= /api/v1/auth/*)
+// 認証 (= /api/v1/auth/*)
 // ──────────────────────────────────────────────────────────────────────
 
 /** auth handler の register / login / me レスポンスを抱える signal の compat surface。
@@ -426,6 +425,9 @@ export interface AuthUser {
   /** /me 専用。アカウント開設日時 (ISO 8601)。client は YYYY.MM 形式に整形して
    *  「登録 2024.03 より」のような表示に使う。 */
   joinedAt?: string;
+  /** Stripe Connect 連携状態 (= 'unlinked' / 'pending' / 'active' / 'restricted')。
+   *  /me レスポンスにのみ乗る (= login / register 直後は undefined → refreshMe で埋まる)。 */
+  stripeConnectStatus?: string;
 }
 
 /** `POST /api/v1/auth/register` — 新規登録。同 cookie session を user に紐付ける。 */
@@ -466,18 +468,7 @@ export const fetchAuthMe = async (): Promise<MeResponse> => {
 };
 
 // ──────────────────────────────────────────────────────────────────────
-// 商品マスタ (= /api/v1/products) — フロント data.ts 移行
-// ──────────────────────────────────────────────────────────────────────
-
-/** `GET /api/v1/products?locale=ja` — 全 active 商品を id 昇順で返す。 */
-export const fetchProducts = async (
-  locale = "ja",
-): Promise<ProductSummary[]> => {
-  return fetchJson<ProductSummary[]>(`/products?locale=${encodeURIComponent(locale)}`);
-};
-
-// ──────────────────────────────────────────────────────────────────────
-// 種マスタ (= /api/v1/species) — フロント data.ts 移行
+// 種マスタ (= /api/v1/species)
 // ──────────────────────────────────────────────────────────────────────
 
 /** `GET /api/v1/species?locale=ja` — 全種を id 昇順で返す。 */
@@ -485,24 +476,36 @@ export const fetchSpecies = async (locale = "ja"): Promise<SpeciesSummary[]> => 
   return fetchJson<SpeciesSummary[]>(`/species?locale=${encodeURIComponent(locale)}`);
 };
 
-// ──────────────────────────────────────────────────────────────────────
-// 商品血統情報 (= /api/v1/product_bloodlines) — フロント PRODUCT_BLOODLINE 移行
-// ──────────────────────────────────────────────────────────────────────
-
-/** `GET /api/v1/product_bloodlines` — 全商品の血統データを public_id 昇順で返す。 */
-export const fetchProductBloodlines = async (): Promise<
-  ProductBloodlineSummary[]
-> => {
-  return fetchJson<ProductBloodlineSummary[]>(`/product_bloodlines`);
+/** `GET /api/v1/shipping_methods` — active な配送方法を sort_order 昇順で返す。
+ *  公開 endpoint (= anonymous OK)。出品 wizard / cart / checkout で共用する。 */
+export const fetchShippingMethods = async (): Promise<ShippingMethodResponse[]> => {
+  return fetchJson<ShippingMethodResponse[]>(`/shipping_methods`);
 };
 
 // ──────────────────────────────────────────────────────────────────────
-// Phase 9.G: 注文履歴 (= /api/v1/orders/*)
+// 注文履歴 (= /api/v1/orders/*)
 // ──────────────────────────────────────────────────────────────────────
 
-/** `GET /api/v1/orders/me` — login user の注文履歴 (= 新しい順)。 */
-export const fetchMyOrders = async (): Promise<OrderSummary[]> => {
-  return fetchJson<OrderSummary[]>(`/orders/me`);
+/** 取引履歴の役割フィルタ。
+ *  - `buyer` (= 既定): 自分が買った注文 (orders.user_id = me)
+ *  - `seller`: 自分が売った注文 (orders.seller_user_id = me、paid 遷移済のみ)
+ *  - `all`: 上記の OR (= 取引履歴 merged view 用)
+ */
+export type OrderRole = "buyer" | "seller" | "all";
+
+/** `GET /api/v1/orders/me?role=...` — login user の取引履歴 (= 新しい順)。
+ *
+ *  `?role=` クエリで絞り込み。既定は `buyer`。
+ *  401 (= 未ログイン) は呼び出し側で `SduiFetchError` を catch して空扱いにする。
+ */
+export const fetchMyOrders = async (
+  role?: OrderRole,
+): Promise<OrderSummary[]> => {
+  const path =
+    role && role !== "buyer"
+      ? `/orders/me?role=${encodeURIComponent(role)}`
+      : `/orders/me`;
+  return fetchJson<OrderSummary[]>(path);
 };
 
 /** `GET /api/v1/orders/{id}` — 1 注文 + 内訳を取得。所有者でなければ 404。 */
@@ -512,7 +515,7 @@ export const fetchOrderDetail = async (id: string): Promise<OrderDetail> => {
 };
 
 // ──────────────────────────────────────────────────────────────────────
-// Phase 9.D: 個体カルテ (= /api/v1/specimens/*)
+// 個体カルテ (= /api/v1/specimens/*)
 // ──────────────────────────────────────────────────────────────────────
 
 /** `GET /api/v1/specimens/me` — login user の active な individuals。 */
@@ -608,7 +611,7 @@ export const postSpecimenLog = async (
 };
 
 // ──────────────────────────────────────────────────────────────────────
-// Phase 9.D: 交配記録 (= /api/v1/mating_records/*)
+// 交配記録 (= /api/v1/mating_records/*)
 // ──────────────────────────────────────────────────────────────────────
 
 /** `POST /api/v1/mating_records` — 新規記録 (= login 必須)。 */
@@ -652,18 +655,18 @@ export const postMatingEggCount = async (
 };
 
 // ──────────────────────────────────────────────────────────────────────
-// Phase 9.E: C2C marketplace (= /api/v1/listings/*)
+// C2C marketplace (= /api/v1/listings/*)
 // ──────────────────────────────────────────────────────────────────────
 
 /** `GET /api/v1/listings` — active な出品一覧 (= public 閲覧 OK)。
- *  PR-7: レスポンスに sellerName / bidCount / watcherCount を含む形に拡張。 */
+ *  レスポンスに sellerName / bidCount / watcherCount を含む。 */
 export const fetchListings = async (): Promise<ListingViewWithCounts[]> => {
   return fetchJson<ListingViewWithCounts[]>(`/listings`);
 };
 
 /** `GET /api/v1/listings/me?status=...` — 自分の出品一覧 (= login 必須)。
  *
- *  Phase 1 で server に追加。`status` 省略 (= undefined) または `'all'` で全 status、
+ *  `status` 省略 (= undefined) または `'all'` で全 status、
  *  `'active' | 'sold' | 'canceled' | 'expired'` の 4 値で絞り込める。
  *  401 (= 未ログイン) の場合は呼び出し側で `SduiFetchError` を catch して空扱いにする。
  */
@@ -737,3 +740,122 @@ export const postListingWatch = async (
     },
   );
 };
+
+// ──────────────────────────────────────────────────────────────────────
+// 写真アップロード (= /api/v1/uploads/*)
+// ──────────────────────────────────────────────────────────────────────
+//
+// 3 リクエスト構成:
+//   1. POST /uploads/sign         → asset 行を pending で作成 + upload URL 発行
+//   2. PUT  /uploads/local/{id}   → local mode で body を server に PUT
+//                                   (production では署名済 R2/S3 URL に直接 PUT)
+//   3. POST /uploads/complete     → status='uploaded' に遷移 + public_url を返す
+//
+// listing 作成 wizard の Step 2 で 4 スロットの写真を順次 upload し、収集した
+// asset_id を `postListing({ assetIds: [...] })` で attach する。
+
+/** `POST /api/v1/uploads/sign` — asset を pending で作り、upload URL を返す。 */
+export const postUploadSign = async (req: SignRequest): Promise<SignResponse> => {
+  return fetchJson<SignResponse>(`/uploads/sign`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+};
+
+/** `PUT <upload_url>` — body を直接 PUT。
+ *  - local mode (= dev): server 自身の `/api/v1/uploads/local/{id}` が受ける。
+ *  - r2/s3 mode (= 将来): 署名済 URL (= 別 origin) に直接 PUT。
+ *  fetch 直叩きにして fetchJson の base URL prepend を回避する (= 署名 URL は
+ *  完全 URL で返ってくるため)。 */
+export const putUploadBody = async (
+  uploadUrl: string,
+  blob: Blob,
+): Promise<void> => {
+  let res: Response;
+  try {
+    res = await fetch(uploadUrl, {
+      method: "PUT",
+      headers: { "Content-Type": blob.type },
+      body: blob,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : String(e);
+    throw new SduiFetchError(`network error: ${msg}`, 0, null);
+  }
+  if (!res.ok) {
+    let body: string | null = null;
+    try {
+      body = await res.text();
+    } catch {
+      /* noop */
+    }
+    throw new SduiFetchError(
+      `HTTP ${res.status} on PUT upload`,
+      res.status,
+      body,
+    );
+  }
+};
+
+/** `POST /api/v1/uploads/complete` — 完了通知。pending → uploaded に遷移、public_url を返す。 */
+export const postUploadComplete = async (
+  req: CompleteRequest,
+): Promise<CompleteResponse> => {
+  return fetchJson<CompleteResponse>(`/uploads/complete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(req),
+  });
+};
+
+/** 1 枚の File をアップロードする統合ヘルパ (= sign → PUT → complete を直列に実行)。
+ *
+ *  失敗時はそのまま `SduiFetchError` を throw する。呼び出し側は 1 枚ごとに try/catch して
+ *  進捗管理する想定。
+ *
+ *  戻り値: `{ assetId, publicUrl }` — UI 側はこれを state に積む。
+ */
+export const uploadFile = async (
+  file: File,
+): Promise<{ assetId: string; publicUrl: string }> => {
+  const sign = await postUploadSign({
+    mimeType: file.type,
+    bytes: file.size,
+  });
+  await putUploadBody(sign.uploadUrl, file);
+  const complete = await postUploadComplete({ assetId: sign.assetId });
+  return { assetId: complete.assetId, publicUrl: complete.publicUrl };
+};
+
+// ──────────────────────────────────────────────────────────────────────
+// Stripe Connect オンボーディング (= /api/v1/account/stripe_connect/*)
+// ──────────────────────────────────────────────────────────────────────
+//
+// フロー:
+//   1. UI で「Stripe Connect 連携」ボタン押下 → postStripeConnectOnboarding()
+//   2. server は Account 作成 + Account Link 発行 → onboardingUrl を返す
+//   3. クライアントは window.location.href = onboardingUrl で Stripe ホスト型 onboarding に遷移
+//   4. 出品者が Stripe で書類入力 → return URL (/account/stripe-connect/return) に戻る
+//   5. return ページが fetchStripeConnectStatus() を叩いて再同期 + UI 更新
+
+/** `POST /api/v1/account/stripe_connect/onboarding` — Account 作成 + Link URL 発行。
+ *  login 必須。Stripe 未設定 / API 失敗は 500 で SduiFetchError throw。 */
+export const postStripeConnectOnboarding =
+  async (): Promise<StripeConnectOnboardingResponse> => {
+    return fetchJson<StripeConnectOnboardingResponse>(
+      `/account/stripe_connect/onboarding`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      },
+    );
+  };
+
+/** `GET /api/v1/account/stripe_connect/status` — 現在の連携状態 (= Stripe API で再同期込)。
+ *  return URL ページが mount 時に叩く想定。 */
+export const fetchStripeConnectStatus =
+  async (): Promise<StripeConnectStatusResponse> => {
+    return fetchJson<StripeConnectStatusResponse>(`/account/stripe_connect/status`);
+  };

@@ -1,4 +1,4 @@
-// MatingRecordModal.tsx — Bloodline 「+ 交配記録」 (P4-22)
+// MatingRecordModal.tsx — Bloodline 「+ 交配記録」
 //
 // Bloodline ページから、系統に残すための交配記録を新規作成するモーダル。
 // - 父 (♂) / 母 (♀) を系統内の個体から選択

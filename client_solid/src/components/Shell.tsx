@@ -1,11 +1,11 @@
-// Shell.tsx — sidebar + topbar shell (Solid.js port of poc/components/shell.jsx)
+// Shell.tsx — sidebar + topbar shell
 //
-// P2-2: nav-item を <A href> 化。
+// nav-item は <A href> で描画。
 //   - <A> が <a> を描画するため、middle-click / Cmd+click / 新しいタブ が効く。
 //   - setRoute は keyboard shortcut 経由では残す (prop として受ける)。
 //   - 実際のナビゲーションは <A> が router.navigate を呼ぶので setRoute は不要。
 //
-// P4-20: ルート遷移で毎回 .fade-enter をリトリガー。
+// ルート遷移で毎回 .fade-enter をリトリガー。
 //   - <main> に static で付いている .fade-enter は初回マウント時しか発火しない。
 //   - useLocation().pathname を watch し、変わったタイミングで class を一度外して
 //     強制 reflow 後に再付与することで CSS アニメーションを再生する。
@@ -36,15 +36,12 @@ interface NavEntry {
   hidden?: boolean;
 }
 
-// C2C pivot: 旧 "EC" / "取引" / "運営" を「マーケット」に統合。
-//   - "EC" (= 生体・用品 + カート) と "取引" (= C2Cマーケット) は同概念のため統合
-//   - "運営" (= ショップ管理) は B2C 概念のため全廃
 const GROUPS: Array<NavEntry["group"]> = ["マーケット", "飼育"];
 
 interface ShellProps {
   current: RouteKey;
   setRoute: (r: RouteKey) => void;
-  /** P2-14: パンくずは構造化した Crumb[] で渡す (JSX ではない) */
+  /** パンくずは構造化した Crumb[] で渡す (JSX ではない) */
   crumbs: Crumb[];
   children: JSX.Element;
   topActions?: JSX.Element;
@@ -52,10 +49,13 @@ interface ShellProps {
   cartCount?: () => number;
   /** 60 日以内に羽化予定の個体数 */
   eclosionCount?: () => number;
+  /** BottomTabBar の中央 FAB ActionSheet「ログを記録」が呼ぶ callback。
+   *  App.tsx 側の QuickLogSheet (= specimenId 付きのシート) を開く。 */
+  onOpenLogSheet?: () => void;
 }
 
 export const Shell = (props: ShellProps) => {
-  // P4-20: route 変更で <main> の fade アニメを再生する
+  // route 変更で <main> の fade アニメを再生する
   const location = useLocation();
   let mainRef: HTMLElement | undefined;
   let prevPath: string | null = null;
@@ -75,15 +75,14 @@ export const Shell = (props: ShellProps) => {
   });
 
   const nav: NavEntry[] = [
-    // C2C pivot: 「生体・用品」を「出品中の生体」に改名。/products URL はそのまま。
     { key: "products", label: "出品中の生体", icon: Icons.grid, group: "マーケット" },
     { key: "product-detail", label: "出品詳細", icon: Icons.tag, group: "マーケット", hidden: true },
-    // C2C pivot: 出品作成ページ (= 個体カルテ「この個体を出品」/ 一覧の CTA から到達)
+    // 出品作成ページ (= 個体カルテ「この個体を出品」/ 一覧の CTA から到達)
     { key: "listing-new", label: "出品する", icon: Icons.plus, group: "マーケット", hidden: true },
-    // Phase 3: 自分の出品管理 (= /listings/me)。販売者目線の主要動線。
+    // 自分の出品管理 (= /listings/me)。販売者目線の主要動線。
     { key: "my-listings", label: "マイ出品", icon: Icons.tag, group: "マーケット" },
-    // Phase 3: 取引履歴 (= /orders、C2C pivot 後は購入+販売の取引履歴として運用)。
-    //   実装本体は MyOrdersPage / OrderDetailPage。販売側 orders は Phase 4 で統合予定。
+    // 取引履歴 (= /orders、購入+販売の取引履歴として運用)。
+    //   実装本体は MyOrdersPage / OrderDetailPage。
     { key: "orders", label: "取引履歴", icon: Icons.timeline, group: "マーケット" },
     { key: "order-detail", label: "取引詳細", icon: Icons.card, group: "マーケット", hidden: true },
     {
@@ -97,10 +96,10 @@ export const Shell = (props: ShellProps) => {
     // 個体カルテは詳細ビュー (`:id` パラメトリック) なので、サイドバーには出さない。
     // マイページの所有個体カード / 羽化レーダー / Bloodline 等から id 付きで開く。
     { key: "specimen", label: "個体カルテ", icon: Icons.card, group: "飼育", hidden: true },
-    // Cohort Phase 1: 旧「飼育ログ」を「飼育」にリネームして /cohorts に統合。
+    // 「飼育」は /cohorts に統合。
     //   ロギング機能は群詳細・個体詳細・個体化モードのコンテキスト内に内包。
     { key: "cohort", label: "飼育", icon: Icons.timeline, group: "飼育" },
-    // Cohort Phase 1 派生ルート (= サイドバーに出さない、親 cohort をハイライト)
+    // 派生ルート (= サイドバーに出さない、親 cohort をハイライト)
     { key: "cohort-detail", label: "群詳細", icon: Icons.card, group: "飼育", hidden: true },
     { key: "cohort-promote", label: "個体化", icon: Icons.card, group: "飼育", hidden: true },
     { key: "cohort-new", label: "群を作成", icon: Icons.card, group: "飼育", hidden: true },
@@ -113,8 +112,6 @@ export const Shell = (props: ShellProps) => {
       badge: () => props.eclosionCount?.(),
     },
     { key: "bloodline", label: "血統系図", icon: Icons.tree, group: "飼育" },
-    // C2C pivot: 旧 "C2Cマーケット" は /products に統合済 (= sidebar から削除)。
-    // 旧 "ショップ管理" は B2C 概念のため全廃。
   ];
 
   return (
@@ -175,7 +172,7 @@ export const Shell = (props: ShellProps) => {
           )}
         </Show>
 
-        {/* Phase 9.G: 認証 quick action。anonymous → ログインリンク / 既ログイン → ログアウト。
+        {/* 認証 quick action。anonymous → ログインリンク / 既ログイン → ログアウト。
             mock user 表示 (上の sidebar-footer) はそのまま残し、本リンクは独立 row で出す。
             CSS は app-layout.css の .sidebar-auth-link を参照 (= 軽い inline スタイルでも代用可)。 */}
         <div
@@ -223,7 +220,7 @@ export const Shell = (props: ShellProps) => {
       <div class="main">
         <header class="topbar">
           <Breadcrumb items={props.crumbs} />
-          {/* P4-5: 擬似検索バー — クリックで CommandPalette を開く (input ではなく button) */}
+          {/* 擬似検索バー — クリックで CommandPalette を開く (input ではなく button) */}
           <button
             type="button"
             class="search search-trigger"
@@ -250,8 +247,8 @@ export const Shell = (props: ShellProps) => {
               ⌘K
             </span>
           </button>
-          {/* P4-8: 夜間赤色テーマ トグル
-              §4 改善: 一般的なダークモードと混同されないように
+          {/* 夜間赤色テーマ トグル
+              一般的なダークモードと混同されないように
                 - アイコンに赤い「ドット」を併置 (= active 時は赤丸塗り潰し)
                 - tooltip に「暗順応保護用」を明記
                 - 初回 ON 時に1度だけ説明トースト */}
@@ -329,6 +326,7 @@ export const Shell = (props: ShellProps) => {
         setRoute={props.setRoute}
         cartCount={props.cartCount}
         eclosionCount={props.eclosionCount}
+        onOpenLogSheet={props.onOpenLogSheet}
       />
     </div>
   );

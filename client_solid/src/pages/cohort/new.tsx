@@ -13,7 +13,7 @@ import { showToast } from "../../store/toast";
 import { cohortUrl } from "../../router";
 import type { CohortInsert } from "../../types/cohort";
 
-// mock 親交配選択肢 (Phase 1 mock では mating_records 統合は未対応)
+// mock 親交配選択肢 (mating_records 統合は未対応)
 const MATING_OPTIONS = [
   {
     id: "M-2026-003",

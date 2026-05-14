@@ -1,4 +1,4 @@
-//! `/api/v1/checkout` 系の SDUI Action エンドポイント (Phase 8)。
+//! `/api/v1/checkout` 系の SDUI Action エンドポイント。
 //!
 //! - `PATCH /api/v1/checkout/shipping_field/{name}`  → 配送先 1 フィールドを更新
 //! - `PATCH /api/v1/checkout/shipping_method`        → 配送方法を切り替え
@@ -11,7 +11,7 @@
 //!     許可制にする理由: 任意キーを書き込めると XSS / DoS の温床になる。
 //!   - shipping_method_id は SHIPPING_METHODS の id のいずれかしか受け付けない。未知は 400。
 //!
-//! **将来 (Phase 8+)**:
+//! **将来**:
 //!   - Cookie ベース session で multi-user 化
 //!   - SQLite or Postgres 永続化 (= ページリロードでも値が残る)
 //!   - field ごとの validation rule を server から下ろす (length / regex)
@@ -69,7 +69,6 @@ pub(crate) fn snapshot_checkout() -> CheckoutState {
 }
 
 /// 配送先 5 フィールドが全て埋まっているか判定する (= post_checkout_submit のガード)。
-/// C2C pivot で旧 handlers::cards から本ファイルに移植 (= cards.rs は廃止済)。
 pub(crate) fn is_shipping_complete(s: &CheckoutState) -> bool {
     !s.address_name.trim().is_empty()
         && !s.address_tel.trim().is_empty()
@@ -94,8 +93,7 @@ pub(crate) const ALLOWED_FIELDS: &[&str] = &[
 
 /// 既定の shipping_method_id (= 新規 CheckoutState 生成時の値)。
 ///
-/// **Phase 9.B 段階 6** (= DB 移行 / 2026-04):
-///   配送方法の本体は `crate::repos::shipping_methods` に移動。本ファイルからは
+///   配送方法の本体は `crate::repos::shipping_methods` にある。本ファイルからは
 ///   `shipping_amount_for` / `is_known_shipping_method_id` を repo 経由で公開する。
 ///   "cold" は 0002_master_data.sql で sort_order=0 (= 推奨枠) を指す前提で固定値。
 pub(crate) const DEFAULT_SHIPPING_METHOD_ID: &str = "cold";
@@ -103,7 +101,7 @@ pub(crate) const DEFAULT_SHIPPING_METHOD_ID: &str = "cold";
 /// 現在 selected な配送方法の amount を返す。未知 id ならデフォルトにフォールバック。
 /// `build_cart_card` から OrderSummary.shipping_amount に詰めるため使う。
 ///
-/// Phase 9.B 段階 6: 実体は `repos::shipping_methods::amount_for` に委譲。
+/// 実体は `repos::shipping_methods::amount_for` に委譲。
 /// pool 不在時 (= warm 前) も in-memory fallback で同値を返す。
 pub(crate) fn shipping_amount_for(id: &str) -> i64 {
     crate::repos::shipping_methods::amount_for(id)
@@ -226,7 +224,7 @@ pub async fn patch_shipping_method(
     Ok(Json(PatchShippingMethodResponse { id: req.id }))
 }
 
-/// 任意で全 state を確認したい時の GET (Phase 8: テスト + デバッグ用)。
+/// 任意で全 state を確認したい時の GET (テスト + デバッグ用)。
 /// SDUI 契約上は cart card の中で配送先も返るのでクライアントは普通使わない。
 #[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -260,7 +258,7 @@ pub async fn get_checkout_snapshot() -> Result<Json<CheckoutSnapshotResponse>, A
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// POST /api/v1/checkout/submit (Phase 9.1 / Stripe3)
+// POST /api/v1/checkout/submit
 //
 // cart snapshot + checkout state を読み、
 //   1. Validate (cart 非空 / shipping 必須項目埋まり / qty 範囲 / 値段 >=0)
@@ -282,7 +280,7 @@ pub struct CheckoutSubmitResponse {
 
 /// `POST /api/v1/checkout/submit` — 注文を確定し Stripe Checkout Session URL を返す。
 ///
-/// **C2C pivot 後の流れ**:
+/// **流れ**:
 ///   `axum::extract::State<AppState>` 経由で `Option<PgPool>` を受け取り、
 ///   - `repos::listings::find_by_public_id(pool, ...)` で listing_id (UUID) と現在価格を解決
 ///   - `repos::orders::insert_order(pool, ...)` で DB に永続化 (= order_items.listing_id)
@@ -322,7 +320,7 @@ pub async fn post_checkout_submit(
     }
 
     // ── 3. cart entries → order line items + Stripe LineItem 並列構築 ──
-    // C2C pivot: 旧 product_filter_meta は廃止。listings から直接 unit_price と title を引く。
+    // listings から直接 unit_price と title を引く。
     let mut order_lines: Vec<OrderLineInsert> = Vec::with_capacity(cart.len());
     let mut stripe_lines: Vec<CheckoutLineItem> = Vec::with_capacity(cart.len());
     let mut subtotal_jpy: i64 = 0;
@@ -374,7 +372,7 @@ pub async fn post_checkout_submit(
     // を `cs_mock_<order_id>` として作る → 先に Uuid を生成してから INSERT で
     // stripe_session_id を埋める。
     let order_id = uuid::Uuid::new_v4();
-    // Cookie 由来の安定 UUID を session 識別子として使う (= 旧 hardcoded "anonymous" 撤去)。
+    // Cookie 由来の安定 UUID を session 識別子として使う。
     let session_id_str = session_id.0.to_string();
     let provider = CheckoutProvider::from_env();
     let session = provider
@@ -390,10 +388,10 @@ pub async fn post_checkout_submit(
         .map_err(|e| AppError::BadRequest(format!("stripe session: {e}")))?;
 
     // ── 6. orders / order_items / shipping_addresses INSERT ────────
-    // Phase 9.x AppState 配線: pool が `Some` なら DB トランザクションで永続化、
+    // pool が `Some` なら DB トランザクションで永続化、
     // `None` なら in-memory fallback。テストや DB 切れ時もそのまま動く。
     //
-    // Phase 9.G: login user の場合は orders.user_id を埋める。anonymous なら None。
+    // login user の場合は orders.user_id を埋める。anonymous なら None。
     // session 行が無い (= cookie 来たが user_sessions 未登録) ケースは Ok(None) → user_id=None。
     let user_id_opt = match crate::repos::user_sessions::find_by_id(state.db(), session_id.0).await
     {

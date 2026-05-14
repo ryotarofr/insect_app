@@ -1,4 +1,4 @@
-//! listing_watches (出品ウォッチ) への永続化 (Phase 9.E / DB設計書 v2 §3.7)
+//! listing_watches (出品ウォッチ) への永続化 (DB設計書 v2 §3.7)
 //!
 //! `repos::product_watches` の listing 版。設計書 High #1 案 C に従い、
 //! product_watches / listing_watches を 2 テーブルに分割している。
@@ -100,7 +100,7 @@ pub async fn find_listing_ids_by_user(
 
 /// 匿名 session が watch していた listing を、login 後の user に承継する。
 ///
-/// **C2C pivot Step C**: `handlers::auth::promote_session_to_user` から呼ばれる。
+/// `handlers::auth::promote_session_to_user` から呼ばれる。
 /// register / login 時に「匿名 session の状態を user に引き継ぐ」共通処理の一部。
 ///
 /// **現状は no-op**:

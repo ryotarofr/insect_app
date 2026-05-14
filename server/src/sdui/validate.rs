@@ -7,7 +7,7 @@
 //! `MetricItem.key` / `MetaItem.key` は親 Block の `key` と組み合わせた合成キー
 //! (`<block.key>::<item.key>`) で一意性を確認する。
 //!
-//! **ValidateA11y 検証スコープ** (Phase 9 前 / M4):
+//! **ValidateA11y 検証スコープ**:
 //! 設計書 §5.2 / §7.7 の不変条件:
 //! - 同一テンプレート内に `text.role: headline` の Block は **0 または 1 個**。
 //!   複数 headline はスクリーンリーダーのナビゲーションを破壊するため reject。
@@ -56,7 +56,7 @@ fn check(seen: &mut HashSet<String>, k: &str) -> Result<(), KeyConflict> {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// ValidateA11y (Phase 9 前 / M4) — §5.2 / §7.7
+// ValidateA11y — §5.2 / §7.7
 // ──────────────────────────────────────────────────────────────────────
 
 /// a11y 不変条件違反の種別。将来 (`<button>` の aria-label 欠落チェック等を加える時)
@@ -195,7 +195,7 @@ mod tests {
         assert!(c.validate_keys().is_err());
     }
 
-    // ── ValidateA11y (M4 / §7.7) ─────────────────────────────────
+    // ── ValidateA11y (§7.7) ─────────────────────────────────
 
     #[test]
     fn validate_a11y_passes_with_zero_headlines() {

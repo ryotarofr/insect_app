@@ -13,11 +13,6 @@
 // **server-driven state (v6 §11.8) との整合**:
 //   create / archive 等の mutation 直後は **必ず再 fetch** で server の真値で UI を更新する。
 //   client 側の楽観的 mutation はせず、サーバが Source of Truth。
-//
-// **mock との関係 (= api/specimens.ts)**:
-//   旧 `listSpecimens()` (= APP_DATA seed) はそのまま残す。本 store は **追加** で動き、
-//   logged-in 時に呼び出し側 (= MyPage / SpecimenDetail) が server 値を優先する。
-//   anonymous 時は本 store は null のまま、呼び出し側は mock にフォールバックする。
 
 import { createSignal } from "solid-js";
 
@@ -43,10 +38,10 @@ export const isSpecimensLoading = isLoading;
 export const serverSpecimensError = error;
 
 // ──────────────────────────────────────────────────────────────────────
-// SpecimenView → legacy Specimen 正規化 (= PR #5a / api/specimens.ts 側で使う)
+// SpecimenView → legacy Specimen 正規化 (= api/specimens.ts 側で使う)
 // ──────────────────────────────────────────────────────────────────────
 //
-// 旧 `data.ts::Specimen` と新 server `SpecimenView` で 9 フィールド差分があるため、
+// `data.ts::Specimen` と server `SpecimenView` で 9 フィールド差分があるため、
 // 正規化レイヤで埋めて legacy 互換 shape を提供する。
 // 不足分のデフォルト値:
 //   - sci / species_name      → species cache から speciesId で引く / 不在は speciesId
@@ -80,7 +75,7 @@ const computeEclosionInDays = (eta: string | null): number | null => {
 /** `SpecimenView` (server) を legacy `Specimen` (data.ts) shape に正規化する。
  *  - 種名 / 学名は species cache から speciesId で引く
  *  - 不足フィールドは defaults で埋める (= 上のコメント参照)
- *  - 個体メモ (notes) は server 値をそのまま使う (PR #5b で localStorage 廃止) */
+ *  - 個体メモ (notes) は server 値をそのまま使う */
 export const normalizeSpecimenForLegacy = (v: SpecimenView): Specimen => {
   const species = findSpeciesById(v.speciesId);
   const lifeStatus = (v.lifeStatus as LifeStatus | undefined) ?? "active";

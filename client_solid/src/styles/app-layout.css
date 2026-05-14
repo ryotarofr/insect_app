@@ -52,7 +52,7 @@
 }
 
 .nav-group { display: flex; flex-direction: column; gap: 2px; }
-/* P3-13: nav-title を 10.5px uppercase 0.08em に */
+/* nav-title を 10.5px uppercase 0.08em に */
 .nav-title {
   font-family: var(--font-mono);
   font-size: 10.5px;
@@ -61,10 +61,8 @@
   letter-spacing: 0.08em;
   padding: 0 8px 6px 8px;
 }
-/* P3-13: padding 9/10、active を左 3px indicator + 薄背景 へ
- * 旧: 塗りつぶし (bg-inverse) 背景。濃すぎて "目立ち過ぎる"。
- * 新: 左 3px の forest インジケータ + forest-soft 背景。
- *     カルテの「栞」のような落ち着いた active 表現。 */
+/* padding 9/10、active は左 3px の forest インジケータ + forest-soft 背景。
+ * カルテの「栞」のような落ち着いた active 表現。 */
 .nav-item {
   position: relative;
   display: flex;
@@ -140,10 +138,9 @@
   flex-direction: column;
 }
 
-/* P3-15: topbar の下をスクロールすると、下のコンテンツが
+/* topbar の下をスクロールすると、下のコンテンツが
  * すりガラス越しに透ける。背景は半透明 + blur。
- * P4-7: ハードコード oklch(0.985 ...) を semantic 変数 --bg-glass*
- * に置換してダークモード対応。 */
+ * 背景色は semantic 変数 --bg-glass* を参照しダークモード対応。 */
 .topbar {
   height: var(--header-h);
   border-bottom: 1px solid var(--line);
@@ -185,7 +182,7 @@
   border-color: var(--line-strong);
   outline: none;
 }
-/* P4-5: button 版の擬似検索バー (CommandPalette トリガー) */
+/* button 版の擬似検索バー (CommandPalette トリガー) */
 .topbar .search.search-trigger {
   display: flex;
   align-items: center;
@@ -230,7 +227,7 @@
   transform: translateY(-50%);
 }
 
-/* P4-8: 夜間赤色モード トグル (topbar 右側)
+/* 夜間赤色モード トグル (topbar 右側)
  * 既定は目立たない ghost。is-active (夜モード ON) の時に赤で強調。 */
 .topbar .theme-toggle {
   flex-shrink: 0;
@@ -273,7 +270,7 @@
   gap: 16px;
   margin-bottom: 22px;
 }
-/* P3-16: 各ページ上部の「所属 (category)」ラベル。
+/* 各ページ上部の「所属 (category)」ラベル。
  * 11px / uppercase / letter-spacing 0.12em / ink-mute で統一し、
  * どのページでも「今どこにいるか」が同じ視覚ヒエラルキーで判る。 */
 .page-head .cat {
@@ -409,7 +406,7 @@
   flex-wrap: wrap;
 }
 
-/* P4-10: 次のログ候補 5 ボタン (個体カルテ hero 内) */
+/* 次のログ候補 5 ボタン (個体カルテ hero 内) */
 .quicklog-row {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
@@ -851,7 +848,7 @@
 /* Day-grouped timeline */
 .tl-day { margin-bottom: 26px; }
 
-/* P3-23: 月区切り見出し — タイムラインを走査中に「あ、4月に入った」
+/* 月区切り見出し — タイムラインを走査中に「あ、4月に入った」
  * とすぐ判るように、水平 rule + ラベルでセクションを区切る。 */
 .tl-month {
   display: flex;
@@ -888,7 +885,7 @@
   padding-top: 0;
 }
 
-/* P3-23: 週末 (土日) は day-head の背景を薄く色付け。
+/* 週末 (土日) は day-head の背景を薄く色付け。
  *   - 土: indigo 系薄め (カレンダーで土曜を青く塗る慣習)
  *   - 日: rose 系薄め (日曜を赤く塗る慣習)
  * 記録内容そのものは変えず、日付ヘッダ帯だけを淡く染めることで
@@ -935,10 +932,9 @@
   font-size: 12px;
   color: var(--ink-mute);
 }
-/* P4-23: date/time 列を mono 11px 固定幅 48px に。
+/* date/time 列を mono 11px 固定幅 48px に。
  *   - 複数日のタイムラインを縦に並べたときに時刻が "縦に一直線" で揃い、
- *     斜め読みしやすくなる。
- *   - 従来は 58px だったため、時刻が短い行でも右側がガタついていた。 */
+ *     斜め読みしやすくなる。 */
 .tl-row {
   display: grid;
   grid-template-columns: 48px 80px 1fr 54px;
@@ -950,7 +946,7 @@
 }
 .tl-row:hover { background: var(--bg-sunken); border-radius: var(--r-sm); }
 .tl-row .time {
-  /* P4-23: ガター幅 48px に対して mono 11px 右寄せで縦ラインを作る */
+  /* ガター幅 48px に対して mono 11px 右寄せで縦ラインを作る */
   width: 48px;
   font-family: var(--font-mono);
   font-size: 11px;
@@ -1050,7 +1046,7 @@
 .fab:hover { background: oklch(0.12 0.01 80); }
 
 /* ==========================================================================
-   P4-22: 交配記録モーダル (Bloodline)
+   交配記録モーダル (Bloodline)
    .sheet-backdrop / .sheet-dialog の上にレイアウト CSS のみを追加
    ========================================================================== */
 .mating-dialog {
@@ -1118,7 +1114,7 @@
   }
   .carte-hero .main-photo { height: 200px; }
 
-  /* P4-10: 電話サイズでは quicklog ボタンのアイコンを少し大きく、文字を詰める */
+  /* 電話サイズでは quicklog ボタンのアイコンを少し大きく、文字を詰める */
   .quicklog-row { gap: 4px; }
   .quicklog-btn { min-height: 60px; padding: 8px 2px; }
   .quicklog-btn .ico { font-size: 20px; }
@@ -1134,7 +1130,7 @@
   }
 
   .tl-row {
-    /* P4-23: モバイルも 48px 固定幅で揃える */
+    /* モバイルも 48px 固定幅で揃える */
     grid-template-columns: 48px 1fr auto;
   }
   .tl-row .time { grid-column: 1; width: 48px; }
@@ -1196,7 +1192,7 @@ article.card[data-template="product_feature"] > div + div > :last-child {
   margin-top: auto;
 }
 
-/* P4-12: サンプルデータ バナー (Shop 等のダッシュボードで偽数値の誤解を避ける) */
+/* サンプルデータ バナー (Shop 等のダッシュボードで偽数値の誤解を避ける) */
 .sample-banner {
   display: flex;
   align-items: flex-start;
@@ -1363,7 +1359,7 @@ article.card[data-template="product_feature"] > div + div > :last-child {
     -webkit-overflow-scrolling: touch;
   }
 
-  /* ===== タップ領域 (P1-9) =====
+  /* ===== タップ領域 =====
      モバイルで 36×36 以上を確保したいインタラクティブ要素。
      chip 本体はデコラティブ利用が多いため触らず、filter-row / type-picker /
      tabs / chip.interactive など明確に触れる要素だけ拡張する。 */
@@ -1506,7 +1502,7 @@ article.card[data-template="product_feature"] > div + div > :last-child {
   font: inherit;
   color: var(--ink);
 }
-/* P3-22: Market カードに data-state 左ボーダー色分け。
+/* Market カードに data-state 左ボーダー色分け。
  *   - ending-soon: rose (残り 24h 以内 → すぐ動かないと取り逃がす)
  *   - auction   : amber (オークション進行中)
  *   - buynow    : forest (即決のみ、落ち着いて買える)
@@ -1529,7 +1525,7 @@ article.card[data-template="product_feature"] > div + div > :last-child {
 .market-card[data-state="auction"]::before     { background: var(--accent-amber); }
 .market-card[data-state="buynow"]::before      { background: var(--accent-forest); }
 
-/* P3-20: data-gen / data-kind による左ストライプ色分け。
+/* data-gen / data-kind による左ストライプ色分け。
  * 各世代で色相を変えることで、フォーカスビュー / 俯瞰ツリーの
  * どちらで見ても「どの代の個体か」が一目で判る。
  *   F0  : amber  (野生ルーツ)
@@ -1595,7 +1591,7 @@ article.card[data-template="product_feature"] > div + div > :last-child {
   background: var(--bg);
 }
 
-/* P4-3: 故個体 — opacity ダウン + 右上に喪章バッジ (::after)。
+/* 故個体 — opacity ダウン + 右上に喪章バッジ (::after)。
  *   系図でスキャンしたとき "あの個体は退場済み" が即座に伝わるよう、
  *   透過で背景に退き、右上に小さな黒バッジ (✝) を掲げる。
  *   is-self (選択中) の場合は読みやすさ優先で不透明度を戻す。
@@ -1986,7 +1982,7 @@ article.card[data-template="product_feature"] > div + div > :last-child {
 }
 
 /* ==========================================================================
-   P4-4: /help/warranty 本実装
+   /help/warranty
    ========================================================================== */
 
 /* ---- 24h 返金フロー図 ------------------------------------------------------
@@ -2178,7 +2174,7 @@ article.card[data-template="product_feature"] > div + div > :last-child {
 }
 
 /* ==========================================================================
-   P4-5: ⌘K Command Palette
+   ⌘K Command Palette
    ========================================================================== */
 
 /* ---- Backdrop (モーダル背景) ------------------------------------------- */
@@ -2377,7 +2373,7 @@ article.card[data-template="product_feature"] > div + div > :last-child {
 }
 
 /* ==========================================================================
-   Next Actions (P4-9) — MyPage の "次のケア" カード列
+   Next Actions — MyPage の "次のケア" カード列
    3 列 × (最大) 2 行グリッド。モバイルでは 2 列 / 1 列。
    data-priority でサイド色を変え、超過 = rose、今日 = amber、soon = forest。
    ========================================================================== */
@@ -2446,7 +2442,7 @@ article.card[data-template="product_feature"] > div + div > :last-child {
 }
 
 /* ==========================================================================
-   P4-19: ? キーのショートカット一覧モーダル
+   ? キーのショートカット一覧モーダル
    構造は CommandPalette (.cmdp-*) を踏襲し、table 風の keys | label レイアウト
    ========================================================================== */
 .shelp-backdrop {
@@ -2644,7 +2640,7 @@ article.card[data-template="product_feature"] > div + div > :last-child {
   }
 }
 
-/* P4-24: MyPage KPI 数値に単位 data-unit を右肩に。
+/* MyPage KPI 数値に単位 data-unit を右肩に。
    - 大数字は serif 34px。
    - data-unit 属性を持つときだけ ::after で単位 (体 / 本 / 件 など) を
      右肩に小さく出す。単位は sans 11px で ink-mute 色、vertical-align で
@@ -2667,4 +2663,32 @@ article.card[data-template="product_feature"] > div + div > :last-child {
   margin-left: 3px;
   vertical-align: 0.6em;
   letter-spacing: 0;
+}
+
+/* MyPage の KPI strip。
+ * desktop は inline style の auto-fit grid のまま。mobile (≤640px) は
+ * 横スクロール (= swipe) に切り替え、7 枚 KPI を縦積みで 500px+ 食う問題を回避。
+ *
+ * 重要: 上の `.content > div[style*="grid-template-columns"]` グローバルルールが
+ * `grid-template-columns: 1fr !important` を当ててくるので、こちらも !important で打ち消す。
+ * scroll-snap-align で 1 カード単位でスナップし、スワイプ感を整える。 */
+@media (max-width: 640px) {
+  .content .kpi-strip {
+    display: flex !important;
+    grid-template-columns: none !important;
+    overflow-x: auto;
+    scroll-snap-type: x mandatory;
+    -webkit-overflow-scrolling: touch;
+    /* 親 .content の左右 padding (= 14px) を打ち消して、画面端まで scroll 領域を広げる */
+    margin: 0 -14px 24px;
+    padding: 0 14px 6px;
+    gap: 10px !important;
+    scrollbar-width: thin;
+  }
+  .content .kpi-strip > .card {
+    flex: 0 0 160px;
+    scroll-snap-align: start;
+    /* 縦サイズが揃うようにする (= 文字長で凸凹しない) */
+    min-height: 122px;
+  }
 }

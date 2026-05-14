@@ -1,6 +1,6 @@
 // Toast.tsx — トースト通知のポータル描画
 //
-// P2-7: store/toast を購読し、画面右下 (mobile は下中央) に積み上げて表示する。
+// store/toast を購読し、画面右下 (mobile は下中央) に積み上げて表示する。
 // アクセシビリティ: aria-live="polite" + role="status" で読み上げ対応。
 // モーション: transform: translateY で slide-up アニメーション。
 import { For, Show } from "solid-js";

@@ -24,7 +24,7 @@ interface BaseProps {
   onCancel: () => void;
   onConfirm: () => void;
   /** タイトル上書き。省略時は kind に応じて固定文言。
-   *  Phase 8 (連続単発登録モード) で「登録モードを終了しますか？」など差し替えるため。 */
+   *  連続単発登録モードで「登録モードを終了しますか？」など差し替えるため。 */
   title?: string;
   /** 確定ボタンのラベル上書き (デフォルト "終了する" / "OK")。 */
   confirmLabel?: string;

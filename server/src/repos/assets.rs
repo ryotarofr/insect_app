@@ -1,4 +1,4 @@
-//! assets テーブルへの永続化 (Week 2 / F4 / 画像アップロード)。
+//! assets テーブルへの永続化 (画像アップロード)。
 //!
 //! **責務**:
 //!   - sign 時の `insert_pending`: 署名 URL 発行のための行を作る (status='pending')
@@ -67,8 +67,8 @@ const ALLOWED_MIME_TYPES: &[&str] = &[
 /// アップロードサイズ上限 (= 10MB / migration の CHECK と一致)。
 pub const MAX_UPLOAD_BYTES: i64 = 10 * 1024 * 1024;
 
-/// target_kind の値域。
-const ALLOWED_TARGET_KINDS: &[&str] = &["specimen", "product", "specimen_log"];
+/// target_kind の値域 (= migration 0017 + 0023 の CHECK と一致)。
+const ALLOWED_TARGET_KINDS: &[&str] = &["specimen", "specimen_log", "listing"];
 
 /// `mime_type` が許可リストに含まれるかを判定する。
 pub fn is_allowed_mime(mime: &str) -> bool {
@@ -263,8 +263,10 @@ mod tests {
     #[test]
     fn allowed_target_kind_check() {
         assert!(is_allowed_target_kind("specimen"));
-        assert!(is_allowed_target_kind("product"));
         assert!(is_allowed_target_kind("specimen_log"));
+        assert!(is_allowed_target_kind("listing"));
+        // products は廃止されたので 'product' も拒否
+        assert!(!is_allowed_target_kind("product"));
         assert!(!is_allowed_target_kind("order"));
         assert!(!is_allowed_target_kind(""));
     }

@@ -1,4 +1,4 @@
-// FilterBar.tsx — Server-Driven 絞り込みチップ列のレンダラ (Phase 4)
+// FilterBar.tsx — Server-Driven 絞り込みチップ列のレンダラ
 //
 // 詳細: docs/sdui-three-layer-model-v5.md §5.6 (List shell + Filter)
 //
@@ -66,7 +66,7 @@ const baseChipStyle: Record<string, string> = {
 
 /** 単一チップ。`<a href={chip.href}>` で純ナビ + click event を記録。
  *
- * **Phase 5 (count badge)**:
+ * **count badge**:
  *   `chip.count` が `Some(n)` のとき、ラベル右側に件数を出す
  *   (例: `生体 (4)`)。これは「他軸を維持したまま、この chip に切り替えたら何件か」
  *   を表す faceted count。0 件チップも消さず `(0)` で表示し disabled は

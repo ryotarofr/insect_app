@@ -1,4 +1,4 @@
-// analytics.ts — SDUI Analytics クライアント buffer + flush (Phase 3)
+// analytics.ts — SDUI Analytics クライアント buffer + flush
 //
 // 詳細: docs/sdui-three-layer-model-v5.md §16 (Analytics 契約)
 //

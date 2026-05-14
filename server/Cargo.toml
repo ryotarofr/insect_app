@@ -51,6 +51,33 @@ sha2 = "0.10"
 hex = "0.4"
 subtle = "2.6"
 
+# Stripe Connect Express 統合 (Phase 7 / 出品者の売上受取口座)。
+#
+# v1.0.0-rc.5 から crate が完全に分割された:
+#   - `async-stripe`         : HTTP runtime + Client (= TLS feature をここで指定)
+#   - `async-stripe-connect` : Connect リソース型 (Account / AccountLink 等。
+#                              account / account_link feature で個別 opt-in)
+#   - `async-stripe-shared`  : 共通型 (= 自動的に depend される)
+#
+# - `rustls-tls-webpki-roots`: tokio + rustls + webpki-roots (openssl 不要、Windows で楽)
+# - `account` / `account_link`: Connect API のリソースを有効化
+#
+# **webhook event の deserialize は自前 struct (`ConnectEvent`)** なので、
+# webhook 用の crate は引き込まない。
+#
+# version は = で完全 pin (= rc 系は API が動く可能性がある)。GA 後に `^1.0` に緩める。
+async-stripe = { version = "=1.0.0-rc.5", default-features = false, features = [
+    "rustls-tls-webpki-roots",
+    # rustls v0.23 以降は crypto provider を明示する必要がある。
+    # `rustls-aws-lc-rs` (推奨) は Windows で C コンパイラを要求する場合があるため、
+    # pure Rust 寄りで Windows でも追加ツール不要な `rustls-ring` を採用。
+    "rustls-ring",
+] }
+async-stripe-connect = { version = "=1.0.0-rc.5", features = [
+    "account",
+    "account_link",
+] }
+
 # メール送信 (Sprint 2 / N1-N2 / email_outbox relay worker 経由)。
 # - dev / test: builder + StubTransport (= 送信内容を Vec<Message> に貯めるだけ)
 # - prod:       AsyncSmtpTransport で SendGrid / Mailgun の SMTP relay へ

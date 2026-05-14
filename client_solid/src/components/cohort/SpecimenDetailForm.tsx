@@ -2,7 +2,7 @@
 //
 // **配置**:
 //   - /specimens/new (単独個体登録) で標準モード
-//   - 個体化モードの「詳細設定 ▾」展開で compact モード (Phase 5 で予定)
+//   - 個体化モードの「詳細設定 ▾」展開で compact モード (予定)
 //
 // **セクション** (docs/cohort-implementation-plan.md §8.2):
 //   1. 基本情報: 個体ID (mono input)、名前、性別 (segmented)
@@ -32,12 +32,12 @@ interface Props {
   onSubmit: (draft: SpecimenDraft) => Promise<void>;
   /** キャンセル時 */
   onCancel: () => void;
-  /** Phase 8: submit 成功通知 (連続登録カウンタ等を上位で持つため)。
+  /** submit 成功通知 (連続登録カウンタ等を上位で持つため)。
    *  continueAfter=true なら「保存して続けて登録」、false なら「登録する」経由。 */
   onSubmitSuccess?: (continueAfter: boolean) => void;
-  /** Phase 8: 「キャンセル」ボタンのラベル上書き (連続セッション中は「登録を終了」に変えたい) */
+  /** 「キャンセル」ボタンのラベル上書き (連続セッション中は「登録を終了」に変えたい) */
   cancelLabel?: string;
-  /** Phase 8: フォーム上部に追加で描画したい要素 (ステータスバナー等)。 */
+  /** フォーム上部に追加で描画したい要素 (ステータスバナー等)。 */
   headerSlot?: JSX.Element;
 }
 
@@ -142,7 +142,7 @@ export const SpecimenDetailForm = (props: Props) => {
     setError(null);
     try {
       await props.onSubmit(buildDraft());
-      // Phase 8: 上位 (= /specimens/new) にカウンタ加算を通知。
+      // 上位 (= /specimens/new) にカウンタ加算を通知。
       props.onSubmitSuccess?.(continueAfter);
       if (continueAfter) {
         // コンテキスト保持 + リセット
@@ -185,7 +185,7 @@ export const SpecimenDetailForm = (props: Props) => {
         </div>
       </div>
 
-      {/* Phase 8: 連続登録モード時のステータスバナー差し込み口 */}
+      {/* 連続登録モード時のステータスバナー差し込み口 */}
       <Show when={props.headerSlot}>{props.headerSlot}</Show>
 
       {/* 基本情報 */}

@@ -1,20 +1,19 @@
-//! `/api/v1/cart` 系の SDUI Action エンドポイント (Phase 2.5 / Phase 9.E で DB 化)。
+//! `/api/v1/cart` 系の SDUI Action エンドポイント。
 //!
 //! - `POST   /api/v1/cart`                → 追加。`undoToken` を返す
 //! - `DELETE /api/v1/cart/items/{token}`  → 取消 (Toast の Undo ボタンが叩く)
 //! - `PATCH  /api/v1/cart/items/{token}`  → qty 直接書き換え (LineItem の +/- ボタン)
 //!
-//! **Phase 9.E (= 本 PR で完了)**:
-//!   - 旧 in-memory `cart_store` グローバル (= `Mutex<HashMap<token, entry>>`) を撤去。
-//!   - `repos::cart_items` 経由で DB / in-memory fallback どちらでも動く構成へ移行。
+//! **設計**:
+//!   - `repos::cart_items` 経由で DB / in-memory fallback どちらでも動く構成。
 //!   - cart は `SessionId` (= cookie middleware が発行する UUID) で分離される。
-//!   - **C2C pivot**: `listingId` (= listings.public_id) を INSERT 時に
+//!   - `listingId` (= listings.public_id) を INSERT 時に
 //!     `repos::listings::find_by_public_id` で UUID 解決し、`cart_items.listing_id` (UUID FK)
-//!     に格納する。旧 products テーブル / find_uuid_for_public_id 経路は廃止。
-//!   - `undoToken` は `cart_items.id` UUID の文字列表現 (= 旧 "undo_<n>" から変更)。
-//!     破壊的変更だが client 側はトークンを opaque に扱う設計なので問題なし。
+//!     に格納する。
+//!   - `undoToken` は `cart_items.id` UUID の文字列表現。
+//!     client 側はトークンを opaque に扱う設計。
 //!
-//! **将来 (Phase 9.E+)**:
+//! **将来**:
 //!   - 在庫ロック (decrement on add / restore on undo)
 //!   - login 時の session → user_id 引き継ぎ (= `repos::cart_items::promote_session_to_user`)
 
@@ -31,11 +30,8 @@ use crate::repos::{cart_items, listings};
 use crate::session::SessionId;
 use crate::state::AppState;
 
-/// snapshot_cart の戻り値型。`listing_id` は listings.public_id (= "L-0421") として保持し、
-/// checkout.rs の build ロジックを最小変更で動かす。
-///
-/// **C2C pivot**: 旧 product_id (= "p-hh-m-142") の意味で扱っていた `listing_id` フィールドを、
-/// listings.public_id の意味に再解釈。実 DB 列 (cart_items.listing_id) は listings(id) UUID。
+/// snapshot_cart の戻り値型。`listing_id` は listings.public_id (= "L-0421") として保持する。
+/// 実 DB 列 (cart_items.listing_id) は listings(id) UUID。
 #[derive(Debug, Clone)]
 pub(crate) struct CartEntry {
     pub listing_id: String,
@@ -51,7 +47,6 @@ pub(crate) struct CartEntry {
 /// 戻り値は `Vec<(token_hex, CartEntry)>` で id 昇順 (= deterministic / 表示順安定)。
 /// listing_uuid → listings.public_id の逆引きは `repos::listings::find_by_id` で 1 件ずつ解決。
 ///
-/// **C2C pivot**: 旧 `repos::products::find_by_id` 経由を listings::find_by_id に置換。
 /// listings が削除されたら ON DELETE CASCADE で cart_items も消えるため、_=>continue で skip。
 pub(crate) async fn snapshot_cart_for_session(
     state: &AppState,
@@ -140,7 +135,7 @@ pub async fn add_to_cart(
         return Err(AppError::BadRequest("qty must be >= 1".to_string()));
     }
 
-    // public_id → UUID 解決 (C2C pivot: listings.public_id 経由 / 旧 products lookup を置換)
+    // public_id → UUID 解決 (listings.public_id 経由)
     let listing_uuid = listings::find_by_public_id(state.db(), &req.listing_id)
         .await
         .map_err(|e| AppError::BadRequest(format!("listing lookup: {e}")))?
@@ -206,7 +201,7 @@ pub async fn delete_cart_item(
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// Phase 7: qty 直接指定 (LineItem の +/- ボタンが叩く)
+// qty 直接指定 (LineItem の +/- ボタンが叩く)
 // ──────────────────────────────────────────────────────────────────────
 
 #[derive(Debug, Clone, Deserialize, utoipa::ToSchema)]
@@ -309,7 +304,7 @@ mod tests {
         State(AppState::default())
     }
 
-    /// C2C pivot 後のテスト共通 setup: cart + listings の memory store を空にし、
+    /// テスト共通 setup: cart + listings の memory store を空にし、
     /// テストで使う listing public_id 群を 1 件ずつ in-memory に seed する。
     /// 各 add_to_cart 呼び出しは listings::find_by_public_id を引くため、
     /// 事前に該当 public_id を memory に入れておかないと "unknown listingId" で失敗する。
@@ -328,6 +323,8 @@ mod tests {
                     description: None,
                     is_auction: false,
                     starting_price_jpy: 1000,
+                    // 即決のみ出品では buyout は NULL 強制
+                    buyout_price_jpy: None,
                     ends_at: None,
                 },
             )
@@ -462,7 +459,7 @@ mod tests {
     async fn unknown_product_id_is_400() {
         let _g = lock_guard();
         reset_cart_for_test();
-        // C2C pivot: seed_listings を呼ばず空のままにする (= L-NOPE は存在しない)。
+        // seed_listings を呼ばず空のままにする (= L-NOPE は存在しない)。
         crate::repos::listings::reset_memory_for_test();
         match add_to_cart(
             st(),
@@ -500,7 +497,7 @@ mod tests {
 
     #[test]
     fn add_request_deserializes_camel_case() {
-        // C2C pivot: client は `listingId` (= listings.public_id) を送る。
+        // client は `listingId` (= listings.public_id) を送る。
         let json = r#"{"listingId":"L-1","qty":2}"#;
         let req: AddToCartRequest = serde_json::from_str(json).unwrap();
         assert_eq!(req.listing_id, "L-1");

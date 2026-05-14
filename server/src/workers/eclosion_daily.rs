@@ -1,4 +1,4 @@
-//! 羽化予測 daily job (Sprint 2 / N1 / PR N-4)
+//! 羽化予測 daily job
 //!
 //! **責務**:
 //!   - 毎日 03:00 JST に全 active specimen を scan し、`eclosion_eta` が **7 日以内** の

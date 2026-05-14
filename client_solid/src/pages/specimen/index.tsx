@@ -1,7 +1,7 @@
 // specimen/index.tsx — 個体カルテ詳細
 //
 // レイアウト: 1 Hero + 3 Tabs (概要 / ログ / 血統)
-// - V1〜V5 のバリアント切替は廃止。UXモックアップ (docs/ux-proposal-mockup.html) に準拠。
+// - V1〜V5 のバリアント切替は廃止。UX モックアップに準拠。
 // - 「＋ ログを追加」は QuickLogSheet を specimenId プリセットで起動。
 // - メモは SpecimenMemoCard (自動保存) に委譲。
 import { createMemo, createSignal, For, Show } from "solid-js";
@@ -15,8 +15,8 @@ import {
   type LogType,
   type Specimen,
 } from "../../api";
-// Phase 9.D サーバ連携: login 中なら所有個体・ログを **server を真値** として描画する。
-//   anonymous / 取得失敗時は従来 mock (= APP_DATA + listLogsBySpecimen) にフォールバック。
+// サーバ連携: login 中なら所有個体・ログを **server を真値** として描画する。
+//   anonymous / 取得失敗時は mock (= APP_DATA + listLogsBySpecimen) にフォールバック。
 import { isLoggedIn } from "../../store/auth";
 import {
   findServerSpecimenByPublicId,
@@ -91,7 +91,7 @@ const OverviewTab = (p: { s: Specimen }) => (
           <div class="u-eyebrow">
             ライフサイクル
           </div>
-          {/* P4-2: StageBar 横に終了バッジ */}
+          {/* StageBar 横に終了バッジ */}
           <LifeStatusBadge status={p.s.lifeStatus} detail={p.s.lifeStatusDetail} />
         </div>
         <StageBar stage={p.s.stage} progress={p.s.stageProgress} eta={p.s.eclosionInDays} />
@@ -218,7 +218,7 @@ export const SpecimenDetail = (props: SpecimenDetailProps) => {
     species: sv.speciesId,
   });
 
-  // mock fallback: 旧来の APP_DATA 経由。anonymous / 未取得 / cache miss で必ず使える。
+  // mock fallback: APP_DATA 経由。anonymous / 未取得 / cache miss で必ず使える。
   const fallbackMock = (): Specimen =>
     getSpecimen(props.specimenId) ?? listSpecimens()[0];
 
@@ -263,7 +263,7 @@ export const SpecimenDetail = (props: SpecimenDetailProps) => {
   void logsError; // 現状未使用 (= 後続で LogTab に banner を足す時に拾う)
   const [tab, setTab] = createSignal<Tab>("overview");
   const [sheetOpen, setSheetOpen] = createSignal(false);
-  // P4-10: どの種別で QuickLogSheet を開くか。5 ボタンショートカットで設定。
+  // どの種別で QuickLogSheet を開くか。5 ボタンショートカットで設定。
   const [quickLogType, setQuickLogType] = createSignal<LogType>("weight");
   const openQuickLog = (t: LogType) => {
     setQuickLogType(t);
@@ -314,9 +314,9 @@ export const SpecimenDetail = (props: SpecimenDetailProps) => {
           <div class="cat">個体カルテ · {s().id}</div>
           <h1>{s().name}</h1>
         </div>
-        {/* UX-2: 所有個体一覧の前後個体へめくる stepper。
+        {/* 所有個体一覧の前後個体へめくる stepper。
             先頭 / 末尾では disabled。disabled 状態が「端にいる」サインになる。
-            C2C pivot: stepper の右に「この個体を出品」ボタンを並置 (= 自分の active 個体のみ)。 */}
+            stepper の右に「この個体を出品」ボタンを並置 (= 自分の active 個体のみ)。 */}
         <div class="page-actions head-stepper" aria-label="個体ナビゲーション">
           <button
             type="button"
@@ -338,7 +338,7 @@ export const SpecimenDetail = (props: SpecimenDetailProps) => {
           >
             次 →
           </button>
-          {/* C2C pivot: 出品エントリ。
+          {/* 出品エントリ。
                 - serverView() がある = login 中 + 自分の所有個体
                 - lifeStatus === "active" のみ (= 既に死亡 / 譲渡 / 脱走 した個体は出品不可) */}
           <Show
@@ -422,7 +422,7 @@ export const SpecimenDetail = (props: SpecimenDetailProps) => {
             </div>
           </div>
 
-          {/* P4-10: 次のログ候補 5 ボタン (体重/給餌/観察/脱皮/マット) */}
+          {/* 次のログ候補 5 ボタン (体重/給餌/観察/脱皮/マット) */}
           <div class="quicklog-row" role="group" aria-label="記録の追加">
             <For each={LOG_TYPES}>
               {(t) => (
@@ -476,7 +476,7 @@ export const SpecimenDetail = (props: SpecimenDetailProps) => {
         <BloodlineTab s={s()} setRoute={props.setRoute} />
       </Show>
 
-      {/* Quick Log Sheet (P4-10: initialType で 5 ボタン起動に対応) */}
+      {/* Quick Log Sheet (initialType で 5 ボタン起動に対応) */}
       <QuickLogSheet
         open={sheetOpen()}
         onClose={() => setSheetOpen(false)}

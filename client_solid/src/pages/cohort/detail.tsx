@@ -5,7 +5,7 @@
 //   - KPI 行 (4 カード): 生存数 / 経過日数 / ステージ / 想定羽化
 //   - タブ: 概要 / ログ / 由来
 //   - 概要: 直近の群ログ + (将来) 推定ロット成績
-//   - ログ: 詳細タイムライン (placeholder, Phase 4 で本実装)
+//   - ログ: 詳細タイムライン (placeholder)
 //   - 由来: 親交配 / 由来種別 (placeholder)
 //
 // **active / archived 表示分岐**:
@@ -132,7 +132,7 @@ export const CohortDetailPage = (props: Props) => {
               <div class="page-actions">
                 <CohortStatusBadge archivedAt={d().archivedAt} />
                 {/* archived 時の「個体一覧」CTA は /specimens 一覧ページが未実装のため
-                    Phase 8 まで保留。下の KPI 行「個体化済」で件数は確認できる。 */}
+                    保留。下の KPI 行「個体化済」で件数は確認できる。 */}
                 <Show when={!d().archivedAt}>
                   <button class="btn" type="button">
                     一括ログ

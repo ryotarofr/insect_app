@@ -1,4 +1,4 @@
-//! Cookie ベースの session_id middleware (Phase 9.E / 9.H で Argon2 化 / 設計書 §3.3 + §8.2)
+//! Cookie ベースの session_id middleware (設計書 §3.3 + §8.2)
 //!
 //! **責務**:
 //!   - 各リクエストの `Cookie: kochu_session=<id>:<secret>` を読み取り、`SessionToken` に
@@ -51,7 +51,7 @@ pub const SESSION_COOKIE_NAME: &str = "kochu_session";
 
 /// `axum::middleware::from_fn_with_state` に渡す async 関数。
 ///
-/// 仕組み (Phase 9.H 以降):
+/// 仕組み:
 ///   1. リクエストの Cookie ヘッダを読み、`kochu_session=<id>:<secret>` を parse
 ///   2. parse 成功 → `user_sessions::verify(pool, &token)` で Argon2 検証
 ///      - 検証 OK: 既存 session として再利用 (= is_new=false)
@@ -155,7 +155,7 @@ fn cookie_secure_enabled() -> bool {
 }
 
 // ──────────────────────────────────────────────────────────────────────
-// CSRF 保護 (= Origin ヘッダチェック / Phase 9.x hardening)
+// CSRF 保護 (= Origin ヘッダチェック)
 // ──────────────────────────────────────────────────────────────────────
 //
 // 状態変更メソッド (POST / PATCH / DELETE / PUT) に対して、リクエストの `Origin`
@@ -187,6 +187,10 @@ pub async fn csrf_middleware(req: Request, next: Next) -> Response {
     }
     // ── stripe webhook は HMAC で別経路の検証 → skip ──────────────
     if path == "/api/v1/stripe/webhook" {
+        return next.run(req).await;
+    }
+    // Stripe Connect webhook も同様に HMAC 経路で検証するため skip。
+    if path == "/api/v1/stripe/connect_webhook" {
         return next.run(req).await;
     }
     // ── env 未設定 → scaffolding mode (= dev) で skip ──────────────
@@ -221,7 +225,7 @@ pub async fn csrf_middleware(req: Request, next: Next) -> Response {
 /// `Cookie` ヘッダ文字列から `kochu_session=<id>:<secret>` を取り出して `SessionToken`
 /// に parse する。
 ///
-/// 仕様 (Phase 9.H 以降):
+/// 仕様:
 ///   - 複数 cookie は `;` 区切り (例: `foo=bar; kochu_session=<id>:<secret>; baz=qux`)
 ///   - 値は `<UUID-36>:<hex-64>` 形式。`SessionToken::parse` で長さ / 文字種を厳格チェック。
 ///   - 旧形式 (= UUID 単独) cookie は **silent reject** されて、middleware が新規発行する。

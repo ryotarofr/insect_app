@@ -1,4 +1,4 @@
-/* utilities.css — P4-18: 頻出 inline style の 80% を置換するユーティリティクラス群。
+/* utilities.css — 頻出 inline style を置換するユーティリティクラス群。
  *
  * 設計方針:
  *   - Tailwind 風だが、KOCHŪ の token (var(--*)) を活用。
@@ -100,7 +100,7 @@
 .u-text-center { text-align: center; }
 .u-text-right { text-align: right; }
 
-/* P3-16 で統一した「ラベル見出し」スタイル。inline-style 28 箇所を置換。
+/* 「ラベル見出し」スタイル。
  *   mono + 10px + ink-faint + letter-spacing 0.12em。 */
 .u-eyebrow {
   font-family: var(--font-mono);

@@ -1,9 +1,9 @@
-//! Stripe Checkout Provider 抽象 (Phase 9.1 / Stripe1)
+//! Stripe Checkout Provider 抽象
 //!
 //! **責務**:
 //!   - CheckoutSession を作成して URL を返す trait `CheckoutProvider`
 //!   - Mock 実装 `MockCheckoutProvider` (= async-stripe 不要、本番 key 不要)
-//!   - 将来 Phase 9.2 で `LiveCheckoutProvider` (async-stripe 利用) を追加する
+//!   - 将来 `LiveCheckoutProvider` (async-stripe 利用) を追加する
 //!     scaffolding。env `STRIPE_PROVIDER` (mock | live) で切り替え。
 //!
 //! **設計判断**:
@@ -14,7 +14,7 @@
 //!     Stripe LineItem に変換する。
 //!   - 失敗時は `CheckoutError` で正規化。handler 側で 400 / 502 にマップ。
 //!
-//! **将来 (Phase 9.2)**:
+//! **将来**:
 //!   - `async_stripe` crate 追加
 //!   - `LiveCheckoutProvider::create_session` で実際に Stripe API を叩く
 //!   - Webhook 検証 (= `Stripe-Signature` header の HMAC) は別 module
@@ -73,8 +73,8 @@ pub enum CheckoutError {
 #[derive(Debug, Clone)]
 pub enum CheckoutProvider {
     Mock(MockCheckoutProvider),
-    /// async-stripe 実装は Phase 9.2 で追加。現状は scaffolding (= unimplemented)。
-    Live, // LiveCheckoutProvider (Phase 9.2)
+    /// async-stripe 実装は将来追加。現状は scaffolding (= unimplemented)。
+    Live, // LiveCheckoutProvider
 }
 
 impl CheckoutProvider {

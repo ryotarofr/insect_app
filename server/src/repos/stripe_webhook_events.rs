@@ -1,4 +1,4 @@
-//! stripe_webhook_events への永続化 (Phase 9.1 hardening / event_id 冪等性)
+//! stripe_webhook_events への永続化 (event_id 冪等性)
 //!
 //! **責務**:
 //!   - INSERT ON CONFLICT DO NOTHING RETURNING で「初回処理かどうか」を bool で返す
@@ -63,7 +63,7 @@ pub async fn record_if_new(
 ///
 /// **注意**: 真のトランザクション境界が無いので、record_if_new と本関数の間で
 /// 同じ event の retry が来ると 2 重処理になる窓が残る。完全解決には
-/// `&mut PgConnection` を取り回す TX 統一が必要 (= 別 PR で対応)。
+/// `&mut PgConnection` を取り回す TX 統一が必要。
 pub async fn delete_by_id(
     pool: Option<&PgPool>,
     event_id: &str,

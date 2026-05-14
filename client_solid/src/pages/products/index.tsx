@@ -1,10 +1,8 @@
-// pages/products/index.tsx — C2C 出品一覧 (旧 B2C 商品一覧から repurpose)
+// pages/products/index.tsx — C2C 出品一覧
 //
-// **Pivot 後の役割**:
-//   B2C 「ショップが売っている商品」一覧から、C2C「ユーザが出品した個体」一覧へ。
+// **役割**:
+//   C2C「ユーザが出品した個体」一覧。
 //   /products URL は維持 (= ブックマーク救済)、表示内容は serverListings() に切替。
-//
-//   旧 SDUI cards/products grid + Hero + BloodlineSummary は廃止。
 //
 // **データ源**:
 //   store/listings.ts::serverListings() (= GET /api/v1/listings).
@@ -77,7 +75,7 @@ export const ProductsList = (_props: ProductsListProps) => {
         </div>
       </div>
 
-      {/* 認証バッジ説明 (= 旧 MarketBrowse 上部のヒント) */}
+      {/* 認証バッジ説明 */}
       <div
         class="card"
         style={{
@@ -183,7 +181,7 @@ export const ProductDetail = (props: ProductDetailProps) => {
     (l.currentPriceJpy ?? l.startingPriceJpy) + 1;
 
   // 自分が出品者なら CTA を「出品取消」だけにする。
-  // C2C pivot: AuthUser.userId は server users.id (UUID 文字列) と一致する。
+  // AuthUser.userId は server users.id (UUID 文字列) と一致する。
   const isOwner = (l: ListingViewWithCounts): boolean => {
     const u = currentUser();
     return !!u && u.userId === l.sellerUserId;

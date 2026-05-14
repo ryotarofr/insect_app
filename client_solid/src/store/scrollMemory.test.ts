@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   saveScroll,
   consumeScroll,
-  peekScroll,
   _clearScrollMemory,
 } from "./scrollMemory";
 
@@ -14,7 +13,6 @@ beforeEach(() => {
 describe("scrollMemory", () => {
   it("returns null for unknown pathname", () => {
     expect(consumeScroll("/unknown")).toBeNull();
-    expect(peekScroll("/unknown")).toBeNull();
   });
 
   it("saves and consumes a value", () => {
@@ -26,13 +24,6 @@ describe("scrollMemory", () => {
     saveScroll("/", 500);
     expect(consumeScroll("/")).toBe(500);
     expect(consumeScroll("/")).toBeNull();
-  });
-
-  it("peek does not delete the entry", () => {
-    saveScroll("/", 500);
-    expect(peekScroll("/")).toBe(500);
-    expect(peekScroll("/")).toBe(500);
-    expect(consumeScroll("/")).toBe(500);
   });
 
   it("save overwrites previous value for same pathname", () => {

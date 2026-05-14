@@ -1,4 +1,4 @@
-//! bids (入札履歴) への永続化 (Phase 9.E / DB設計書 v2 §3.7)
+//! bids (入札履歴) への永続化 (DB設計書 v2 §3.7)
 //!
 //! **責務 (本 PR / skeleton)**:
 //!   - sqlx で bids テーブルへの INSERT / SELECT

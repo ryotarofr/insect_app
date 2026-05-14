@@ -4,7 +4,6 @@
 // バックエンド化や localStorage 永続化に切り替えるときは、このディレクトリの
 // 各 fetcher の中身を差し替えるだけで、ページ/コンポーネント側は変更不要。
 //
-// **現在 user 系 API は廃止**: `getCurrentUser` mock は削除済み。
 // 現在の login user は `store/auth.ts::currentUser()` を使うこと (= /api/v1/auth/me 経由)。
 
 export { listProducts, getProduct, productExists } from "./products";
@@ -20,14 +19,12 @@ export {
 export {
   listLogs,
   listLogsBySpecimen,
-  listLogsByType,
   addLog,
   type NewLogInput,
 } from "./logs";
 export { listMarketListings } from "./market";
-// **shop 系 API は廃止**: `getShopStats` / `listOrders` mock は削除済み。
-// shop admin (= Shop.tsx) は page-local sample で動作中。Phase 7 で実 admin API
-// (`GET /api/v1/shop/orders` 等) に置き換え予定。
+// shop admin (= Shop.tsx) は page-local sample で動作中。
+// TODO: 実 admin API (`GET /api/v1/shop/orders` 等) に置き換え予定。
 export { getUserMetrics, type UserMetrics } from "./metrics";
 export {
   getUpcomingActions,
@@ -37,7 +34,7 @@ export {
 export { getAuditLog, type AuditLogEntry } from "./audit";
 
 // 型も api/ 経由で参照できるように re-export しておく。
-// PR #1 で User mock 廃止済 → 型 re-export も削除。login user は store/auth::AuthUser を使う。
+// login user は store/auth::AuthUser を使う。
 export type {
   Specimen,
   Product,

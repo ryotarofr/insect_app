@@ -1,4 +1,4 @@
-//! cart_items への永続化 (Phase 9.E / DB設計書 v2 §3.7)
+//! cart_items への永続化 (DB設計書 v2 §3.7)
 //!
 //! **責務 (本 PR / skeleton)**:
 //!   - sqlx で cart_items テーブルから 1 ユーザの cart 行を取得・追加・更新・削除

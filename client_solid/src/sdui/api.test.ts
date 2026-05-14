@@ -1,4 +1,4 @@
-// api.test.ts — fetchProductCard / fetchProductCardList の単体テスト
+// api.test.ts — fetchProductCard / fetchProductList の単体テスト
 //
 // **戦略**:
 //   global fetch を vi.stubGlobal で差し替え、HTTP レイヤを完全コントロールする。
@@ -16,7 +16,6 @@ import {
   deleteCartItem,
   fetchCartCard,
   fetchProductCard,
-  fetchProductCardList,
   fetchProductDetailCard,
   fetchProductList,
   patchCartItemQty,
@@ -434,40 +433,6 @@ describe("fetchProductList (Phase 4)", () => {
       vi.fn().mockResolvedValue(new Response("nope", { status: 404 })),
     );
     await expect(fetchProductList()).rejects.toBeInstanceOf(SduiFetchError);
-  });
-});
-
-describe("fetchProductCardList (deprecated wrapper)", () => {
-  // 後方互換ラッパ。中身は `fetchProductList().cards` を返す。
-  it("ProductListResponse から cards を取り出して返す", async () => {
-    const cards = [
-      {
-        template: "product_feature",
-        id: "a",
-        regions: { header: [], media: [], body: [], meta: [], footer: [] },
-      },
-      {
-        template: "product_feature",
-        id: "b",
-        regions: { header: [], media: [], body: [], meta: [], footer: [] },
-      },
-    ];
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockImplementation(okJsonFactory({ cards })),
-    );
-
-    const result = await fetchProductCardList();
-    expect(result).toHaveLength(2);
-    expect(result[0]?.id).toBe("a");
-  });
-
-  it("空 cards → [] を返す", async () => {
-    vi.stubGlobal(
-      "fetch",
-      vi.fn().mockImplementation(okJsonFactory({ cards: [] })),
-    );
-    await expect(fetchProductCardList()).resolves.toEqual([]);
   });
 });
 

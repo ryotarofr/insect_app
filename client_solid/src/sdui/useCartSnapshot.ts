@@ -1,4 +1,4 @@
-// useCartSnapshot.ts — cart card のレース耐性を持つスナップショット (Phase 9 前 / M6)
+// useCartSnapshot.ts — cart card のレース耐性を持つスナップショット
 //
 // 詳細: docs/sdui-three-layer-model-v6.md §11.8.1 規律 2 (request_seq による最新勝ち merge)
 //

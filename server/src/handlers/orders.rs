@@ -1,4 +1,4 @@
-//! `/api/v1/orders/*` (Phase 9.G / login user の注文履歴 API)
+//! `/api/v1/orders/*` (login user の注文履歴 API)
 //!
 //! - `GET /api/v1/orders/me` → 自分の注文一覧 (= login 必須)
 //!
@@ -14,18 +14,11 @@ use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use crate::error::AppError;
+use crate::handlers::require_user_id;
 use crate::repos::{orders, user_sessions};
 use crate::repos::orders::OrderRole;
 use crate::session::SessionId;
 use crate::state::AppState;
-
-async fn require_user_id(state: &AppState, session_id: Uuid) -> Result<Uuid, AppError> {
-    let session = user_sessions::find_by_id(state.db(), session_id)
-        .await
-        .map_err(|e| AppError::BadRequest(format!("session lookup: {e}")))?
-        .ok_or(AppError::Unauthorized)?;
-    session.user_id.ok_or(AppError::Unauthorized)
-}
 
 #[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
@@ -37,10 +30,10 @@ pub struct OrderView {
     pub shipping_jpy: Option<i64>,
     pub stripe_session_id: Option<String>,
     pub stripe_payment_intent_id: Option<String>,
-    /// Phase 4: 出品者 (= listings.seller_user_id 経由で paid 遷移時に書く)。
+    /// 出品者 (= listings.seller_user_id 経由で paid 遷移時に書く)。
     /// FE は role=seller タブで表示時に「あなたが売り手の取引」を識別するのに使う。
     pub seller_user_id: Option<String>,
-    /// Phase 4: 買い手 (= orders.user_id 由来)。anonymous 注文で None。
+    /// 買い手 (= orders.user_id 由来)。anonymous 注文で None。
     /// 既存の `session_id` だけでは role=buyer 判定が UI 側で難しかったため明示する。
     pub buyer_user_id: Option<String>,
     pub created_at: DateTime<Utc>,
@@ -65,7 +58,7 @@ impl From<orders::OrderRecord> for OrderView {
     }
 }
 
-/// Phase 4: GET /api/v1/orders/me?role=... の query parameters。
+/// GET /api/v1/orders/me?role=... の query parameters。
 ///
 /// `role`:
 /// - `buyer` (= 既定): 自分が買った注文 (= orders.user_id = me)
@@ -79,7 +72,7 @@ pub struct ListMyOrdersParams {
 
 /// `GET /api/v1/orders/me?role=buyer|seller|all` — 自分の取引履歴 (= created_at 降順)。
 ///
-/// **Phase 4 / 取引履歴の販売側統合**:
+/// **取引履歴の販売側統合**:
 ///   - `role=buyer` (= 既定): 自分が買った注文 (= orders.user_id = me)
 ///   - `role=seller`: 自分が売った注文 (= orders.seller_user_id = me、paid 遷移済のみ)
 ///   - `role=all`: 上記の OR (= 取引履歴の merged view 用)
@@ -122,7 +115,6 @@ pub async fn list_my_orders(
 #[derive(Debug, Clone, Serialize, utoipa::ToSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct OrderLineView {
-    /// C2C pivot: 旧 product_id / product_uuid を listing_id に置換。
     /// listings(id) UUID を文字列で返す (= ON DELETE SET NULL のため Option)。
     pub listing_id: Option<String>,
     pub title: String,
@@ -259,7 +251,7 @@ mod tests {
             amount_jpy: amount,
             shipping_jpy: Some(1800),
             line_items: vec![orders::OrderLineInsert {
-                listing_id: None, // C2C pivot test fixture: listing 解決スキップ
+                listing_id: None, // test fixture: listing 解決スキップ
                 title: "Test".to_string(),
                 unit_price_jpy: amount,
                 qty: 1,
@@ -292,7 +284,8 @@ mod tests {
         // anonymous (= user_id None) もダミーで 1 件
         let _ = orders::insert_order(None, order_req(None, 7777)).await.unwrap();
 
-        let res = list_my_orders(st(), ext(session_a)).await.unwrap();
+        // role 未指定 = buyer 扱い (= 既存挙動互換)
+        let res = list_my_orders(st(), ext(session_a), role_q(None)).await.unwrap();
         assert_eq!(res.0.len(), 2, "user_a の注文は 2 件");
         // created_at が同じになる可能性があるので amount で粗くチェック
         assert!(res.0.iter().all(|o| o.amount_jpy == 1000 || o.amount_jpy == 5000));
@@ -306,7 +299,7 @@ mod tests {
         let session = Uuid::new_v4();
         user_sessions::create_anonymous_for_test(None, session).await.unwrap();
         // attach_user していない → 401
-        match list_my_orders(st(), ext(session)).await {
+        match list_my_orders(st(), ext(session), role_q(None)).await {
             Err(AppError::Unauthorized) => {}
             other => panic!("expected Unauthorized, got {other:?}"),
         }
@@ -317,8 +310,72 @@ mod tests {
         let _g = lock_all();
         reset_all();
         let (session, _) = login_session().await;
-        let res = list_my_orders(st(), ext(session)).await.unwrap();
+        let res = list_my_orders(st(), ext(session), role_q(None)).await.unwrap();
         assert!(res.0.is_empty());
+    }
+
+    // ── ?role=seller / role=all のフィルタ ────────────────────
+
+    /// 自分が seller になっている注文だけ返る (= 売却側履歴)。
+    #[tokio::test]
+    async fn list_my_orders_role_seller_returns_seller_orders_only() {
+        let _g = lock_all();
+        reset_all();
+
+        let (session_a, user_a) = login_session().await;
+        let (_session_b, user_b) = login_session().await;
+
+        // user_a が買った注文 (= role=buyer 用)
+        let _ = orders::insert_order(None, order_req(Some(user_a), 1000)).await.unwrap();
+
+        // user_b が売って user_a が買った注文 (= seller=user_b)
+        let rec = orders::insert_order(None, order_req(Some(user_a), 2000)).await.unwrap();
+        orders::update_seller_user_id_if_null(None, rec.id, user_b)
+            .await
+            .unwrap();
+
+        // user_a が売った注文 (= role=seller 用)
+        let rec2 = orders::insert_order(None, order_req(Some(user_b), 3000)).await.unwrap();
+        orders::update_seller_user_id_if_null(None, rec2.id, user_a)
+            .await
+            .unwrap();
+
+        // role=buyer → user_a が買った 2 件 (1000 / 2000)
+        let buyer = list_my_orders(st(), ext(session_a), role_q(Some("buyer")))
+            .await
+            .unwrap();
+        assert_eq!(buyer.0.len(), 2);
+
+        // role=seller → user_a が売った 1 件 (3000)
+        let seller = list_my_orders(st(), ext(session_a), role_q(Some("seller")))
+            .await
+            .unwrap();
+        assert_eq!(seller.0.len(), 1);
+        assert_eq!(seller.0[0].amount_jpy, 3000);
+        assert_eq!(seller.0[0].seller_user_id.as_deref(), Some(user_a.to_string().as_str()));
+
+        // role=all → user_a が買った or 売った全 3 件
+        let all = list_my_orders(st(), ext(session_a), role_q(Some("all")))
+            .await
+            .unwrap();
+        assert_eq!(all.0.len(), 3);
+    }
+
+    #[tokio::test]
+    async fn list_my_orders_rejects_invalid_role() {
+        let _g = lock_all();
+        reset_all();
+        let (session, _) = login_session().await;
+        match list_my_orders(st(), ext(session), role_q(Some("weird"))).await {
+            Err(AppError::BadRequest(msg)) => assert!(msg.contains("invalid role")),
+            other => panic!("expected BadRequest, got {other:?}"),
+        }
+    }
+
+    fn role_q(role: Option<&str>) -> Query<ListMyOrdersParams> {
+        Query(ListMyOrdersParams {
+            role: role.map(str::to_string),
+        })
     }
 
     // ── /orders/{id} 詳細 ─────────────────────────────────────────
@@ -336,7 +393,7 @@ mod tests {
         assert_eq!(res.0.order.id, rec.id.to_string());
         assert_eq!(res.0.order.amount_jpy, 5000);
         assert_eq!(res.0.line_items.len(), 1);
-        // C2C pivot: 旧 product_id 検証は廃止 (= test fixture では listing_id=None で投入)。
+        // test fixture では listing_id=None で投入。
         assert!(res.0.line_items[0].listing_id.is_none());
         assert_eq!(res.0.line_items[0].title, "Test");
         assert_eq!(res.0.line_items[0].subtotal_jpy, 5000);

@@ -1,15 +1,14 @@
 // QuickLogSheet.tsx — 個体カルテ／FABから起動する「記録追加」モーダル
 // 対象個体は props.specimenId で事前プリセット可能。未指定の場合は select で変更可。
 //
-// P2-9: open 時に focusTrap をインストール。閉じたらトリガー要素にフォーカスを戻す。
+// open 時に focusTrap をインストール。閉じたらトリガー要素にフォーカスを戻す。
 import { createEffect, createSignal, For, Show, onMount, onCleanup } from "solid-js";
 import { listSpecimens, type LogType } from "../../api";
 import { LOG_TYPES, buildLogTitle } from "./types";
 import { installFocusTrap, type FocusTrapHandle } from "../../utils/focusTrap";
 
-// Phase 9.D 連携: server-backed specimen が target の時は POST /specimens/{id}/logs
+// server-backed specimen が target の時は POST /specimens/{id}/logs
 //   を叩いて、終わったら飼育ログ cache を refresh する。
-// PR #6: anonymous / cache miss の mock fallback (= localStorage) は廃止。
 //   未 login or cache miss は inline error で「ログインしてください」を出す。
 import { SduiFetchError, postSpecimenLog } from "../../sdui/api";
 import { isLoggedIn } from "../../store/auth";
@@ -22,7 +21,7 @@ interface QuickLogSheetProps {
   onClose: () => void;
   /** 指定すると対象個体を固定 (個体カルテから起動した場合) */
   specimenId?: string;
-  /** P4-10: 初期選択される LogType。個体カルテの 5 ボタンショートカットから
+  /** 初期選択される LogType。個体カルテの 5 ボタンショートカットから
    *  "体重" / "給餌" など、目的別に開くために使う。 */
   initialType?: LogType;
   /** 保存成功時のコールバック */
@@ -43,7 +42,7 @@ export const QuickLogSheet = (p: QuickLogSheetProps) => {
     if (p.specimenId) setTarget(p.specimenId);
   });
 
-  // P4-10: 開いた瞬間に props.initialType を反映する。
+  // 開いた瞬間に props.initialType を反映する。
   //   - initialType が無ければ weight にリセット。
   //   - open の false → true 遷移でのみ走る (閉じている間の型変更は無視)。
   createEffect(() => {
@@ -134,7 +133,7 @@ export const QuickLogSheet = (p: QuickLogSheetProps) => {
     const sv = isLoggedIn() ? findServerSpecimenByPublicId(targetId) : undefined;
 
     if (!sv) {
-      // PR #6: anonymous / cache miss は localStorage fallback を廃止 → 明示エラー。
+      // anonymous / cache miss は localStorage fallback せず明示エラー。
       setError(
         isLoggedIn()
           ? "個体情報がまだ読み込まれていません。少し待って再試行してください。"
@@ -294,7 +293,7 @@ export const QuickLogSheet = (p: QuickLogSheetProps) => {
                 class="input mono"
                 type="number"
                 step="0.1"
-                /* P4-14: 数字キーパッド (iOS/Android 共通) に小数点ドットを出す。
+                /* 数字キーパッド (iOS/Android 共通) に小数点ドットを出す。
                  * inputmode="decimal" は type="number" と併用可能で、
                  * iOS Safari で "." を含むテンキーが出る。 */
                 inputmode="decimal"

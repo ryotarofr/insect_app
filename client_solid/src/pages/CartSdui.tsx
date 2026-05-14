@@ -1,4 +1,4 @@
-// CartSdui.tsx — Phase 7 の SDUI 駆動カート画面
+// CartSdui.tsx — SDUI 駆動カート画面
 //
 // 詳細: docs/sdui-three-layer-model-v5.md §11 (移行戦略 / Strangler Fig)
 //
@@ -7,15 +7,14 @@
 //   2. CartReloadProvider に refetch を流す
 //   3. CardRenderer に渡して描画
 //   4. 失敗時はエラー表示、ロード中はスピナ
-//   5. (Phase 3) 血統リマインダ <CartBloodlineReminder /> をカード直下に重ねる
 //
-// **既存 `/cart` (Cart.tsx) との関係 (Strangler Fig 段階 1)**:
-//   - 旧 Cart.tsx は shipping form / checkout / Stripe 決済を内包しており、
-//     SDUI 側は「カート明細 + 集計 + CTA」だけが対象。Phase 7 では新 route `/cart-sdui`
+// **既存 `/cart` (Cart.tsx) との関係 (Strangler Fig)**:
+//   - Cart.tsx は shipping form / checkout / Stripe 決済を内包しており、
+//     SDUI 側は「カート明細 + 集計 + CTA」だけが対象。新 route `/cart-sdui`
 //     を立て、本ページで SDUI 表示の検証 + 既存 store/cart と並行運用する。
-//   - shipping / checkout は Phase 7+ で SDUI 化を検討 (= 段階移行)。
+//   - shipping / checkout は段階的に SDUI 化を検討する。
 //
-// **再 fetch 戦略 (M6 で seq-tagged 化)**:
+// **再 fetch 戦略 (seq-tagged 化)**:
 //   LineItem の +/- や 削除 / FormField の入力 / ShippingMethodPicker の選択 →
 //   サーバ側 store が変わる → 再 fetch して サーバの真値を再描画。
 //
@@ -30,7 +29,6 @@ import { CardRenderer } from "../sdui/CardRenderer";
 import { CartReloadProvider } from "../sdui/CartContext";
 import { SduiFetchError } from "../sdui/api";
 import { useCartSnapshot } from "../sdui/useCartSnapshot";
-// C2C pivot: B2C 商品の血統リマインダは廃止 (= CartBloodlineReminder 削除済み)。
 
 const ErrorView = (props: { err: unknown }) => {
   const message = () => {
@@ -83,8 +81,6 @@ export const CartSduiPage = () => {
                 {(c) => (
                   <CartReloadProvider value={snap.reload}>
                     <CardRenderer card={c()} />
-                    {/* C2C pivot: B2C 血統リマインダは廃止。出品 (listing) の血統情報は
-                        listing 詳細ページで個別に表示する設計 (= 後続 PR)。 */}
                   </CartReloadProvider>
                 )}
               </Show>

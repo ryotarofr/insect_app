@@ -12,7 +12,6 @@ import {
   listEclosionForecasts,
   listLogs,
   listLogsBySpecimen,
-  listLogsByType,
   listMarketListings,
   getUpcomingActions,
   getAuditLog,
@@ -275,13 +274,6 @@ describe("api/logs", () => {
 
   it("listLogsBySpecimen returns [] for unknown specimen", () => {
     expect(listLogsBySpecimen("#NONEXISTENT")).toEqual([]);
-  });
-
-  it("listLogsByType filters by log type", () => {
-    const weight = listLogsByType("weight");
-    for (const l of weight) {
-      expect(l.type).toBe("weight");
-    }
   });
 });
 

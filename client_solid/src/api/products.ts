@@ -1,14 +1,13 @@
 // api/products.ts — 商品 (= 出品) 取得 adapter
 //
-// **C2C pivot 後の役割**:
-//   旧 B2C「商品マスタ」(= store/products.ts) は廃止。
+// **役割**:
 //   `Product` shape を要求する既存 caller (= App.tsx の breadcrumb,
 //   CommandPalette の検索) のために、`serverListings()` から最小フィールドだけ
-//   `Product` 形に正規化して返す薄い adapter として残す。
+//   `Product` 形に正規化して返す薄い adapter。
 //
 // **shape 正規化** (= ListingViewWithCounts → Product):
 //   - id           ← publicId
-//   - kind         ← "生体" 固定 (= C2C pivot 後の出品は全て生体)
+//   - kind         ← "生体" 固定 (= 出品は全て生体)
 //   - title        ← title
 //   - sci          ← null (= server には学名フィールド無し)
 //   - price        ← currentPriceJpy ?? startingPriceJpy

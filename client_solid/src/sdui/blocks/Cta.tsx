@@ -1,6 +1,6 @@
 // Cta.tsx — Block.type === "cta" のレンダラ
 //
-// 詳細: docs/sdui-three-layer-model-v5.md §4.3 (CTA) / §15 (Phase 2.5 Action)
+// 詳細: docs/sdui-three-layer-model-v5.md §4.3 (CTA) / §15 (Action)
 //
 // **intent と見た目**:
 //   - primary     → ink 反転ボタン (一番強い CTA)
@@ -10,7 +10,7 @@
 //
 // **href**: branded `Href`。https / 内部パスのみ許容 (server 側で parse 済み)。
 //
-// ── Phase 2.5: action ────────────────────────────────────────────────
+// ── action ────────────────────────────────────────────────
 //
 // `block.action` が undefined → 既存通り `<a href>` で純粋ナビゲーション
 //   (progressive enhancement: JS 無し / 旧ブラウザでも飛べる)。
@@ -209,7 +209,7 @@ export const CtaBlockView = (props: { block: CtaBlock }) => {
     }
   };
 
-  /** Phase 9.1: Stripe Checkout を開始。成功時は sessionUrl に navigate。 */
+  /** Stripe Checkout を開始。成功時は sessionUrl に navigate。 */
   const runStripeCheckout = async () => {
     try {
       const res = await postCheckoutSubmit();
@@ -256,8 +256,8 @@ export const CtaBlockView = (props: { block: CtaBlock }) => {
       aria-busy={pending()}
       aria-label={labelText()}
       onClick={onClick}
-      // P9.x: <a> 経路と同じ INTENT_STYLE を適用 (= primary が transparent に
-      // 落ちるバグ修正)。border-radius / padding 等のレイアウトも <a> と揃える。
+      // <a> 経路と同じ INTENT_STYLE を適用 (= primary が transparent に
+      // 落ちないように)。border-radius / padding 等のレイアウトも <a> と揃える。
       style={style()}
     >
       <L value={props.block.label} />

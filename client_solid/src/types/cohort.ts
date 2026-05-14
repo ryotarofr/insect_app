@@ -1,9 +1,9 @@
 // types/cohort.ts — 群飼育 (cohort) ドメインの型定義 (FE-first 手書き)
 //
-// **Phase 1 (FE-first) 段階の手書き型**:
+// **FE-first 手書き型**:
 //   現在は mock layer (api/cohorts.ts) でこの型を扱う。
-//   Phase 6 で BE が ts-rs export を吐いたあと、Phase 7 で `generated/api-types.ts`
-//   から import する形に置き換え、本ファイルは削除予定。
+//   TODO: BE が ts-rs export を吐いたら `generated/api-types.ts` から import する
+//   形に置き換え、本ファイルは削除する。
 //
 // **命名規則**: BE スキーマ (snake_case) を camelCase に直したもの。
 //   ts-rs のデフォルト出力と一致するよう設計。
@@ -110,7 +110,7 @@ export interface PromoteCohortRequest {
 
 /** 個体化レスポンス */
 export interface PromoteCohortResponse {
-  /** 作成された個体 (PR #5a の SpecimenView 互換 + cohort 紐付け) */
+  /** 作成された個体 (SpecimenView 互換 + cohort 紐付け) */
   specimen: PromotedSpecimen;
   /** current_count -1 反映後の cohort 状態 (current_count = 0 なら archivedAt も入る) */
   cohort: CohortView;
@@ -170,7 +170,7 @@ export interface SpecimenDraft {
     | "pupa"
     | "adult";
   notes?: string;
-  /** Phase 5 で追加: 個別メモ + 計測メモを分けたいとき */
+  /** 個別メモ + 計測メモを分けたいとき */
   measurementMemo?: string;
 }
 

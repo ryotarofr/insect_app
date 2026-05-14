@@ -155,118 +155,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/cards/cart": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * `GET /api/v1/cards/cart` ハンドラ (Phase 7)。
-         * @description プロセス内 cart store のスナップショットを `CardBlock::Cart` に組み直して返す。
-         *
-         *     **設計**:
-         *       - 1 token = 1 LineItem block。商品マスタ (`product_filter_meta`) から title /
-         *         unit_price を join して埋める (= 価格をクライアントに信用させない)。
-         *       - サーバが落ちても表示金額が「クライアント計算」と「サーバ計算」でずれないよう、
-         *         subtotal_amount / OrderSummary.total_amount はサーバ側で確定して返す。
-         *       - 空カート時は `items` / `summary` を `[]` にし、`cta` には「買い物を続ける」だけ。
-         *         client renderer 側 `<Show when={items.length > 0}>` で empty state に切り替える。
-         *       - 商品マスタに無い token (= 出品取り下げ後にカートに残ったゴミ) はスキップしつつ
-         *         500 にしない (= ユーザの「他の商品はカートにある」体験を壊さない)。
-         *       - decrement_action は `qty == 1` の時のみ `None` (UI で disabled に)。
-         *
-         *     **将来 (Phase 7+)**:
-         *       - 在庫切れ商品にバッジを付ける
-         *       - 配送料計算 (今は固定で `None` = 行を出さない)
-         *       - 消費税内訳の表示
-         */
-        get: operations["get_cart_card"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/cards/products": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * `GET /api/v1/cards/products?...` ハンドラ — フィルタ + 検索 + 並び替え + ページング 対応の商品一覧。
-         * @description **挙動 (Phase 6)**:
-         *       1. `query.sort` / `q` / `page` / `perPage` を有効値に正規化
-         *       2. `query` の filter 条件で全商品を絞る (= filter set, faceted count はここの母集団)
-         *       3. **filter set に対して** q substring で絞る (= search set)
-         *       4. search set を `sort_cmp` で並べる
-         *       5. paginate: `(page-1)*perPage` から `perPage` 件を切り出す
-         *       6. paginate 後のカードを `validate_keys()` で検証 (壊れていたら 500)
-         *       7. `filter_bar` (faceted count は filter set ベース) / `sort_bar` / `search_box` /
-         *          `pagination` を組み立て
-         *       8. `ProductListResponse { filter_bar, sort_bar, search_box, pagination, cards }` を返す
-         *
-         *     **不変条件**: filter_bar / sort_bar / search_box / pagination は **常に Some で返す**。
-         *       フロントが空配列を踏まなくても shape を信用できる。
-         *
-         *     **filter chain の順序が重要**:
-         *       - faceted count は filter のみ適用後で計算 → search/sort/paginate に揺らがない
-         *       - pagination の totalCount は filter+search 適用後 → 検索でヒット数が変わって見える
-         *       - sort と pagination は表示順制御だけで count に影響しない
-         */
-        get: operations["list_product_cards"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/cards/products/{id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** `GET /api/v1/cards/products/{id}` ハンドラ。 */
-        get: operations["get_product_card"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/cards/products/{id}/detail": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /**
-         * `GET /api/v1/cards/products/{id}/detail` ハンドラ。
-         * @description 一覧用 (`product_feature`) とは別の `product_detail` テンプレートを返す。
-         *     詳細ページは region 構成 (gallery / hero / spec / pricing / cta) が違うため、
-         *     同 id でも別エンドポイントに分離している (§5: テンプレート毎にレスポンスを分ける)。
-         */
-        get: operations["get_product_detail_card"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/cart": {
         parameters: {
             query?: never;
@@ -375,17 +263,11 @@ export interface paths {
         put?: never;
         /**
          * `POST /api/v1/checkout/submit` — 注文を確定し Stripe Checkout Session URL を返す。
-         * @description **Phase 9.x AppState 配線**:
+         * @description **C2C pivot 後の流れ**:
          *       `axum::extract::State<AppState>` 経由で `Option<PgPool>` を受け取り、
-         *       - `repos::products::find_by_public_id(pool, ...)` で product_uuid 解決
-         *       - `repos::orders::insert_order(pool, ...)` で DB に永続化
+         *       - `repos::listings::find_by_public_id(pool, ...)` で listing_id (UUID) と現在価格を解決
+         *       - `repos::orders::insert_order(pool, ...)` で DB に永続化 (= order_items.listing_id)
          *       どちらも pool 不在時は in-memory fallback。
-         *
-         *     **Session 配線** (= Cookie middleware 導入後):
-         *       `axum::Extension<SessionId>` 経由で cookie 由来の UUID を受け取り、
-         *       `orders.session_id` (= TEXT) と Stripe Session の reference に詰める。
-         *       未ログイン (= anonymous) でも cookie で安定した UUID を持つので、同一ユーザの
-         *       複数 cart → 注文の追跡が可能になる。
          */
         post: operations["post_checkout_submit"];
         delete?: never;
@@ -540,6 +422,31 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/listings/me": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /api/v1/listings/me?status=active|sold|canceled|expired|all` —
+         *     自分の出品一覧。
+         * @description **Phase 1 / マイ出品**:
+         *     - login 必須 (= 401)。session の user_id を `seller_user_id` として固定。
+         *     - `?status=` 省略 or `all` で全 status、それ以外は schema CHECK と同じ集合のみ受け付ける。
+         *     - 戻り値は `list_active` と同じ `ListingViewWithCounts` shape (= bid_count / watcher_count
+         *       込み)。FE のタブ (= `入札中` = active && bid_count > 0) は派生計算する。
+         */
+        get: operations["list_my_listings"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/listings/{id}/bids": {
         parameters: {
             query?: never;
@@ -598,7 +505,12 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** `GET /api/v1/listings/{public_id}` — public_id で 1 件取得 (= 公開閲覧 OK)。 */
+        /**
+         * `GET /api/v1/listings/{public_id}` — public_id で 1 件取得 (= 公開閲覧 OK)。
+         * @description 戻り値は seller_name / bid_count / watcher_count を JOIN で含めた `ListingViewWithCounts`
+         *     (= 一覧 endpoint と同 shape)。FE の listings 詳細ページが seller 名を fallback 無しで
+         *     表示できるようにするのが目的。
+         */
         get: operations["get_listing"];
         put?: never;
         post?: never;
@@ -703,7 +615,13 @@ export interface paths {
             path?: never;
             cookie?: never;
         };
-        /** `GET /api/v1/orders/me` — 自分の注文一覧 (= created_at 降順)。 */
+        /**
+         * `GET /api/v1/orders/me?role=buyer|seller|all` — 自分の取引履歴 (= created_at 降順)。
+         * @description **Phase 4 / 取引履歴の販売側統合**:
+         *       - `role=buyer` (= 既定): 自分が買った注文 (= orders.user_id = me)
+         *       - `role=seller`: 自分が売った注文 (= orders.seller_user_id = me、paid 遷移済のみ)
+         *       - `role=all`: 上記の OR (= 取引履歴の merged view 用)
+         */
         get: operations["list_my_orders"];
         put?: never;
         post?: never;
@@ -736,32 +654,18 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/product_bloodlines": {
+    "/shipping_methods": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** `GET /api/v1/product_bloodlines` — 全商品の血統データを public_id 昇順で返す。 */
-        get: operations["list_product_bloodlines"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/products": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** `GET /api/v1/products?locale=ja` — 全 active 商品を id 昇順で返す。 */
-        get: operations["list_products"];
+        /**
+         * `GET /api/v1/shipping_methods` — active な配送方法を sort_order 昇順で返す。
+         * @description 公開 endpoint (= anonymous OK)。出品 wizard / 検索フィルタ / cart / checkout で共用する。
+         */
+        get: operations["list_active"];
         put?: never;
         post?: never;
         delete?: never;
@@ -996,29 +900,12 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/watch/{product_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** `POST /api/v1/watch/{productId}` — ウォッチ状態をトグルする (= cookie session 別 / login user 優先)。 */
-        post: operations["toggle_watch"];
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
         AddToCartRequest: {
-            productId: string;
+            listingId: string;
             /**
              * Format: int32
              * @description 省略時は 1。
@@ -1093,35 +980,6 @@ export interface components {
          * @enum {string}
          */
         AnalyticsEventType: "impression" | "click";
-        AncestorResponse: {
-            /** @description 「故 (2025-10-02)」のような死亡注記 (任意)。 */
-            deceasedNote?: string | null;
-            /**
-             * @description 世代タグ。例: `WILD` / `F0` / `CBF1`
-             *
-             *     JSON 上の key は `gen` (= フロント `BlAncestor.gen` と一致)。
-             *     Rust 2024 の予約語 `gen` を避けるため Rust 側は `gen_label` で持ち、
-             *     `#[serde(rename = "gen")]` で wire format だけ短縮名に倒す。
-             */
-            gen: string;
-            /** @description 表示 ID。例: `#DHH-0150` / `#WILD-DHH-A` */
-            id: string;
-            /** @description WILD = 野生個体。色合いを変える指標。 */
-            isWild: boolean;
-            name: string;
-            /**
-             * @description 役割。`father` / `mother` / `paternal_father` / `paternal_mother` /
-             *     `maternal_father` / `maternal_mother`
-             */
-            role: string;
-            /** @description 性別 (= `m` / `f`)。フロント `BlAncestor.sex` 型と一致。 */
-            sex: string;
-            /**
-             * Format: double
-             * @description 体長 (mm)。WILD 等で未計測なら null。
-             */
-            sizeMm?: number | null;
-        };
         ChangeLifeStatusRequest: {
             /**
              * Format: date
@@ -1236,11 +1094,32 @@ export interface components {
             publicId: string;
         };
         CreateListingRequest: {
+            /**
+             * @description Phase 6b: アップロード済 asset (= /uploads/complete を通過した) の UUID リスト。
+             *     listing 作成成功後に `assets.attach_target` で `(target_kind='listing', target_id=<listing_id>)`
+             *     を書き込む。空配列 / 省略は写真なしの出品として OK。
+             *     asset の所有者検証 (= asset.owner_user_id == seller) は attach 時に呼び出し側で行う。
+             */
+            assetIds?: string[];
+            /**
+             * Format: int64
+             * @description Phase 6c-1: 即決価格 (= auction の "Buy It Now")。
+             *     任意 / NULL 許容。設定する場合は `is_auction=true` かつ `> starting_price_jpy`。
+             *     migration 0024 の CHECK 制約と repo validate で同条件を強制。
+             */
+            buyoutPriceJpy?: number | null;
             description?: string | null;
             /** Format: date-time */
             endsAt?: string | null;
             isAuction: boolean;
             publicId: string;
+            /**
+             * @description Phase 6c-2: 出品者が対応可能な配送方法 ID リスト (= shipping_methods.id)。
+             *     空配列 / 省略は「全方法 OK」と解釈する (= 旧仕様互換 / 出品者が絞り込みを設定しない)。
+             *     行があれば `listing_shipping_methods` に書き込み、checkout は client 側で
+             *     その集合のみから選択する規律。
+             */
+            shippingMethodIds?: string[];
             specimenId?: string | null;
             /** Format: int64 */
             startingPriceJpy: number;
@@ -1342,6 +1221,11 @@ export interface components {
              * @description `v_listings_with_counts.bid_count`。
              */
             bidCount: number;
+            /**
+             * Format: int64
+             * @description Phase 6c-1: 即決価格 (= auction の Buy It Now)。
+             */
+            buyoutPriceJpy?: number | null;
             /** Format: int64 */
             currentPriceJpy?: number | null;
             description?: string | null;
@@ -1354,6 +1238,12 @@ export interface components {
             /** @description JOIN users.name で取得。 */
             sellerName: string;
             sellerUserId: string;
+            /**
+             * @description Phase 6c-2: 対応可能な配送方法 ID 集合。
+             *     **空配列 = 「全方法 OK」** と解釈 (= 出品者が絞り込みを設定していない)。
+             *     値が入っていれば、checkout はその集合のみから選ぶ規律。
+             */
+            shippingMethodIds?: string[];
             specimenId?: string | null;
             /** Format: int64 */
             startingPriceJpy: number;
@@ -1413,8 +1303,11 @@ export interface components {
             lineItems: components["schemas"]["OrderLineView"][];
         };
         OrderLineView: {
-            productId: string;
-            productUuid?: string | null;
+            /**
+             * @description C2C pivot: 旧 product_id / product_uuid を listing_id に置換。
+             *     listings(id) UUID を文字列で返す (= ON DELETE SET NULL のため Option)。
+             */
+            listingId?: string | null;
             /** Format: int32 */
             qty: number;
             /** Format: int64 */
@@ -1426,9 +1319,19 @@ export interface components {
         OrderView: {
             /** Format: int64 */
             amountJpy: number;
+            /**
+             * @description Phase 4: 買い手 (= orders.user_id 由来)。anonymous 注文で None。
+             *     既存の `session_id` だけでは role=buyer 判定が UI 側で難しかったため明示する。
+             */
+            buyerUserId?: string | null;
             /** Format: date-time */
             createdAt: string;
             id: string;
+            /**
+             * @description Phase 4: 出品者 (= listings.seller_user_id 経由で paid 遷移時に書く)。
+             *     FE は role=seller タブで表示時に「あなたが売り手の取引」を識別するのに使う。
+             */
+            sellerUserId?: string | null;
             sessionId: string;
             /** Format: int64 */
             shippingJpy?: number | null;
@@ -1485,48 +1388,6 @@ export interface components {
             bidId: string;
             /** Format: int64 */
             currentPriceJpy: number;
-        };
-        ProductBloodlineResponse: {
-            /** @description 親 / 祖父母 (= 最大 6 役割、最少 2)。順序は固定しない。 */
-            ancestors: components["schemas"]["AncestorResponse"][];
-            breederCertified: boolean;
-            /** @description 商品自身の世代タグ。例: `CBF2` / `WF1` */
-            generation: string;
-            /**
-             * Format: double
-             * @description 近交係数 (Wright's F)。0..1。
-             */
-            inbreedingCoef: number;
-            /** @description 起源・累代の要約。サマリで 2 行 / modal で全文。 */
-            pedigreeNotes: string;
-            /** @description 商品 public_id。例: `p-hh-m-142` */
-            productId: string;
-            thirdPartyVerified: boolean;
-        };
-        ProductResponse: {
-            /** @description 表示バッジ (= 「血統書付」「ペア割」等)。 */
-            badge?: string | null;
-            /** @description 系統。例: `CBF2`。supply は null。 */
-            generation?: string | null;
-            /** @description public_id 文字列。例: `p-hh-m-142` */
-            id: string;
-            /** @description 表示種別。`生体` / `用品` (= ja locale)。 */
-            kind: string;
-            /** @description プレースホルダ画像のラベル (= 1 文字)。 */
-            phLabel: string;
-            /**
-             * Format: int64
-             * @description 税込価格 (JPY)。
-             */
-            price: number;
-            /** @description 学名。supply は null。 */
-            sci?: string | null;
-            /** @description ショップ表示名。例: `ANCHOR BEETLE CO.` */
-            shop: string;
-            /** @description 商品タイトル (locale 翻訳済)。 */
-            title: string;
-            /** @description 配色トーン (= フロント CSS 用)。`forest` / `amber`。 */
-            tone: string;
         };
         PromoteCohortRequest: {
             log?: null | components["schemas"]["PromoteLogPayload"];
@@ -1602,6 +1463,25 @@ export interface components {
             role: string;
             /** @description 新規発行された UUID (= users.id) */
             userId: string;
+        };
+        ShippingMethodResponse: {
+            /**
+             * Format: int64
+             * @description 既定の送料 (税込・JPY)。出品者カスタム送料は将来 listing_shipping_methods.extra_fee_jpy
+             *     で個別 override する設計。
+             */
+            amountJpy: number;
+            description: string;
+            /** @description "cold" / "normal" / "pickup" 等の id (= seed table の primary key)。 */
+            id: string;
+            isActive: boolean;
+            /** @description 翻訳名 (= "クール便（推奨）")。 */
+            name: string;
+            /**
+             * Format: int32
+             * @description sort_order 昇順で返るが、client 側で再ソートしたい時のため返す。
+             */
+            sortOrder: number;
         };
         SignRequest: {
             /**
@@ -1708,10 +1588,6 @@ export interface components {
         };
         UpdateStatusRequest: {
             status: string;
-        };
-        WatchToggleResponse: {
-            /** @description トグル後の状態 (true = 今 watching に入った / false = 解除された)。 */
-            watching: boolean;
         };
     };
     responses: never;
@@ -1947,159 +1823,6 @@ export interface operations {
             };
         };
     };
-    get_cart_card: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description session の cart snapshot から構築した SDUI `CardBlock::Cart`。OpenAPI 上は opaque object */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description key uniqueness / a11y validation 失敗 / cart fetch error */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    list_product_cards: {
-        parameters: {
-            query?: {
-                /** @description 商品カテゴリの 1 値フィルタ (例: live) */
-                category?: string;
-                /** @description 飼育難易度の 1 値フィルタ (例: hard) */
-                difficulty?: string;
-                /** @description 並び順 (`name` / `price_asc` / `price_desc` / `new`)。未指定 / 不正値は default */
-                sort?: string;
-                /** @description 検索キーワード (substring, case-insensitive)。trim 後空なら検索なし */
-                q?: string;
-                /** @description ページ番号 (1 始まり)。1 未満は 1 ページ目 */
-                page?: number;
-                /** @description 1 ページあたり件数。`MAX_PER_PAGE` でキャップ */
-                perPage?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description filter / search / sort / pagination 適用後の SDUI `ProductListResponse` (= filterBar + sortBar + searchBox + pagination + cards)。OpenAPI 上は opaque object */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description internal validation 失敗 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    get_product_card: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 商品の public_id (例: `p-hh-m-142`) */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 1 商品の SDUI `CardBlock` (= 構造は ts-rs 経由型 [client_solid/src/sdui](client_solid/src/sdui) を参照)。OpenAPI 上は opaque object 扱い */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description key uniqueness / a11y validation 失敗 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description 未知 id */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    get_product_detail_card: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 商品の public_id (例: `p-hh-m-142`) */
-                id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 詳細用 `product_detail` テンプレートの SDUI `CardBlock`。OpenAPI 上は opaque object */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description key uniqueness / a11y validation 失敗 */
-            400: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-            /** @description 未知 id */
-            404: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
     add_to_cart: {
         parameters: {
             query?: never;
@@ -2324,7 +2047,7 @@ export interface operations {
                     "application/json": components["schemas"]["CheckoutSubmitResponse"];
                 };
             };
-            /** @description cart 空 / shipping 未入力 / 商品不正 / Stripe session 失敗 */
+            /** @description cart 空 / shipping 未入力 / 出品不正 / Stripe session 失敗 */
             400: {
                 headers: {
                     [name: string]: unknown;
@@ -2715,6 +2438,47 @@ export interface operations {
             };
         };
     };
+    list_my_listings: {
+        parameters: {
+            query?: {
+                /** @description `active` / `sold` / `canceled` / `expired` / `all`。省略時は `all`。 */
+                status?: string | null;
+            };
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 自分の出品 (= bid_count / watcher_count 込み) */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ListingViewWithCounts"][];
+                };
+            };
+            /** @description invalid status */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description 未ログイン */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     place_bid: {
         parameters: {
             query?: never;
@@ -2861,13 +2625,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 1 listing 詳細 */
+            /** @description 1 listing 詳細 (= seller_name / bid_count / watcher_count 同梱) */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ListingView"];
+                    "application/json": components["schemas"]["ListingViewWithCounts"];
                 };
             };
             /** @description listing 不存在 */
@@ -3087,20 +2851,31 @@ export interface operations {
     };
     list_my_orders: {
         parameters: {
-            query?: never;
+            query?: {
+                role?: string | null;
+            };
             header?: never;
             path?: never;
             cookie?: never;
         };
         requestBody?: never;
         responses: {
-            /** @description current user の注文一覧 (= created_at 降順) */
+            /** @description current user の取引一覧 (= created_at 降順) */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
                     "application/json": components["schemas"]["OrderView"][];
+                };
+            };
+            /** @description invalid role */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
                 };
             };
             /** @description 未ログイン */
@@ -3146,7 +2921,7 @@ export interface operations {
             };
         };
     };
-    list_product_bloodlines: {
+    list_active: {
         parameters: {
             query?: never;
             header?: never;
@@ -3155,36 +2930,13 @@ export interface operations {
         };
         requestBody?: never;
         responses: {
-            /** @description 全商品の血統データを public_id 昇順で返す */
+            /** @description active な配送方法を sort_order 昇順で返す */
             200: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ProductBloodlineResponse"][];
-                };
-            };
-        };
-    };
-    list_products: {
-        parameters: {
-            query?: {
-                /** @description 取得する翻訳の locale。未指定なら `ja`。 */
-                locale?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description 全 active 商品を id 昇順で返す */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ProductResponse"][];
+                    "application/json": components["schemas"]["ShippingMethodResponse"][];
                 };
             };
         };
@@ -3731,38 +3483,6 @@ export interface operations {
             };
             /** @description storage provider 未実装 / DB error */
             500: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ErrorResponse"];
-                };
-            };
-        };
-    };
-    toggle_watch: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path: {
-                /** @description 商品の public_id (例: `p-hh-m-142`) */
-                product_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description トグル後の watching 状態を返す */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["WatchToggleResponse"];
-                };
-            };
-            /** @description productId 空 / 未知 productId / DB 失敗 */
-            400: {
                 headers: {
                     [name: string]: unknown;
                 };

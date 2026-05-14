@@ -1,4 +1,4 @@
-// SortBar.tsx — Server-Driven 並び替えセグメント列のレンダラ (Phase 5)
+// SortBar.tsx — Server-Driven 並び替えセグメント列のレンダラ
 //
 // 詳細: docs/sdui-three-layer-model-v5.md §5.6 (List shell + Filter + Sort)
 //

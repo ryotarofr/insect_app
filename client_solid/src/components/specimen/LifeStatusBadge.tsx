@@ -1,6 +1,6 @@
 // LifeStatusBadge.tsx — 個体のライフ状態 (終了バッジ) 表示
 //
-// P4-2: Specimen.lifeStatus を受けて、"故" "譲渡済" "脱走" 等の
+// Specimen.lifeStatus を受けて、"故" "譲渡済" "脱走" 等の
 // 終了バッジを表示する。lifeStatus が "active" または未設定なら null を返す。
 // StageBar の隣に置くと、"今どのステージか" と "そもそも生存しているか" を
 // 同じ視界で読み取れる。
