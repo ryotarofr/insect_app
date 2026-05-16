@@ -1,0 +1,601 @@
+/* ============================================================================
+   product-bloodline.css — 商品詳細の血統サマリー + 系図モーダル (案 A+C)
+   ============================================================================
+   このファイルは pages/products/index.tsx (ProductDetail) で 1 度 import される。
+   `pbl-` (= product-bloodline) prefix で名前空間を切る。
+   editorial paper の見た目は bloodline.css の `--bl-*` トークンを再利用するため、
+   .bl-app と同じ変数定義をローカルにミラー (= モーダルが .bl-app の外でも安全)。
+   ============================================================================ */
+
+/* ── ローカル変数 (= bloodline.css と整合) ───────────────────── */
+.pbl-summary, .pbl-modal {
+  --pbl-bg:        oklch(0.972 0.008 85);
+  --pbl-bg-raised: oklch(0.992 0.005 85);
+  --pbl-bg-sunken: oklch(0.945 0.010 85);
+  --pbl-bg-deep:   oklch(0.20 0.012 75);
+  --pbl-ink:       oklch(0.22 0.014 70);
+  --pbl-ink-mute:  oklch(0.48 0.010 70);
+  --pbl-ink-faint: oklch(0.66 0.008 70);
+  --pbl-line:        oklch(0.88 0.008 75);
+  --pbl-line-strong: oklch(0.78 0.010 75);
+  --pbl-line-hair:   oklch(0.92 0.006 75);
+
+  /* バンド色 (F値に応じた色付け) */
+  --pbl-safe:    oklch(0.55 0.10 150); /* 安全 = 緑 */
+  --pbl-caution: oklch(0.60 0.12 70);  /* 注意 = アンバー */
+  --pbl-dense:   oklch(0.58 0.12 25);  /* 濃い = ローズ */
+
+  --pbl-font-serif: "Shippori Mincho", "Noto Serif JP", "Hiragino Mincho ProN", serif;
+  --pbl-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+}
+
+/* ── インラインサマリー ────────────────────────────────────── */
+.pbl-summary {
+  margin: 24px 0;
+  padding: 20px 24px 22px;
+  background: var(--pbl-bg-raised);
+  border: 1px solid var(--pbl-line);
+  border-radius: 8px;
+  display: grid;
+  gap: 16px;
+}
+.pbl-summary-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px;
+}
+.pbl-summary-eyebrow {
+  font-family: var(--pbl-font-serif); font-weight: 600;
+  font-size: 14px; letter-spacing: .14em; color: var(--pbl-ink);
+}
+.pbl-summary-cta {
+  appearance: none; border: 1px solid var(--pbl-line-strong);
+  background: transparent; color: var(--pbl-ink); cursor: pointer;
+  font: inherit; font-family: var(--pbl-font-mono); font-size: 11px;
+  letter-spacing: .14em; text-transform: uppercase;
+  padding: 7px 14px; border-radius: 999px;
+}
+.pbl-summary-cta:hover { background: var(--pbl-bg-sunken); }
+.pbl-summary-cta:focus-visible { outline: 2px solid var(--pbl-ink); outline-offset: 2px; }
+
+.pbl-parents {
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  gap: 12px;
+}
+.pbl-parent-card {
+  background: var(--pbl-bg);
+  border: 1px solid var(--pbl-line);
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: grid; gap: 4px;
+}
+.pbl-parent-card[data-wild="true"] {
+  border-style: dashed;
+  background: var(--pbl-bg-sunken);
+}
+.pbl-parent-role {
+  font-family: var(--pbl-font-mono); font-size: 9.5px;
+  color: var(--pbl-ink-faint); letter-spacing: .14em; text-transform: uppercase;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.pbl-parent-sex {
+  font-family: var(--pbl-font-serif); font-size: 12px; color: var(--pbl-ink);
+  text-transform: none;
+}
+.pbl-parent-name {
+  font-family: var(--pbl-font-serif); font-weight: 600; font-size: 16px;
+  letter-spacing: .04em; color: var(--pbl-ink);
+}
+.pbl-parent-meta {
+  display: flex; gap: 10px; align-items: baseline;
+  font-family: var(--pbl-font-mono); font-size: 10.5px;
+  color: var(--pbl-ink-mute); letter-spacing: .04em;
+}
+.pbl-parent-id { color: var(--pbl-ink-faint); }
+.pbl-parent-gen {
+  font-weight: 500; color: var(--pbl-caution);
+}
+.pbl-parent-card[data-wild="true"] .pbl-parent-gen { color: var(--pbl-ink-faint); }
+.pbl-parent-size { color: var(--pbl-ink); }
+
+.pbl-cross {
+  font-family: var(--pbl-font-serif); font-size: 18px;
+  color: var(--pbl-ink-faint); font-weight: 500;
+}
+
+/* F値メーター */
+.pbl-meta {
+  display: grid; gap: 10px;
+}
+.pbl-fmeter-row {
+  display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 4px;
+}
+.pbl-fmeter-label {
+  font-family: var(--pbl-font-mono); font-size: 9.5px;
+  color: var(--pbl-ink-faint); letter-spacing: .14em; text-transform: uppercase;
+}
+.pbl-fmeter-value {
+  font-family: var(--pbl-font-mono); font-size: 13px;
+  color: var(--pbl-ink); letter-spacing: .04em;
+  display: inline-flex; align-items: baseline; gap: 8px;
+}
+.pbl-fmeter-band {
+  font-family: var(--pbl-font-serif); font-size: 11px;
+  letter-spacing: .14em;
+  padding: 2px 8px; border-radius: 999px;
+  background: var(--pbl-bg-sunken);
+}
+.pbl-fmeter[data-band="safe"]    .pbl-fmeter-band { color: var(--pbl-safe);    background: oklch(0.94 0.04 150); }
+.pbl-fmeter[data-band="caution"] .pbl-fmeter-band { color: var(--pbl-caution); background: oklch(0.95 0.04 70); }
+.pbl-fmeter[data-band="dense"]   .pbl-fmeter-band { color: var(--pbl-dense);   background: oklch(0.94 0.03 25); }
+
+.pbl-fmeter-bar {
+  height: 4px; background: var(--pbl-bg-sunken);
+  border-radius: 2px; overflow: hidden;
+}
+.pbl-fmeter-fill {
+  height: 100%; transition: width .3s ease;
+}
+.pbl-fmeter[data-band="safe"]    .pbl-fmeter-fill { background: var(--pbl-safe); }
+.pbl-fmeter[data-band="caution"] .pbl-fmeter-fill { background: var(--pbl-caution); }
+.pbl-fmeter[data-band="dense"]   .pbl-fmeter-fill { background: var(--pbl-dense); }
+
+.pbl-chips {
+  display: flex; gap: 6px; flex-wrap: wrap; margin-top: 4px;
+}
+.pbl-chip {
+  font-family: var(--pbl-font-mono); font-size: 10px;
+  letter-spacing: .08em; text-transform: uppercase;
+  padding: 4px 10px; border-radius: 999px;
+  background: var(--pbl-bg-sunken); color: var(--pbl-ink-mute);
+  border: 1px solid var(--pbl-line);
+}
+.pbl-chip-gen { color: var(--pbl-caution); border-color: oklch(0.85 0.05 70); }
+.pbl-chip-cert { color: var(--pbl-safe); border-color: oklch(0.85 0.05 150); background: oklch(0.95 0.03 150); }
+.pbl-chip-3rd { color: var(--pbl-ink); border-color: var(--pbl-line-strong); background: var(--pbl-bg-raised); }
+
+.pbl-notes {
+  margin: 0;
+  font-family: var(--pbl-font-serif); font-size: 12.5px;
+  line-height: 1.7; color: var(--pbl-ink-mute);
+  letter-spacing: .04em;
+}
+
+/* ── モーダル (= フル系図) ────────────────────────────────── */
+.pbl-modal {
+  /* bloodline.css の .bl-dialog 上書き。横幅広め (3 世代を並べるため) */
+  max-width: 760px !important;
+}
+.pbl-modal-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  margin-bottom: 18px;
+}
+.pbl-modal-eyebrow {
+  font-family: var(--pbl-font-mono); font-size: 9.5px;
+  color: var(--pbl-ink-faint); letter-spacing: .32em;
+  text-transform: uppercase;
+  display: inline-flex; align-items: center; gap: 8px;
+}
+.pbl-modal-eyebrow-sep { opacity: .6; }
+.pbl-modal-product {
+  color: var(--pbl-ink); font-family: var(--pbl-font-serif);
+  font-size: 13px; letter-spacing: .04em; text-transform: none;
+}
+.pbl-modal-close {
+  appearance: none; border: 0; background: transparent;
+  width: 28px; height: 28px; cursor: pointer;
+  font-size: 13px; color: var(--pbl-ink-mute);
+  border-radius: 50%;
+  display: inline-flex; align-items: center; justify-content: center;
+  margin: -4px -8px 0 0;
+}
+.pbl-modal-close:hover { background: var(--pbl-bg-sunken); color: var(--pbl-ink); }
+.pbl-modal-close:focus-visible { outline: 2px solid var(--pbl-ink); outline-offset: 1px; }
+
+/* 3 世代ツリー */
+.pbl-tree {
+  display: grid;
+  gap: 8px;
+  padding: 12px 0;
+  border-top: 1px solid var(--pbl-line);
+  border-bottom: 1px solid var(--pbl-line);
+  margin-bottom: 16px;
+}
+.pbl-tree-row {
+  display: flex;
+  justify-content: space-around;
+  align-items: stretch;
+  gap: 16px;
+}
+.pbl-tree-row--gp {
+  /* 4 個体を 2 ペアに分けて配置 */
+  gap: 32px;
+}
+.pbl-tree-pair {
+  display: flex; align-items: center; gap: 8px;
+  flex: 1;
+}
+.pbl-tree-row--parents {
+  margin-top: 12px;
+}
+.pbl-tree-row--focal {
+  margin-top: 12px;
+  justify-content: center;
+}
+
+.pbl-tree-node {
+  flex: 1;
+  background: var(--pbl-bg-raised);
+  border: 1px solid var(--pbl-line);
+  border-radius: 4px;
+  padding: 8px 10px;
+  display: grid; gap: 2px;
+  min-width: 0;
+}
+.pbl-tree-node[data-wild="true"] {
+  border-style: dashed;
+  background: var(--pbl-bg-sunken);
+}
+.pbl-tree-node[data-deceased="true"] {
+  background: var(--pbl-bg-sunken);
+  opacity: .8;
+}
+.pbl-tree-node--unknown {
+  background: transparent;
+  border-style: dashed;
+  color: var(--pbl-ink-faint);
+}
+.pbl-tree-node-gen {
+  font-family: var(--pbl-font-mono); font-size: 8.5px;
+  color: var(--pbl-ink-faint); letter-spacing: .14em; text-transform: uppercase;
+}
+.pbl-tree-node-name {
+  font-family: var(--pbl-font-serif); font-weight: 600; font-size: 14px;
+  color: var(--pbl-ink); letter-spacing: .04em;
+  display: inline-flex; align-items: baseline; gap: 6px;
+}
+.pbl-tree-node-sex {
+  font-size: 11px; color: var(--pbl-ink-mute); font-weight: 400;
+}
+.pbl-tree-node-meta {
+  display: flex; gap: 10px;
+  font-family: var(--pbl-font-mono); font-size: 9.5px;
+  color: var(--pbl-ink-faint); letter-spacing: .04em;
+}
+.pbl-tree-node-id { color: var(--pbl-ink-faint); }
+.pbl-tree-node-size { color: var(--pbl-ink-mute); }
+.pbl-tree-node-deceased {
+  font-family: var(--pbl-font-mono); font-size: 9px;
+  color: var(--pbl-ink-mute); margin-top: 2px;
+  letter-spacing: .04em;
+}
+
+.pbl-tree-cross {
+  font-family: var(--pbl-font-serif); font-size: 14px;
+  color: var(--pbl-ink-faint);
+  flex-shrink: 0;
+}
+.pbl-tree-cross-large {
+  font-family: var(--pbl-font-serif); font-size: 22px;
+  color: var(--pbl-ink-mute);
+  flex-shrink: 0;
+  align-self: center;
+}
+
+/* 接続線 (CSS で簡易描画) */
+.pbl-tree-edges-gp,
+.pbl-tree-edges-parents {
+  height: 8px;
+  background-image:
+    linear-gradient(to bottom, var(--pbl-line-hair) 50%, transparent 50%);
+  background-size: 1px 4px;
+  background-repeat: repeat-x;
+  background-position: center;
+}
+
+.pbl-tree-focal {
+  background: var(--pbl-bg-raised);
+  border: 1.5px solid var(--pbl-ink);
+  border-radius: 4px;
+  padding: 12px 18px;
+  min-width: 280px;
+  display: grid; gap: 4px;
+  box-shadow: 0 4px 14px oklch(0 0 0 / 0.06);
+}
+.pbl-tree-focal[data-band="safe"]    { border-color: var(--pbl-safe); }
+.pbl-tree-focal[data-band="caution"] { border-color: var(--pbl-caution); }
+.pbl-tree-focal[data-band="dense"]   { border-color: var(--pbl-dense); }
+.pbl-tree-focal-eyebrow {
+  font-family: var(--pbl-font-mono); font-size: 9px;
+  color: var(--pbl-ink-faint); letter-spacing: .32em; text-transform: uppercase;
+}
+.pbl-tree-focal-title {
+  font-family: var(--pbl-font-serif); font-weight: 600; font-size: 16px;
+  color: var(--pbl-ink); letter-spacing: .04em;
+}
+.pbl-tree-focal-meta {
+  display: flex; gap: 14px;
+  font-family: var(--pbl-font-mono); font-size: 10.5px;
+  color: var(--pbl-ink-mute); letter-spacing: .04em;
+}
+
+/* モーダル下部セクション */
+.pbl-modal-section {
+  margin-top: 16px;
+}
+.pbl-modal-section-title {
+  margin: 0 0 8px;
+  font-family: var(--pbl-font-mono); font-size: 9.5px;
+  color: var(--pbl-ink-faint); letter-spacing: .32em;
+  text-transform: uppercase; font-weight: 500;
+}
+.pbl-modal-certs {
+  display: grid; gap: 6px;
+}
+.pbl-modal-cert {
+  display: flex; align-items: center; gap: 10px;
+  font-family: var(--pbl-font-serif); font-size: 13px;
+  color: var(--pbl-ink-mute); letter-spacing: .04em;
+}
+.pbl-modal-cert[data-active="true"] { color: var(--pbl-ink); }
+.pbl-modal-cert-mark {
+  font-family: var(--pbl-font-mono); font-size: 13px;
+  width: 20px; height: 20px;
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%;
+  background: var(--pbl-bg-sunken);
+  color: var(--pbl-ink-faint);
+}
+.pbl-modal-cert[data-active="true"] .pbl-modal-cert-mark {
+  background: oklch(0.95 0.04 150);
+  color: var(--pbl-safe);
+}
+.pbl-modal-notes {
+  margin: 0; font-family: var(--pbl-font-serif); font-size: 13px;
+  color: var(--pbl-ink-mute); line-height: 1.7;
+  letter-spacing: .04em;
+}
+
+/* ── 商品一覧カード上のオーバーレイバッジ ─────────────
+   /products のグリッド側で <BloodlineCardChips> をカードに重ねる。
+   .pbl-card-wrap が `position: relative` の親、.pbl-card-chips が
+   絶対配置の子。pointer-events: none でカードクリックは透過する。
+   ─────────────────────────────────────────────────────────── */
+.pbl-card-wrap {
+  position: relative;
+  /* CardRenderer 側の article.card が border-radius: 8px なので
+     はみ出さないように clip。バッジが角を超えても切れて自然に見える。 */
+}
+.pbl-card-chips {
+  --pbl-bg:        oklch(0.972 0.008 85);
+  --pbl-bg-raised: oklch(0.992 0.005 85);
+  --pbl-ink:       oklch(0.22 0.014 70);
+  --pbl-ink-mute:  oklch(0.48 0.010 70);
+  --pbl-line:      oklch(0.88 0.008 75);
+  --pbl-safe:      oklch(0.55 0.10 150);
+  --pbl-caution:   oklch(0.60 0.12 70);
+  --pbl-dense:     oklch(0.58 0.12 25);
+  --pbl-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --pbl-font-serif: "Shippori Mincho", "Noto Serif JP", "Hiragino Mincho ProN", serif;
+
+  position: absolute;
+  /* カード上端 (= 商品画像の上に重ねる)。右寄せで邪魔にならない位置。 */
+  top: 10px; right: 10px;
+  display: inline-flex; align-items: center;
+  gap: 6px;
+  pointer-events: none; /* カード自体のクリックを邪魔しない */
+  z-index: 2;
+}
+.pbl-card-chip {
+  display: inline-flex; align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  background: rgba(255, 255, 255, 0.92);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid var(--pbl-line);
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: .04em;
+  color: var(--pbl-ink);
+  white-space: nowrap;
+  box-shadow: 0 1px 2px oklch(0 0 0 / 0.06);
+}
+.pbl-card-chip--gen {
+  font-family: var(--pbl-font-serif);
+  font-weight: 600;
+  letter-spacing: .08em;
+}
+.pbl-card-chip--f {
+  font-family: var(--pbl-font-mono);
+  letter-spacing: .02em;
+}
+.pbl-card-chip-flabel {
+  color: var(--pbl-ink-mute);
+  font-size: 10px;
+  font-weight: 400;
+}
+.pbl-card-chip-fval {
+  font-weight: 600;
+}
+/* バンドドット (= F値の色サイン)。chip 自身ではなく内側のドットだけ色付け */
+.pbl-card-chip-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: var(--pbl-safe);
+  flex-shrink: 0;
+}
+.pbl-card-chips[data-band="caution"] .pbl-card-chip-dot { background: var(--pbl-caution); }
+.pbl-card-chips[data-band="dense"]   .pbl-card-chip-dot { background: var(--pbl-dense); }
+
+/* 認証バッジ (= ✓ のみの円) */
+.pbl-card-chip--cert {
+  width: 22px; height: 22px;
+  padding: 0;
+  justify-content: center;
+  background: oklch(0.96 0.04 150);
+  border-color: oklch(0.85 0.06 150);
+  color: var(--pbl-safe);
+  font-family: var(--pbl-font-mono);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+/* 「濃い」バンドだけ chip 自身も少し強調 (= 視認性アップ) */
+.pbl-card-chips[data-band="dense"] .pbl-card-chip--f {
+  border-color: oklch(0.78 0.08 25);
+  color: var(--pbl-dense);
+}
+
+/* ── カート画面の血統リマインダ ───────────────────────
+   /cart-sdui の SDUI CartCard の直下に挿入される。CartCard は
+   max-width: 640px / margin: 0 auto なので、リマインダも同じ
+   横幅 / 中央寄せにして連続して見える視覚を作る。
+   ─────────────────────────────────────────────────────────── */
+.pbl-cart-reminder {
+  --pbl-bg:        oklch(0.972 0.008 85);
+  --pbl-bg-raised: oklch(0.992 0.005 85);
+  --pbl-bg-sunken: oklch(0.945 0.010 85);
+  --pbl-ink:       oklch(0.22 0.014 70);
+  --pbl-ink-mute:  oklch(0.48 0.010 70);
+  --pbl-line:      oklch(0.88 0.008 75);
+  --pbl-safe:      oklch(0.55 0.10 150);
+  --pbl-caution:   oklch(0.60 0.12 70);
+  --pbl-dense:     oklch(0.58 0.12 25);
+  --pbl-font-serif: "Shippori Mincho", "Noto Serif JP", "Hiragino Mincho ProN", serif;
+  --pbl-font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  max-width: 640px;
+  margin: 0 auto 32px;
+  padding: 20px 24px 22px;
+  background: var(--pbl-bg-raised);
+  border: 1px solid var(--pbl-line);
+  border-radius: 8px;
+  display: grid;
+  gap: 16px;
+}
+.pbl-cart-reminder-head { display: grid; gap: 4px; }
+.pbl-cart-reminder-eyebrow {
+  font-family: var(--pbl-font-serif); font-weight: 600;
+  font-size: 14px; letter-spacing: .14em; color: var(--pbl-ink);
+}
+.pbl-cart-reminder-lede {
+  margin: 0; font-family: var(--pbl-font-serif);
+  font-size: 12px; color: var(--pbl-ink-mute);
+  letter-spacing: .04em; line-height: 1.6;
+}
+.pbl-cart-reminder-list {
+  list-style: none; margin: 0; padding: 0;
+  display: grid; gap: 10px;
+}
+.pbl-cart-reminder-row {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px;
+  padding: 12px 14px;
+  background: var(--pbl-bg);
+  border: 1px solid var(--pbl-line);
+  border-radius: 6px;
+  /* バンドの色を左 4px のアクセントラインで表現 (= 一覧で「濃い」が一目で分かる) */
+  border-left: 4px solid var(--pbl-safe);
+}
+.pbl-cart-reminder-row[data-band="caution"] { border-left-color: var(--pbl-caution); }
+.pbl-cart-reminder-row[data-band="dense"]   { border-left-color: var(--pbl-dense); }
+.pbl-cart-reminder-row-main {
+  display: grid; gap: 6px; min-width: 0;
+}
+.pbl-cart-reminder-row-title {
+  font-family: var(--pbl-font-serif); font-weight: 500;
+  font-size: 13.5px; color: var(--pbl-ink);
+  letter-spacing: .06em;
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+}
+.pbl-cart-reminder-row-id {
+  font-family: var(--pbl-font-mono); font-size: 11px;
+  color: var(--pbl-ink-mute); letter-spacing: .02em;
+}
+.pbl-cart-reminder-row-meta {
+  display: flex; gap: 6px; flex-wrap: wrap;
+}
+.pbl-cart-reminder-chip {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--pbl-line);
+  background: var(--pbl-bg-raised);
+  border-radius: 999px;
+  font-size: 11px; font-weight: 500;
+  color: var(--pbl-ink); letter-spacing: .04em;
+  white-space: nowrap;
+}
+.pbl-cart-reminder-chip--gen {
+  font-family: var(--pbl-font-serif); font-weight: 600;
+  letter-spacing: .08em;
+}
+.pbl-cart-reminder-chip--f {
+  font-family: var(--pbl-font-mono); letter-spacing: .02em;
+}
+.pbl-cart-reminder-chip--cert {
+  background: oklch(0.96 0.04 150);
+  border-color: oklch(0.85 0.06 150);
+  color: var(--pbl-safe);
+}
+.pbl-cart-reminder-dot {
+  width: 6px; height: 6px; border-radius: 50%;
+  background: var(--pbl-safe); flex-shrink: 0;
+}
+.pbl-cart-reminder-row[data-band="caution"] .pbl-cart-reminder-dot { background: var(--pbl-caution); }
+.pbl-cart-reminder-row[data-band="dense"]   .pbl-cart-reminder-dot { background: var(--pbl-dense); }
+.pbl-cart-reminder-cta {
+  font-family: var(--pbl-font-serif);
+  font-size: 12px; letter-spacing: .08em;
+  padding: 6px 12px;
+  border: 1px solid var(--pbl-line);
+  background: var(--pbl-bg-raised);
+  color: var(--pbl-ink);
+  border-radius: 6px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background-color 0.12s ease, border-color 0.12s ease;
+}
+.pbl-cart-reminder-cta:hover {
+  background: var(--pbl-bg-sunken);
+  border-color: oklch(0.70 0.012 75);
+}
+.pbl-cart-reminder-warn {
+  margin: 0; padding: 10px 12px;
+  background: oklch(0.97 0.04 25);
+  border: 1px solid oklch(0.85 0.08 25);
+  border-radius: 6px;
+  font-family: var(--pbl-font-serif);
+  font-size: 12px; color: var(--pbl-dense);
+  letter-spacing: .06em; line-height: 1.6;
+}
+
+/* スマホ */
+@media (max-width: 700px) {
+  .pbl-summary { padding: 16px; }
+  .pbl-parents { grid-template-columns: 1fr; }
+  .pbl-cross { display: none; }
+  .pbl-modal { max-width: 100% !important; }
+  .pbl-tree-row--gp {
+    flex-direction: column;
+    gap: 14px;
+  }
+  .pbl-tree-row--parents { flex-direction: column; }
+  .pbl-tree-cross-large { transform: rotate(90deg); }
+  .pbl-tree-focal { min-width: auto; }
+
+  /* スマホでは世代 chip だけ残して F値 / 認証 は省略 (= 場所が無い) */
+  .pbl-card-chips { top: 6px; right: 6px; gap: 4px; }
+  .pbl-card-chip { font-size: 10px; padding: 2px 6px; }
+  .pbl-card-chip--cert { width: 18px; height: 18px; font-size: 10px; }
+
+  /* cart リマインダはスマホでは縦積み */
+  .pbl-cart-reminder { padding: 16px; margin: 0 12px 20px; }
+  .pbl-cart-reminder-row {
+    flex-direction: column; align-items: stretch;
+  }
+  .pbl-cart-reminder-cta { align-self: flex-end; }
+}

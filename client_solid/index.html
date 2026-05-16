@@ -2,12 +2,28 @@
 <html lang="ja">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=1280" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#191716" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#191716" media="(prefers-color-scheme: dark)" />
+    <meta name="description" content="昆虫EC × 飼育管理プラットフォーム。個体記録・羽化予測・血統管理を一元化。" />
+    <meta name="application-name" content="KOCHŪ" />
     <title>昆虫アプリ / KOCHŪ — 昆虫EC × 飼育管理</title>
+
+    <link rel="manifest" href="/manifest.webmanifest" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="icon" type="image/png" sizes="64x64" href="/favicon.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icon-192.png" />
+
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
       href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;600;700&family=Noto+Serif+JP:wght@400;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <!-- Bloodline mindmap (editorial) — Shippori Mincho と Zen Kaku Gothic を /bloodline でだけ使う。
+         他ページは Noto に倒れる (CSS 側で family を切替)。display=swap で初回 paint を阻害しない。 -->
+    <link
+      href="https://fonts.googleapis.com/css2?family=Shippori+Mincho:wght@500;600;700&family=Zen+Kaku+Gothic+New:wght@300;400;500;700&display=swap"
       rel="stylesheet"
     />
   </head>

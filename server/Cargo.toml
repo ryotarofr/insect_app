@@ -14,4 +14,94 @@ serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 anyhow = "1"
 thiserror = "2"
-combp = "2.0.0"
+
+# SDUI: 型のシリアライズ + バリデーション + スキーマ生成
+schemars = { version = "0.8", features = ["chrono"] }
+chrono = { version = "0.4", features = ["serde"] }
+once_cell = "1"
+regex = "1"
+ts-rs = { version = "9", features = ["chrono-impl"] }
+
+# DB (Phase 9 / DB1-6 マイルストーン)
+# PostgreSQL に接続して orders / cart / checkout 等を永続化する。
+# - macros: query_as! 等のコンパイル時 SQL 検証 (DATABASE_URL が要る)。
+# - migrate: sqlx::migrate!() で起動時 / cli から migration を流す。
+# - chrono / uuid: TIMESTAMP / UUID 型の Rust 表現。
+# - runtime-tokio-rustls: tokio + rustls (= openssl 不要、Windows でもビルドが楽)。
+sqlx = { version = "0.8", features = [
+    "runtime-tokio-rustls",
+    "postgres",
+    "macros",
+    "migrate",
+    "chrono",
+    "uuid",
+] }
+uuid = { version = "1", features = ["v4", "serde"] }
+dotenvy = "0.15"
+
+# 認証 (Phase 9.G / login flow)
+# Argon2id で password_hash を生成・検証する。phc 文字列を user_sessions.token_hash と
+# users.password_hash の両方で採用するため、同じ crate を使い回す。
+argon2 = "0.5"
+
+# Stripe webhook の HMAC-SHA256 検証 (= Stripe-Signature header の v1=<hex> 部分)。
+# 本番では env STRIPE_WEBHOOK_SECRET が設定されると検証 ON、未設定なら scaffolding として skip。
+hmac = "0.12"
+sha2 = "0.10"
+hex = "0.4"
+subtle = "2.6"
+
+# Stripe Connect Express 統合 (Phase 7 / 出品者の売上受取口座)。
+#
+# v1.0.0-rc.5 から crate が完全に分割された:
+#   - `async-stripe`         : HTTP runtime + Client (= TLS feature をここで指定)
+#   - `async-stripe-connect` : Connect リソース型 (Account / AccountLink 等。
+#                              account / account_link feature で個別 opt-in)
+#   - `async-stripe-shared`  : 共通型 (= 自動的に depend される)
+#
+# - `rustls-tls-webpki-roots`: tokio + rustls + webpki-roots (openssl 不要、Windows で楽)
+# - `account` / `account_link`: Connect API のリソースを有効化
+#
+# **webhook event の deserialize は自前 struct (`ConnectEvent`)** なので、
+# webhook 用の crate は引き込まない。
+#
+# version は = で完全 pin (= rc 系は API が動く可能性がある)。GA 後に `^1.0` に緩める。
+async-stripe = { version = "=1.0.0-rc.5", default-features = false, features = [
+    "rustls-tls-webpki-roots",
+    # rustls v0.23 以降は crypto provider を明示する必要がある。
+    # `rustls-aws-lc-rs` (推奨) は Windows で C コンパイラを要求する場合があるため、
+    # pure Rust 寄りで Windows でも追加ツール不要な `rustls-ring` を採用。
+    "rustls-ring",
+] }
+async-stripe-connect = { version = "=1.0.0-rc.5", features = [
+    "account",
+    "account_link",
+] }
+
+# メール送信 (Sprint 2 / N1-N2 / email_outbox relay worker 経由)。
+# - dev / test: builder + StubTransport (= 送信内容を Vec<Message> に貯めるだけ)
+# - prod:       AsyncSmtpTransport で SendGrid / Mailgun の SMTP relay へ
+# tokio runtime + rustls TLS で Windows でも openssl 不要にビルド可能。
+lettre = { version = "0.11", default-features = false, features = [
+    "builder",
+    "smtp-transport",
+    "tokio1-rustls-tls",
+] }
+
+# Mailer trait に async fn を持たせるため (= Rust 1.75+ なら native async fn in trait も可だが
+# dyn 越し呼び出しに `Box<dyn Mailer>` を使いたいので async_trait を採用)。
+async-trait = "0.1"
+
+# OpenAPI スキーマ生成 (Phase 1 / A1)。
+# - `utoipa`           : #[utoipa::path] + #[derive(ToSchema)] で OpenAPI 3.x を組み立てる
+# - `utoipa-swagger-ui`: 開発時の swagger-ui を /swagger-ui で配信 (= axum 統合あり)
+# 生成 spec はビルド時ではなく runtime で `ApiDoc::openapi()` を呼び出して取り出す
+# (= 純 Rust マクロ展開で完結。CI で /openapi.json を fetch して TS 生成に流す)。
+utoipa = { version = "5", features = ["axum_extras", "chrono", "uuid"] }
+utoipa-swagger-ui = { version = "9", features = ["axum"] }
+
+# property-based test (M8 / 設計書 §13.6)
+# 任意の CardBlock を生成 → JSON serialize → deserialize の round-trip 等価性を assert。
+# discriminator 衝突 / Option<T> の null vs missing 揺れ / camelCase 変換漏れを機械的に検出。
+[dev-dependencies]
+proptest = "1"

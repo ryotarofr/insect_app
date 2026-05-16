@@ -1,0 +1,126 @@
+/* toast.css — Toast 通知の配置とスタイル
+ * デスクトップは右下、モバイルは下部タブの上に積む。
+ * ==========================================================================
+ */
+
+.toast-region {
+  position: fixed;
+  right: 24px;
+  bottom: 24px;
+  z-index: 80; /* modal (50) より上 */
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none; /* 個々の toast にだけ pointer-events */
+  width: min(360px, calc(100vw - 32px));
+}
+
+.toast {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 14px;
+  border-radius: var(--r-md);
+  background: var(--ink);
+  color: var(--bg);
+  box-shadow: 0 8px 24px oklch(0 0 0 / 0.18);
+  font-size: 13px;
+  line-height: 1.45;
+  animation: toastIn 0.22s ease-out;
+}
+
+@keyframes toastIn {
+  from {
+    transform: translateY(12px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+.toast-info {
+  background: var(--ink);
+  color: var(--bg);
+}
+
+.toast-success {
+  background: var(--accent-forest);
+  color: var(--bg);
+}
+
+.toast-warn {
+  background: var(--accent-amber);
+  color: oklch(0.15 0.04 70);
+}
+
+.toast-error {
+  background: var(--accent-rose);
+  color: var(--bg);
+}
+
+.toast-msg {
+  flex: 1;
+  min-width: 0;
+  word-break: break-word;
+}
+
+.toast-action {
+  flex-shrink: 0;
+  padding: 4px 10px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  border-radius: var(--r-sm);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.toast-action:hover,
+.toast-action:focus-visible {
+  background: oklch(1 0 0 / 0.12);
+  text-decoration: none;
+}
+
+.toast-close {
+  flex-shrink: 0;
+  width: 24px;
+  height: 24px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  opacity: 0.7;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  border-radius: var(--r-sm);
+}
+
+.toast-close:hover,
+.toast-close:focus-visible {
+  opacity: 1;
+  background: oklch(1 0 0 / 0.12);
+}
+
+/* ---------- Phone breakpoint ---------- */
+@media (max-width: 640px) {
+  .toast-region {
+    /* 下部タブ (72px) + FAB の分を避けて上に積む */
+    right: 12px;
+    left: 12px;
+    bottom: 96px;
+    width: auto;
+    align-items: center;
+  }
+
+  .toast {
+    width: 100%;
+    max-width: 420px;
+  }
+}

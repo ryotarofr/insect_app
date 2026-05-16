@@ -12,21 +12,49 @@ interface LogTimelineProps {
   emptyMessage?: string;
 }
 
-interface Group {
+export interface Group {
   date: string;
   items: LogEntry[];
+  /** 前のグループ (日付降順で一つ新しい) と月が変わる境界か */
+  isMonthBoundary: boolean;
+  /** 0=日, 6=土。土日なら背景を薄く色付け */
+  dow: number;
+  /** 月見出しに表示する "2026-04" ラベル */
+  yearMonth: string;
 }
 
-const groupByDate = (logs: LogEntry[]): Group[] => {
+const MONTH_LABELS_JA = ["1月","2月","3月","4月","5月","6月","7月","8月","9月","10月","11月","12月"];
+const DOW_LABELS_JA = ["日", "月", "火", "水", "木", "金", "土"];
+
+const parseISO = (iso: string): Date => {
+  const [y, m, d] = iso.split("-").map(Number);
+  return new Date(y, (m ?? 1) - 1, d ?? 1);
+};
+
+export const groupByDate = (logs: LogEntry[]): Group[] => {
   const byDate: Record<string, LogEntry[]> = {};
   logs.forEach((l) => {
     byDate[l.date] = byDate[l.date] || [];
     byDate[l.date].push(l);
   });
-  return Object.keys(byDate)
-    .sort()
-    .reverse()
-    .map((d) => ({ date: d, items: byDate[d] }));
+  const sortedDates = Object.keys(byDate).sort().reverse();
+  // 月区切り検出 — 新しい順に走査し、前日 (= i-1) と月が変わるタイミングで境界。
+  // 最初 (最新) の要素は常に境界とみなし、月見出しを先頭に必ず 1 本描く。
+  return sortedDates.map((d, i) => {
+    const date = parseISO(d);
+    const prev = i > 0 ? parseISO(sortedDates[i - 1]) : null;
+    const isMonthBoundary =
+      prev === null ||
+      prev.getFullYear() !== date.getFullYear() ||
+      prev.getMonth() !== date.getMonth();
+    return {
+      date: d,
+      items: byDate[d],
+      isMonthBoundary,
+      dow: date.getDay(),
+      yearMonth: `${date.getFullYear()}年 ${MONTH_LABELS_JA[date.getMonth()]}`,
+    };
+  });
 };
 
 export const LogTimeline = (p: LogTimelineProps) => {
@@ -51,12 +79,28 @@ export const LogTimeline = (p: LogTimelineProps) => {
     >
       <For each={groups()}>
         {(g) => (
-          <div class="tl-day">
-            <div class="day-head">
-              <span class="day">{g.date.slice(5).replace("-", "/")}</span>
-              <span class="date-mono">{g.date}</span>
-              <span class="count">{g.items.length} 件</span>
-            </div>
+          <>
+            {/* 月区切り — 新しい月に入るところに月見出しを挿入 */}
+            <Show when={g.isMonthBoundary}>
+              <div class="tl-month" aria-label={`月区切り: ${g.yearMonth}`}>
+                <span class="tl-month-label mono">{g.yearMonth}</span>
+              </div>
+            </Show>
+            <div
+              class="tl-day"
+              classList={{ "is-weekend": g.dow === 0 || g.dow === 6 }}
+              data-dow={g.dow}
+            >
+              <div class="day-head">
+                <span class="day">{g.date.slice(5).replace("-", "/")}</span>
+                <span class="date-mono">
+                  {g.date}
+                  <span class="tl-dow" aria-hidden="true">
+                    {" · "}{DOW_LABELS_JA[g.dow]}
+                  </span>
+                </span>
+                <span class="count">{g.items.length} 件</span>
+              </div>
             <For each={g.items}>
               {(l) => (
                 <div class="tl-row">
@@ -87,7 +131,8 @@ export const LogTimeline = (p: LogTimelineProps) => {
                 </div>
               )}
             </For>
-          </div>
+            </div>
+          </>
         )}
       </For>
     </Show>

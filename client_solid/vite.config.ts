@@ -14,6 +14,14 @@ export default defineConfig({
   },
   server: {
     port: 5173,
+    proxy: {
+      // SDUI バックエンド (axum, port 3000) に dev サーバから直接 fetch できるようにする。
+      // 本番では同一オリジンに置く想定なので、フロントは常に `/api` 相対で叩けばよい。
+      "/api": {
+        target: "http://localhost:3000",
+        changeOrigin: true,
+      },
+    },
   },
   test: {
     environment: "jsdom",
@@ -32,5 +40,9 @@ export default defineConfig({
   resolve: {
     // vitest がブラウザ向け solid バンドルを解決できるよう、conditions を調整
     conditions: process.env.VITEST ? ["development", "browser"] : [],
+    // sandbox の制約で過去の tsc emit (= sibling .js / .jsx) を物理削除できない
+    // 環境があり、`import "../api"` の解決で空の .js が .ts に先回りしてしまう。
+    // .ts / .tsx を先に試す extensions 順を明示することで、emit 残骸を無視させる。
+    extensions: [".ts", ".tsx", ".mjs", ".js", ".mts", ".jsx", ".json"],
   },
 });

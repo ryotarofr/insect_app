@@ -1,0 +1,173 @@
+<?xml version="1.0" encoding="utf-8"?>
+<mxfile host="Electron" agent="kochu-gen" type="device">
+  <diagram name="Architecture (MVP)" id="architecture-mvp">
+    <mxGraphModel dx="1200" dy="800" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="1500" pageHeight="1100" math="0" shadow="0">
+      <root>
+        <mxCell id="0"/>
+        <mxCell id="1" parent="0"/>
+        <mxCell id="title" value="KOCHU insect_app — システム全体アーキテクチャ (MVP + 将来追加)" style="text;html=1;align=left;verticalAlign=middle;fontSize=18;fontStyle=1;fontColor=#222222;" vertex="1" parent="1">
+          <mxGeometry x="60" y="20" width="1300" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="legend1" value="実線: MVP で建てる" style="text;html=1;align=left;verticalAlign=middle;fontSize=11;fontColor=#222222;" vertex="1" parent="1">
+          <mxGeometry x="60" y="55" width="220" height="24" as="geometry"/>
+        </mxCell>
+        <mxCell id="legend2" value="破線: 将来追加 (発動条件あり)" style="text;html=1;align=left;verticalAlign=middle;fontSize=11;fontStyle=2;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="290" y="55" width="280" height="24" as="geometry"/>
+        </mxCell>
+        <mxCell id="g_clients" value="クライアント層" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;verticalAlign=top;align=left;fontSize=13;fontStyle=1;fontColor=#999999;" vertex="1" parent="1">
+          <mxGeometry x="60" y="100" width="700" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="g_edge" value="AWS エッジ層 (MVP)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fffbe6;strokeColor=#999999;verticalAlign=top;align=left;fontSize=13;fontStyle=1;fontColor=#999999;" vertex="1" parent="1">
+          <mxGeometry x="60" y="250" width="700" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="g_compute" value="AWS コンピュート (MVP)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f0f9eb;strokeColor=#999999;verticalAlign=top;align=left;fontSize=13;fontStyle=1;fontColor=#999999;" vertex="1" parent="1">
+          <mxGeometry x="60" y="400" width="700" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="g_data" value="AWS データ層 (MVP)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f9f0ff;strokeColor=#999999;verticalAlign=top;align=left;fontSize=13;fontStyle=1;fontColor=#999999;" vertex="1" parent="1">
+          <mxGeometry x="60" y="550" width="700" height="160" as="geometry"/>
+        </mxCell>
+        <mxCell id="g_notify" value="通知 (MVP)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff7e6;strokeColor=#999999;verticalAlign=top;align=left;fontSize=13;fontStyle=1;fontColor=#999999;" vertex="1" parent="1">
+          <mxGeometry x="60" y="730" width="460" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="g_ext" value="外部サービス" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#fff1f0;strokeColor=#999999;verticalAlign=top;align=left;fontSize=13;fontStyle=1;fontColor=#999999;" vertex="1" parent="1">
+          <mxGeometry x="540" y="730" width="220" height="130" as="geometry"/>
+        </mxCell>
+        <mxCell id="g_future" value="将来追加 (Phase 進行に応じて)" style="rounded=0;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;verticalAlign=top;align=left;fontSize=13;fontStyle=1;fontColor=#999999;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="820" y="100" width="620" height="760" as="geometry"/>
+        </mxCell>
+        <mxCell id="web" value="Solid.js (PWA)
+Web ブラウザ" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#000000;fontSize=12;fontStyle=0;shadow=0;verticalAlign=middle;align=center;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="130" y="140" width="240" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="ios" value="Swift / SwiftUI
+iOS アプリ" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#dae8fc;strokeColor=#6c8ebf;fontColor=#000000;fontSize=12;fontStyle=0;shadow=0;verticalAlign=middle;align=center;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="440" y="140" width="240" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="r53" value="Route 53
+DNS" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontColor=#000000;fontSize=12;fontStyle=0;shadow=0;verticalAlign=middle;align=center;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="180" y="290" width="200" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="alb" value="ALB + ACM
+(TLS 終端)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#fff2cc;strokeColor=#d6b656;fontColor=#000000;fontSize=12;fontStyle=0;shadow=0;verticalAlign=middle;align=center;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="440" y="290" width="240" height="70" as="geometry"/>
+        </mxCell>
+        <mxCell id="axum" value="ECS Fargate: API
+Axum + utoipa (OpenAPI)
++ 軽量非同期処理 (tokio::spawn)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#d5e8d4;strokeColor=#82b366;fontColor=#000000;fontSize=12;fontStyle=1;shadow=0;verticalAlign=middle;align=center;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="230" y="425" width="360" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="aurora" value="Amazon Aurora PostgreSQL
+(取引・カルテ・血統 + pg_trgm 全文検索)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontColor=#000000;fontSize=12;fontStyle=0;shadow=0;verticalAlign=middle;align=center;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="130" y="595" width="320" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="s3" value="Amazon S3
+(画像ストレージ / presigned URL)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#e1d5e7;strokeColor=#9673a6;fontColor=#000000;fontSize=12;fontStyle=0;shadow=0;verticalAlign=middle;align=center;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="480" y="595" width="240" height="90" as="geometry"/>
+        </mxCell>
+        <mxCell id="ses" value="Amazon SES
+(メール)" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#000000;fontSize=12;fontStyle=0;shadow=0;verticalAlign=middle;align=center;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="100" y="770" width="180" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="snspush" value="Amazon SNS
+Mobile Push" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#ffe6cc;strokeColor=#d79b00;fontColor=#000000;fontSize=12;fontStyle=0;shadow=0;verticalAlign=middle;align=center;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="310" y="770" width="200" height="80" as="geometry"/>
+        </mxCell>
+        <mxCell id="stripe" value="Stripe
+決済" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontColor=#000000;fontSize=12;fontStyle=0;shadow=0;verticalAlign=middle;align=center;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="560" y="760" width="180" height="50" as="geometry"/>
+        </mxCell>
+        <mxCell id="apns" value="APNs" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f8cecc;strokeColor=#b85450;fontColor=#000000;fontSize=12;fontStyle=0;shadow=0;verticalAlign=middle;align=center;strokeWidth=2;" vertex="1" parent="1">
+          <mxGeometry x="560" y="820" width="180" height="30" as="geometry"/>
+        </mxCell>
+        <mxCell id="cf_f" value="CloudFront / WAF
+配信加速・防御
+[攻撃試行 / 海外利用増 で追加]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontColor=#666666;fontSize=12;fontStyle=0;shadow=0;verticalAlign=middle;align=center;strokeWidth=2;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="860" y="150" width="260" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="cache_f" value="ElastiCache (Redis)
+キャッシュ / ジョブキュー
+[DB レイテンシ目立つ で追加]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontColor=#666666;fontSize=12;fontStyle=0;shadow=0;verticalAlign=middle;align=center;strokeWidth=2;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="150" width="260" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="work_f" value="Worker タスク分離
+(ECS Fargate 別タスク)
+[非同期負荷増 で追加]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontColor=#666666;fontSize=12;fontStyle=0;shadow=0;verticalAlign=middle;align=center;strokeWidth=2;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="860" y="290" width="260" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="os_f" value="OpenSearch Service
+横断検索拡張
+[出品 数千〜万件超 で追加]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontColor=#666666;fontSize=12;fontStyle=0;shadow=0;verticalAlign=middle;align=center;strokeWidth=2;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="290" width="260" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="mc_f" value="MediaConvert
+動画変換
+[動画機能 確定 で追加]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontColor=#666666;fontSize=12;fontStyle=0;shadow=0;verticalAlign=middle;align=center;strokeWidth=2;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="860" y="430" width="260" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="br_f" value="Bedrock (Claude)
+AI 機能
+[種同定 / 推奨 等 確定 で追加]" style="rounded=1;whiteSpace=wrap;html=1;fillColor=#f5f5f5;strokeColor=#999999;fontColor=#666666;fontSize=12;fontStyle=0;shadow=0;verticalAlign=middle;align=center;strokeWidth=2;dashed=1;" vertex="1" parent="1">
+          <mxGeometry x="1160" y="430" width="260" height="100" as="geometry"/>
+        </mxCell>
+        <mxCell id="future_note" value="※ 全てアプリ層の抽象境界 (infrastructure/) で
+  後付け影響を局所化できる設計とする" style="text;html=1;align=left;verticalAlign=middle;fontSize=11;fontStyle=2;fontColor=#666666;" vertex="1" parent="1">
+          <mxGeometry x="860" y="600" width="560" height="60" as="geometry"/>
+        </mxCell>
+        <mxCell id="101" value="REST + OpenAPI" style="endArrow=classic;html=1;strokeColor=#444444;strokeWidth=2;fontSize=10;fontColor=#444444;edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" parent="1" source="web" target="r53">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="102" value="REST + OpenAPI" style="endArrow=classic;html=1;strokeColor=#444444;strokeWidth=2;fontSize=10;fontColor=#444444;edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" parent="1" source="ios" target="r53">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="110" value="" style="endArrow=classic;html=1;strokeColor=#444444;strokeWidth=1.5;fontSize=10;fontColor=#444444;edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" parent="1" source="r53" target="alb">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="111" value="" style="endArrow=classic;html=1;strokeColor=#444444;strokeWidth=2;fontSize=10;fontColor=#444444;edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" parent="1" source="alb" target="axum">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="120" value="" style="endArrow=classic;html=1;strokeColor=#444444;strokeWidth=1.5;fontSize=10;fontColor=#444444;edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" parent="1" source="axum" target="aurora">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="125" value="署名 URL 発行" style="endArrow=classic;html=1;strokeColor=#444444;strokeWidth=1.5;fontSize=10;fontColor=#444444;edgeStyle=orthogonalEdgeStyle;rounded=0;dashed=1;" edge="1" parent="1" source="axum" target="s3">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="126" value="直接アップロード" style="endArrow=classic;html=1;strokeColor=#0a66c2;strokeWidth=1.5;fontSize=10;fontColor=#0a66c2;edgeStyle=orthogonalEdgeStyle;rounded=0;dashed=1;" edge="1" parent="1" source="web" target="s3">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="127" value="直接アップロード" style="endArrow=classic;html=1;strokeColor=#0a66c2;strokeWidth=1.5;fontSize=10;fontColor=#0a66c2;edgeStyle=orthogonalEdgeStyle;rounded=0;dashed=1;" edge="1" parent="1" source="ios" target="s3">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="130" value="送信" style="endArrow=classic;html=1;strokeColor=#444444;strokeWidth=1.5;fontSize=10;fontColor=#444444;edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" parent="1" source="axum" target="ses">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="131" value="publish" style="endArrow=classic;html=1;strokeColor=#444444;strokeWidth=1.5;fontSize=10;fontColor=#444444;edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" parent="1" source="axum" target="snspush">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="132" value="iOS push" style="endArrow=classic;html=1;strokeColor=#444444;strokeWidth=1.5;fontSize=10;fontColor=#444444;edgeStyle=orthogonalEdgeStyle;rounded=0;" edge="1" parent="1" source="snspush" target="apns">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="140" value="webhook / API" style="endArrow=classic;html=1;strokeColor=#444444;strokeWidth=1.5;fontSize=10;fontColor=#444444;edgeStyle=orthogonalEdgeStyle;rounded=0;startArrow=classic;startFill=1;" edge="1" parent="1" source="axum" target="stripe">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="201" value="必要時" style="endArrow=classic;html=1;strokeColor=#999999;strokeWidth=1.5;fontSize=10;fontColor=#888888;edgeStyle=orthogonalEdgeStyle;rounded=0;dashed=1;" edge="1" parent="1" source="axum" target="cache_f">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="202" value="必要時" style="endArrow=classic;html=1;strokeColor=#999999;strokeWidth=1.5;fontSize=10;fontColor=#888888;edgeStyle=orthogonalEdgeStyle;rounded=0;dashed=1;" edge="1" parent="1" source="axum" target="os_f">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="203" value="必要時" style="endArrow=classic;html=1;strokeColor=#999999;strokeWidth=1.5;fontSize=10;fontColor=#888888;edgeStyle=orthogonalEdgeStyle;rounded=0;dashed=1;" edge="1" parent="1" source="axum" target="br_f">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="204" value="必要時" style="endArrow=classic;html=1;strokeColor=#999999;strokeWidth=1.5;fontSize=10;fontColor=#888888;edgeStyle=orthogonalEdgeStyle;rounded=0;dashed=1;" edge="1" parent="1" source="cache_f" target="work_f">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="205" value="動画変換" style="endArrow=classic;html=1;strokeColor=#999999;strokeWidth=1.5;fontSize=10;fontColor=#888888;edgeStyle=orthogonalEdgeStyle;rounded=0;dashed=1;" edge="1" parent="1" source="s3" target="mc_f">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+        <mxCell id="206" value="前段に追加" style="endArrow=classic;html=1;strokeColor=#999999;strokeWidth=1.5;fontSize=10;fontColor=#888888;edgeStyle=orthogonalEdgeStyle;rounded=0;dashed=1;" edge="1" parent="1" source="alb" target="cf_f">
+          <mxGeometry relative="1" as="geometry"/>
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>

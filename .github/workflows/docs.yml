@@ -1,0 +1,79 @@
+# docs.yml — docs-site/ を GitHub Pages にデプロイする workflow
+#
+# **トリガー**:
+#   - main への push で `docs-site/**` か本 workflow が変わった時
+#   - workflow_dispatch (手動)
+#
+# **配信モード**:
+#   GitHub Pages "Build with GitHub Actions" モードを使う (= `gh-pages` ブランチを
+#   手動管理しない)。リポジトリの Settings → Pages で Source: "GitHub Actions" を
+#   選択してから初回 push してください。
+#
+# **base path**:
+#   docs-site/astro.config.mjs の `site` / `base` が GitHub Pages の URL と一致して
+#   いることを確認してから push すること。subpath `/insect_app` 前提の配信です。
+#
+# **同時実行制御**:
+#   concurrency: pages で同一 ref への重複 deploy を抑止する (= 連続 push でも
+#   最後の 1 回だけが届く)。
+
+name: Deploy docs-site
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs-site/**"
+      - ".github/workflows/docs.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build (Astro)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: docs-site
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Bun
+        uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build site
+        run: bun run build
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          # `path` は workflow root (= リポジトリ root) からの相対パスで指定
+          path: docs-site/dist
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy
+        id: deployment
+        uses: actions/deploy-pages@v4
