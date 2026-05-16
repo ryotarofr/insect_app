@@ -4,6 +4,54 @@
  */
 
 export interface paths {
+    "/account/stripe_connect/onboarding": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * `POST /api/v1/account/stripe_connect/onboarding` — Express Account を作成 (or 既存を再利用)
+         *     + Account Link URL を発行して返す。
+         * @description **エラー**:
+         *       - 401: 未ログイン
+         *       - 500: STRIPE_SECRET_KEY 未設定 / Stripe API 失敗 / DB エラー
+         */
+        post: operations["post_onboarding"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/account/stripe_connect/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * `GET /api/v1/account/stripe_connect/status` — 現在の連携状態を返す。
+         *     クライアントが return URL ページから叩く想定。Stripe API で実状態を再同期する。
+         * @description **同期ロジック**:
+         *       - account_id があれば Stripe API で `Account.retrieve` を呼び、charges_enabled / payouts_enabled
+         *         を見て `unlinked / pending / active / restricted` に正規化、ローカル DB を上書き。
+         *       - account_id 無しなら 'unlinked' をそのまま返す (= API 呼び出し skip)。
+         *       - Stripe API 失敗時は warn + ローカル DB の値をそのまま返す (= graceful degrade)。
+         */
+        get: operations["get_status"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/assets/{asset_id}": {
         parameters: {
             query?: never;
@@ -263,7 +311,7 @@ export interface paths {
         put?: never;
         /**
          * `POST /api/v1/checkout/submit` — 注文を確定し Stripe Checkout Session URL を返す。
-         * @description **C2C pivot 後の流れ**:
+         * @description **流れ**:
          *       `axum::extract::State<AppState>` 経由で `Option<PgPool>` を受け取り、
          *       - `repos::listings::find_by_public_id(pool, ...)` で listing_id (UUID) と現在価格を解決
          *       - `repos::orders::insert_order(pool, ...)` で DB に永続化 (= order_items.listing_id)
@@ -432,7 +480,7 @@ export interface paths {
         /**
          * `GET /api/v1/listings/me?status=active|sold|canceled|expired|all` —
          *     自分の出品一覧。
-         * @description **Phase 1 / マイ出品**:
+         * @description **マイ出品**:
          *     - login 必須 (= 401)。session の user_id を `seller_user_id` として固定。
          *     - `?status=` 省略 or `all` で全 status、それ以外は schema CHECK と同じ集合のみ受け付ける。
          *     - 戻り値は `list_active` と同じ `ListingViewWithCounts` shape (= bid_count / watcher_count
@@ -617,7 +665,7 @@ export interface paths {
         };
         /**
          * `GET /api/v1/orders/me?role=buyer|seller|all` — 自分の取引履歴 (= created_at 降順)。
-         * @description **Phase 4 / 取引履歴の販売側統合**:
+         * @description **取引履歴の販売側統合**:
          *       - `role=buyer` (= 既定): 自分が買った注文 (= orders.user_id = me)
          *       - `role=seller`: 自分が売った注文 (= orders.seller_user_id = me、paid 遷移済のみ)
          *       - `role=all`: 上記の OR (= 取引履歴の merged view 用)
@@ -761,7 +809,7 @@ export interface paths {
         put?: never;
         /**
          * `POST /api/v1/specimens/{id}/life_status` — life_status 遷移。所有者のみ操作可。
-         * @description **Medium #3**: specimens.life_status の更新時は必ず本 endpoint 経由で
+         * @description specimens.life_status の更新時は必ず本 endpoint 経由で
          *     `repos::specimens::update_life_status` を呼び、specimen_status_history への履歴
          *     INSERT が原子的に走る規律にしている。直接 UPDATE する経路は作らない。
          */
@@ -992,7 +1040,7 @@ export interface components {
             status: string;
         };
         /**
-         * @description 任意で全 state を確認したい時の GET (Phase 8: テスト + デバッグ用)。
+         * @description 任意で全 state を確認したい時の GET (テスト + デバッグ用)。
          *     SDUI 契約上は cart card の中で配送先も返るのでクライアントは普通使わない。
          */
         CheckoutSnapshotResponse: {
@@ -1064,6 +1112,12 @@ export interface components {
             /** @description クライアントが `<img src=...>` で表示するための URL。 */
             publicUrl: string;
         };
+        ConnectStatusResponse: {
+            /** @description 連携済 (= account_id がある) なら id を返す。debug 用。 */
+            accountId?: string | null;
+            /** @description `unlinked` / `pending` / `active` / `restricted` のいずれか。 */
+            status: string;
+        };
         CreateCohortLogRequest: {
             body?: string | null;
             /** Format: int32 */
@@ -1095,7 +1149,7 @@ export interface components {
         };
         CreateListingRequest: {
             /**
-             * @description Phase 6b: アップロード済 asset (= /uploads/complete を通過した) の UUID リスト。
+             * @description アップロード済 asset (= /uploads/complete を通過した) の UUID リスト。
              *     listing 作成成功後に `assets.attach_target` で `(target_kind='listing', target_id=<listing_id>)`
              *     を書き込む。空配列 / 省略は写真なしの出品として OK。
              *     asset の所有者検証 (= asset.owner_user_id == seller) は attach 時に呼び出し側で行う。
@@ -1103,7 +1157,7 @@ export interface components {
             assetIds?: string[];
             /**
              * Format: int64
-             * @description Phase 6c-1: 即決価格 (= auction の "Buy It Now")。
+             * @description 即決価格 (= auction の "Buy It Now")。
              *     任意 / NULL 許容。設定する場合は `is_auction=true` かつ `> starting_price_jpy`。
              *     migration 0024 の CHECK 制約と repo validate で同条件を強制。
              */
@@ -1114,8 +1168,8 @@ export interface components {
             isAuction: boolean;
             publicId: string;
             /**
-             * @description Phase 6c-2: 出品者が対応可能な配送方法 ID リスト (= shipping_methods.id)。
-             *     空配列 / 省略は「全方法 OK」と解釈する (= 旧仕様互換 / 出品者が絞り込みを設定しない)。
+             * @description 出品者が対応可能な配送方法 ID リスト (= shipping_methods.id)。
+             *     空配列 / 省略は「全方法 OK」と解釈する (= 出品者が絞り込みを設定しない)。
              *     行があれば `listing_shipping_methods` に書き込み、checkout は client 側で
              *     その集合のみから選択する規律。
              */
@@ -1223,7 +1277,7 @@ export interface components {
             bidCount: number;
             /**
              * Format: int64
-             * @description Phase 6c-1: 即決価格 (= auction の Buy It Now)。
+             * @description 即決価格 (= auction の Buy It Now)。
              */
             buyoutPriceJpy?: number | null;
             /** Format: int64 */
@@ -1239,7 +1293,7 @@ export interface components {
             sellerName: string;
             sellerUserId: string;
             /**
-             * @description Phase 6c-2: 対応可能な配送方法 ID 集合。
+             * @description 対応可能な配送方法 ID 集合。
              *     **空配列 = 「全方法 OK」** と解釈 (= 出品者が絞り込みを設定していない)。
              *     値が入っていれば、checkout はその集合のみから選ぶ規律。
              */
@@ -1297,16 +1351,27 @@ export interface components {
             name: string;
             publicId: string;
             role: string;
+            /**
+             * @description Stripe Connect 連携状態 (= 'unlinked' / 'pending' / 'active' / 'restricted')。
+             *     出品 wizard では 'active' でないと「出品する」を disabled にする。
+             */
+            stripeConnectStatus: string;
             userId: string;
+        };
+        OnboardingResponse: {
+            /** @description 作成 / 取得された Stripe Connect Account の id (= "acct_xxx")。debug 用。 */
+            accountId: string;
+            /**
+             * @description クライアントが `window.location = url` で遷移する Stripe ホスト型 URL。
+             *     数分で期限切れ (= Stripe 仕様)、切れたら `/refresh` 経由で再発行。
+             */
+            onboardingUrl: string;
         };
         OrderDetailView: components["schemas"]["OrderView"] & {
             lineItems: components["schemas"]["OrderLineView"][];
         };
         OrderLineView: {
-            /**
-             * @description C2C pivot: 旧 product_id / product_uuid を listing_id に置換。
-             *     listings(id) UUID を文字列で返す (= ON DELETE SET NULL のため Option)。
-             */
+            /** @description listings(id) UUID を文字列で返す (= ON DELETE SET NULL のため Option)。 */
             listingId?: string | null;
             /** Format: int32 */
             qty: number;
@@ -1320,7 +1385,7 @@ export interface components {
             /** Format: int64 */
             amountJpy: number;
             /**
-             * @description Phase 4: 買い手 (= orders.user_id 由来)。anonymous 注文で None。
+             * @description 買い手 (= orders.user_id 由来)。anonymous 注文で None。
              *     既存の `session_id` だけでは role=buyer 判定が UI 側で難しかったため明示する。
              */
             buyerUserId?: string | null;
@@ -1328,7 +1393,7 @@ export interface components {
             createdAt: string;
             id: string;
             /**
-             * @description Phase 4: 出品者 (= listings.seller_user_id 経由で paid 遷移時に書く)。
+             * @description 出品者 (= listings.seller_user_id 経由で paid 遷移時に書く)。
              *     FE は role=seller タブで表示時に「あなたが売り手の取引」を識別するのに使う。
              */
             sellerUserId?: string | null;
@@ -1543,7 +1608,7 @@ export interface components {
             isArchived: boolean;
             lifeStatus: string;
             name: string;
-            /** @description 個体メモ (= 自由テキスト)。PR #5b で localStorage から server 永続化に移行。 */
+            /** @description 個体メモ (= 自由テキスト)。 */
             notes?: string | null;
             ownerUserId: string;
             publicId: string;
@@ -1579,7 +1644,7 @@ export interface components {
         };
         /**
          * @description `PATCH /api/v1/specimens/{id}/notes` — 個体メモ更新 (= 自由テキスト)。
-         *     PR #5b で localStorage 永続化を廃止して server 化。空文字列は「メモ削除」として許容。
+         *     空文字列は「メモ削除」として許容。
          *     他人の specimen は 404 (= 存在隠し)。
          */
         UpdateNotesRequest: {
@@ -1598,6 +1663,73 @@ export interface components {
 }
 export type $defs = Record<string, never>;
 export interface operations {
+    post_onboarding: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Account 作成 + Link URL 返却 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["OnboardingResponse"];
+                };
+            };
+            /** @description 未ログイン */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+            /** @description Stripe 未設定 / API 失敗 */
+            500: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    get_status: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description 現在の連携状態 */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ConnectStatusResponse"];
+                };
+            };
+            /** @description 未ログイン */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     get_asset: {
         parameters: {
             query?: never;
