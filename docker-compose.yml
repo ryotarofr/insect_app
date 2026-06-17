@@ -1,0 +1,73 @@
+# docker-compose.yml — KOCHU 開発用ローカル環境 (DB / debug UI)
+#
+# 用途: PostgreSQL を Docker で立ち上げて、Rust server (axum) から接続する。
+#
+# **起動**:
+#   docker compose up -d              # postgres + adminer をバックグラウンドで起動
+#   docker compose up -d postgres     # postgres だけを立ち上げる (adminer 不要時)
+#   docker compose down               # 停止 + 削除
+#   docker compose down -v            # 停止 + volume も削除 (= DB データもリセット)
+#
+# **接続情報**:
+#   postgres  : postgresql://kochu:kochu_dev_password@localhost:5432/kochu_dev
+#   adminer   : http://localhost:8081 (server: postgres, user: kochu, password: kochu_dev_password)
+#
+# **健全性確認**:
+#   docker compose ps           # status を見る
+#   docker compose logs postgres
+#
+# **備考**:
+#   - production / staging では本ファイルではなく AWS RDS (Aurora PostgreSQL) を使う想定。
+#     IaC は別途 (Phase 9 infra docs)。
+#   - データは `pgdata` named volume に永続化。`docker compose down -v` で消える。
+#   - port 5432 / 8081 は dev でしか開かない (production は CloudFront 経由のみ)。
+#   - `POSTGRES_*` の値は **dev 専用**。production で使い回さないこと。
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: kochu_postgres_dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: kochu
+      POSTGRES_PASSWORD: kochu_dev_password
+      POSTGRES_DB: kochu_dev
+      # locale を ja_JP.UTF-8 にしたい場合は image を `postgres:16` (debian) に切り替えて
+      # 設定を入れる。MVP では C.UTF-8 のまま (= 日本語ソート不要、JSON 中心の運用)。
+      TZ: Asia/Tokyo
+    ports:
+      # 5432:5432 で host 側にも露出。
+      # production 時は CloudFront 経由 / Security Group 内のみアクセスする想定なので、
+      # この expose 設定は dev 専用と理解して dev 環境でしか使わない。
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      # 起動時に流したい seed SQL があれば ./server/migrations/seed.sql 等を
+      # /docker-entrypoint-initdb.d/ にマウントする。
+      # MVP では sqlx::migrate! 側で migration を流す方針なので mount しない。
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U kochu -d kochu_dev"]
+      interval: 5s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+
+  # ── adminer (Web UI for postgres) ────────────────────────────────
+  # localhost:8081 に Web UI を開いて、ad-hoc に SQL を叩いたり migration の効果を確認できる。
+  # production には絶対に持ち込まない (= dev only)。
+  adminer:
+    image: adminer:5
+    container_name: kochu_adminer_dev
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      ADMINER_DEFAULT_SERVER: postgres
+      ADMINER_DESIGN: pepa-linha
+    ports:
+      - "8081:8080"
+
+volumes:
+  pgdata:
+    name: kochu_pgdata_dev

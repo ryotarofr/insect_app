@@ -37,7 +37,12 @@ export const LogList = (p: { logs: LogEntry[]; compact?: boolean }) => (
             </Show>
           </div>
           <Show when={l.photo}>
-            <div class="ph" style={{ width: "60px", height: "60px" }}>
+            <div
+              class="ph"
+              style={{ width: "60px", height: "60px" }}
+              role="img"
+              aria-label="ログ添付写真 (プレースホルダ)"
+            >
               <span class="mono" style={{ "font-size": "9px" }}>
                 写真
               </span>

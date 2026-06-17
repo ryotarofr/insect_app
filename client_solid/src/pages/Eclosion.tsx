@@ -68,12 +68,7 @@ export const EclosionPage = (props: EclosionPageProps) => {
         <For each={summary}>
           {(x) => (
             <div style={{ background: "var(--bg-raised)", padding: "20px" }}>
-              <div
-                class="mono"
-                style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em" }}
-              >
-                {x.label}
-              </div>
+              <div class="u-eyebrow">{x.label}</div>
               <div style={{ display: "flex", "align-items": "baseline", gap: "4px", "margin-top": "4px" }}>
                 <span
                   class="serif"
@@ -94,12 +89,7 @@ export const EclosionPage = (props: EclosionPageProps) => {
 
       <div class="card" style={{ padding: "24px", "margin-bottom": "32px" }}>
         <div style={{ display: "flex", "align-items": "baseline", gap: "12px", "margin-bottom": "20px" }}>
-          <span
-            class="mono"
-            style={{ "font-size": "10px", color: "var(--ink-faint)", "letter-spacing": "0.12em" }}
-          >
-            レーダー · 今後365日
-          </span>
+          <span class="u-eyebrow">レーダー · 今後365日</span>
           <span class="serif" style={{ "font-size": "18px", "font-weight": 600 }}>
             羽化レーダー
           </span>
@@ -153,19 +143,36 @@ export const EclosionPage = (props: EclosionPageProps) => {
               );
             }}
           </For>
-          <div
-            style={{
-              position: "absolute",
-              left: 0,
-              top: 0,
-              bottom: 0,
-              width: `${(30 / HORIZON) * 100}%`,
-              background: "var(--accent-amber-soft)",
-              "border-left": "2px solid var(--accent-amber)",
-            }}
-          />
+          <Show when={all.length > 0}>
+            <div
+              style={{
+                position: "absolute",
+                left: 0,
+                top: 0,
+                bottom: 0,
+                width: `${(30 / HORIZON) * 100}%`,
+                background: "var(--accent-amber-soft)",
+                "border-left": "2px solid var(--accent-amber)",
+              }}
+            />
+          </Show>
         </div>
 
+        <Show
+          when={all.length > 0}
+          fallback={
+            <div
+              style={{
+                padding: "32px 16px",
+                "text-align": "center",
+                color: "var(--ink-mute)",
+                "font-size": "13px",
+              }}
+            >
+              予測対象の個体がありません。蛹化済みの個体を登録すると羽化日が予測されます。
+            </div>
+          }
+        >
         <div style={{ position: "relative", height: `${all.length * 44 + 10}px`, "padding-top": "10px" }}>
           <For each={all}>
             {(s, i) => {
@@ -252,6 +259,7 @@ export const EclosionPage = (props: EclosionPageProps) => {
             }}
           </For>
         </div>
+        </Show>
       </div>
 
       <For each={sections}>

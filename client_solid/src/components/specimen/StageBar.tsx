@@ -1,18 +1,23 @@
 // StageBar.tsx — 卵 → 成虫 のライフサイクル進捗バー
 //
-// 改善: 「現在どの段階か」を一目で分かるように再設計
-//  - 旧: 細い7セグメントバー + 下にラベル (現在地が色だけで表現されていた)
-//  - 新: 現在ステージをスポットライトカードで大きく見せ、
-//        その下に 7 段階のミニタイムラインを配置。
-//        現在ステージは ▼ ポインタ + 塗りドット + 進捗リング で強調する。
+// 「現在どの段階か」を一目で分かるように:
+//  - 現在ステージをスポットライトカードで大きく見せ、
+//    その下に 7 段階のミニタイムラインを配置。
+//  - 現在ステージは ▼ ポインタ + 塗りドット + 進捗リング で強調する。
 //
-// vertical=true は個体カルテの旧レイアウト向け縦リスト (テスト互換のため維持)。
+// vertical=true は個体カルテ向けの縦リスト (テスト互換のため維持)。
 import { For, Show } from "solid-js";
+import {
+  STAGE_ICON_MAP,
+  STAGE_ICON_ORDER,
+} from "../icons/stage";
 
 const STAGES = ["卵", "幼虫1齢", "幼虫2齢", "幼虫3齢", "前蛹", "蛹", "成虫"];
 
-/** 各段階を 1 文字絵文字アイコンで表す */
-const STAGE_ICONS = ["🥚", "🐛", "🐛", "🐛", "🛋", "🛋", "🦋"];
+/** 各段階のアイコンは SVG コンポーネントで統一。
+ *   絵文字はフォント依存で形がブレるため、components/icons/stage/ に専用 7 種を定義し、
+ *   ここでは順序通りに使う */
+const STAGE_ICON_COMPONENTS = STAGE_ICON_ORDER.map((k) => STAGE_ICON_MAP[k]);
 
 const stageIdx = (stage: string): number => {
   if (stage.includes("卵")) return 0;
@@ -35,7 +40,7 @@ export const StageBar = (p: {
   const currentIdx = () => stageIdx(p.stage);
   const currentStage = () => STAGES[currentIdx()];
   const nextStage = () => STAGES[currentIdx() + 1] ?? null;
-  const currentIcon = () => STAGE_ICONS[currentIdx()];
+  const CurrentIcon = () => STAGE_ICON_COMPONENTS[currentIdx()];
 
   // ポインタ / 塗り切り位置 = 現ステージの中心
   // (進捗は目測なので「だいたい今このへん」に揃え、精度の錯覚を避ける)
@@ -91,7 +96,10 @@ export const StageBar = (p: {
         {/* Spotlight: 現在どのステージかを大きく提示 */}
         <div class="stage-spot" role="group" aria-label="現在のライフサイクル">
           <div class="stage-spot-ico" aria-hidden="true">
-            {currentIcon()}
+            {(() => {
+              const Ico = CurrentIcon();
+              return <Ico size={32} aria-label={currentStage()} />;
+            })()}
           </div>
           <div class="stage-spot-body">
             <div class="stage-spot-row">

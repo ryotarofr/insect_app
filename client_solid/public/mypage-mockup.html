@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>マイページ + 出品管理 統合モック / KOCHŪ</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  /* ── 既存トークンを localhost から抜いたものに合わせる ─────────────── */
+  :root {
+    --bg-canvas: oklch(0.985 0.004 80);
+    --bg-card:   oklch(1 0 0);
+    --bg-soft:   oklch(0.96 0.006 80);
+    --bg-softer: oklch(0.98 0.005 80);
+    --fg:        oklch(0.22 0.01 80);
+    --fg-muted:  oklch(0.48 0.01 80);
+    --fg-faint:  oklch(0.68 0.008 80);
+    --border:    oklch(0.9 0.006 80);
+    --border-strong: oklch(0.82 0.008 80);
+
+    --primary:        oklch(0.45 0.08 150);
+    --primary-soft:   oklch(0.93 0.03 150);
+    --primary-fg:     oklch(0.98 0.004 80);
+
+    --accent-amber:   oklch(0.78 0.13 80);
+    --accent-amber-soft: oklch(0.96 0.04 80);
+    --accent-blue:    oklch(0.55 0.10 240);
+    --accent-blue-soft: oklch(0.95 0.03 240);
+    --accent-rose:    oklch(0.62 0.13 25);
+    --accent-rose-soft: oklch(0.96 0.03 25);
+
+    --serif: "Noto Serif JP", "Hiragino Mincho ProN", serif;
+    --sans:  "Noto Sans JP", -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+    --mono:  "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+  }
+
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    font-family: var(--sans);
+    background: var(--bg-canvas);
+    color: var(--fg);
+    font-size: 14px;
+    line-height: 1.55;
+    letter-spacing: 0.01em;
+  }
+
+  /* ── 全体レイアウト: サイドバー + メイン ───────────────────────────── */
+  .app {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    min-height: 100vh;
+  }
+
+  /* ── サイドバー ─────────────────────────────────────────────────────── */
+  .sidebar {
+    background: var(--bg-card);
+    border-right: 1px solid var(--border);
+    padding: 16px 12px 12px;
+    display: flex; flex-direction: column;
+    position: sticky; top: 0; height: 100vh;
+  }
+  .brand { display: flex; align-items: center; gap: 10px; padding: 4px 6px 18px; }
+  .brand-mark {
+    width: 36px; height: 36px; border-radius: 8px;
+    background: var(--primary); color: var(--primary-fg);
+    display: grid; place-items: center;
+    font-family: var(--serif); font-weight: 700;
+  }
+  .brand-name { font-family: var(--serif); font-size: 18px; font-weight: 700; letter-spacing: 0.04em; }
+  .brand-sub  { color: var(--fg-faint); font-size: 11px; margin-top: 2px; }
+
+  .nav-section { padding: 8px 6px 4px; color: var(--fg-faint); font-size: 11px; letter-spacing: 0.08em; text-transform: uppercase; }
+  .nav { display: flex; flex-direction: column; gap: 2px; }
+  .nav a {
+    display: flex; align-items: center; gap: 10px;
+    padding: 8px 10px; border-radius: 8px;
+    color: var(--fg); text-decoration: none; font-size: 13px;
+  }
+  .nav a:hover { background: var(--bg-soft); }
+  .nav a.is-active { background: var(--primary-soft); color: var(--primary); font-weight: 600; }
+  .nav .badge {
+    margin-left: auto; min-width: 20px; height: 18px; padding: 0 6px;
+    border-radius: 999px; background: var(--primary); color: var(--primary-fg);
+    font-size: 11px; display: grid; place-items: center; font-weight: 600;
+  }
+  .nav .badge--soft { background: var(--bg-soft); color: var(--fg-muted); }
+  .nav .icon { width: 16px; height: 16px; opacity: 0.75; flex-shrink: 0; }
+
+  .sidebar-footer {
+    margin-top: auto; padding-top: 12px; border-top: 1px solid var(--border);
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .user-chip { display: flex; align-items: center; gap: 10px; padding: 4px 6px; }
+  .avatar { width: 28px; height: 28px; border-radius: 50%; background: var(--primary-soft); color: var(--primary); display: grid; place-items: center; font-size: 11px; font-weight: 700; }
+  .user-name { font-size: 13px; font-weight: 600; }
+  .user-role { font-family: var(--mono); font-size: 11px; color: var(--fg-faint); }
+  .logout { font-size: 11px; color: var(--fg-faint); padding: 6px 4px; }
+
+  /* ── メイン ─────────────────────────────────────────────────────────── */
+  .main { padding: 0; }
+  .topbar {
+    height: 52px; padding: 0 32px;
+    display: flex; align-items: center; justify-content: space-between;
+    border-bottom: 1px solid var(--border); background: var(--bg-canvas);
+    position: sticky; top: 0; z-index: 10;
+  }
+  .crumb { color: var(--fg-faint); font-size: 12px; }
+  .crumb b { color: var(--fg); font-weight: 600; }
+  .search {
+    background: var(--bg-soft); border: 1px solid transparent; border-radius: 8px;
+    padding: 6px 10px; color: var(--fg-muted); font-size: 12px;
+    display: flex; align-items: center; gap: 8px; min-width: 280px;
+  }
+  .search .kbd { font-family: var(--mono); font-size: 10px; color: var(--fg-faint); border: 1px solid var(--border); padding: 1px 6px; border-radius: 4px; }
+
+  .content { padding: 28px 32px 60px; max-width: 1280px; }
+
+  /* ── ヒーロー ──────────────────────────────────────────────────────── */
+  .hero { display: grid; grid-template-columns: 1fr auto; gap: 24px; align-items: end; margin-bottom: 24px; }
+  .hero .eyebrow { color: var(--fg-faint); font-size: 12px; letter-spacing: 0.06em; }
+  .hero h1 { font-family: var(--serif); font-size: 32px; font-weight: 600; margin: 6px 0 4px; letter-spacing: 0.02em; }
+  .hero .meta { color: var(--fg-muted); font-size: 13px; }
+  .hero-actions { display: flex; gap: 8px; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 9px 14px; border-radius: 8px; font-size: 13px; font-weight: 600;
+    border: 1px solid var(--border); background: var(--bg-card); color: var(--fg); cursor: pointer;
+    text-decoration: none;
+  }
+  .btn:hover { background: var(--bg-soft); }
+  .btn--primary { background: var(--primary); color: var(--primary-fg); border-color: var(--primary); }
+  .btn--primary:hover { filter: brightness(0.95); background: var(--primary); }
+  .btn--ghost { background: transparent; }
+  .btn .icon { font-weight: 400; }
+
+  /* ── KPI グリッド ───────────────────────────────────────────────────── */
+  .section-title { display: flex; align-items: baseline; justify-content: space-between; margin: 28px 0 12px; }
+  .section-title h2 {
+    font-family: var(--serif); font-weight: 600; font-size: 18px; margin: 0;
+    display: flex; align-items: baseline; gap: 10px;
+  }
+  .section-title h2 .num { font-family: var(--mono); font-size: 11px; color: var(--fg-faint); letter-spacing: 0.1em; font-weight: 400; }
+  .section-title .right { color: var(--fg-faint); font-size: 12px; }
+  .section-title .right a { color: var(--fg-muted); text-decoration: none; }
+  .section-title .right a:hover { color: var(--primary); }
+
+  .kpi-grid {
+    display: grid; grid-template-columns: repeat(6, 1fr); gap: 12px;
+  }
+  .kpi {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+    padding: 16px;
+    display: flex; flex-direction: column; gap: 4px;
+    min-height: 108px;
+  }
+  .kpi--breed::before { content: "飼育"; }
+  .kpi--shop::before  { content: "販売"; }
+  .kpi::before {
+    font-size: 10px; letter-spacing: 0.08em; padding: 2px 7px; border-radius: 99px;
+    align-self: flex-start; background: var(--bg-soft); color: var(--fg-muted);
+  }
+  .kpi--shop::before { background: var(--primary-soft); color: var(--primary); }
+  .kpi--breed::before { background: var(--accent-blue-soft); color: var(--accent-blue); }
+  .kpi-label { color: var(--fg-muted); font-size: 12px; display: flex; align-items: center; gap: 6px; }
+  .kpi-label .help { width: 14px; height: 14px; border-radius: 50%; border: 1px solid var(--border); display: inline-grid; place-items: center; font-size: 9px; color: var(--fg-faint); }
+  .kpi-value { font-family: var(--serif); font-size: 28px; font-weight: 600; line-height: 1; margin-top: 6px; }
+  .kpi-value .unit { font-size: 12px; color: var(--fg-muted); margin-left: 4px; font-family: var(--sans); font-weight: 400; }
+  .kpi-foot {
+    display: inline-flex; align-items: center; gap: 6px; padding: 2px 8px;
+    background: var(--bg-soft); border-radius: 99px; color: var(--fg-muted); font-size: 11px;
+    align-self: flex-start;
+  }
+  .kpi-foot.up    { background: var(--primary-soft); color: var(--primary); }
+  .kpi-foot.warn  { background: var(--accent-amber-soft); color: oklch(0.50 0.13 80); }
+
+  /* ── 2カラムセクション ─────────────────────────────────────────────── */
+  .col-2 { display: grid; grid-template-columns: 1.6fr 1fr; gap: 16px; align-items: start; }
+
+  .card {
+    background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px;
+    overflow: hidden;
+  }
+  .card-head {
+    padding: 14px 18px; border-bottom: 1px solid var(--border);
+    display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  }
+  .card-head .title { font-weight: 600; font-size: 14px; }
+  .card-head .sub { color: var(--fg-faint); font-size: 12px; }
+  .card-body { padding: 6px 0; }
+  .card-foot { padding: 10px 18px; border-top: 1px solid var(--border); text-align: center; }
+  .card-foot a { color: var(--primary); font-size: 12px; text-decoration: none; font-weight: 600; }
+
+  /* ── タブ ──────────────────────────────────────────────────────────── */
+  .tabs { display: flex; gap: 2px; padding: 8px 14px 0; border-bottom: 1px solid var(--border); margin-bottom: -1px; }
+  .tab {
+    border: none; background: transparent; padding: 8px 12px;
+    color: var(--fg-muted); font-size: 13px; font-weight: 500;
+    border-bottom: 2px solid transparent; cursor: pointer; font-family: inherit;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .tab:hover { color: var(--fg); }
+  .tab.is-active { color: var(--primary); border-color: var(--primary); font-weight: 600; }
+  .tab .count {
+    font-family: var(--mono); font-size: 10px; color: var(--fg-faint);
+    border: 1px solid var(--border); padding: 0 5px; border-radius: 99px; min-width: 16px; text-align: center;
+  }
+  .tab.is-active .count { color: var(--primary); border-color: var(--primary-soft); background: var(--primary-soft); }
+
+  /* ── 出品リスト行 ──────────────────────────────────────────────────── */
+  .listing-row {
+    display: grid;
+    grid-template-columns: 56px 1fr 110px 110px 96px 80px;
+    align-items: center; gap: 12px;
+    padding: 12px 18px; border-top: 1px solid var(--border);
+  }
+  .listing-row:first-of-type { border-top: 0; }
+  .listing-row:hover { background: var(--bg-softer); }
+  .thumb {
+    width: 56px; height: 56px; border-radius: 8px;
+    background: linear-gradient(135deg, oklch(0.92 0.04 80), oklch(0.86 0.05 70));
+    border: 1px solid var(--border); position: relative;
+    display: grid; place-items: center; font-size: 22px;
+  }
+  .listing-title { font-weight: 600; font-size: 13.5px; line-height: 1.3; }
+  .listing-meta { color: var(--fg-faint); font-size: 11.5px; margin-top: 3px; display: flex; gap: 8px; }
+  .listing-meta .pub-id { font-family: var(--mono); }
+  .listing-meta .verified { color: var(--primary); font-weight: 600; }
+  .price { font-family: var(--serif); font-size: 16px; font-weight: 600; }
+  .price small { font-family: var(--sans); font-size: 11px; color: var(--fg-faint); margin-left: 2px; font-weight: 400; }
+  .stat-stack { display: flex; flex-direction: column; gap: 2px; font-size: 11.5px; color: var(--fg-muted); }
+  .stat-stack b { color: var(--fg); font-weight: 600; font-size: 13px; }
+
+  .badge-pill {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 3px 8px; border-radius: 99px; font-size: 11px; font-weight: 600;
+    background: var(--bg-soft); color: var(--fg-muted);
+  }
+  .badge-pill.is-active { background: var(--primary-soft); color: var(--primary); }
+  .badge-pill.is-sold   { background: var(--accent-blue-soft); color: var(--accent-blue); }
+  .badge-pill.is-bid    { background: var(--accent-amber-soft); color: oklch(0.45 0.13 80); }
+  .badge-pill.is-canceled { background: var(--bg-soft); color: var(--fg-faint); text-decoration: line-through; }
+  .badge-pill .dot { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+
+  .row-actions { text-align: right; }
+  .icon-btn {
+    border: none; background: transparent; padding: 4px 8px; border-radius: 6px;
+    color: var(--fg-muted); cursor: pointer; font-size: 13px;
+  }
+  .icon-btn:hover { background: var(--bg-soft); color: var(--fg); }
+
+  /* ── 取引タイムライン ──────────────────────────────────────────────── */
+  .tx-list { padding: 4px 0; }
+  .tx {
+    display: grid; grid-template-columns: 32px 1fr auto; gap: 10px;
+    padding: 12px 18px; border-top: 1px solid var(--border); align-items: start;
+  }
+  .tx:first-of-type { border-top: 0; }
+  .tx-marker {
+    width: 28px; height: 28px; border-radius: 50%;
+    background: var(--bg-soft); display: grid; place-items: center; font-size: 13px;
+  }
+  .tx-marker.sell { background: var(--primary-soft); color: var(--primary); }
+  .tx-marker.buy  { background: var(--accent-blue-soft); color: var(--accent-blue); }
+  .tx-title { font-size: 13px; font-weight: 600; }
+  .tx-sub { color: var(--fg-faint); font-size: 11.5px; margin-top: 2px; }
+  .tx-amount { font-family: var(--serif); font-weight: 600; font-size: 14px; text-align: right; }
+  .tx-amount.sell { color: var(--primary); }
+  .tx-amount.buy  { color: var(--fg); }
+
+  /* ── 次のケア ──────────────────────────────────────────────────────── */
+  .care {
+    display: grid; grid-template-columns: 32px 1fr 110px 96px;
+    gap: 12px; padding: 12px 18px; border-top: 1px solid var(--border); align-items: center;
+  }
+  .care:first-of-type { border-top: 0; }
+  .care-icon { width: 28px; height: 28px; border-radius: 6px; background: var(--accent-amber-soft); display: grid; place-items: center; font-size: 14px; }
+  .care.is-overdue .care-icon { background: var(--accent-rose-soft); color: var(--accent-rose); }
+
+  /* ── インライン情報バナー ─────────────────────────────────────────── */
+  .info-banner {
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 14px; border-radius: 10px;
+    background: var(--accent-amber-soft); color: oklch(0.40 0.13 80);
+    font-size: 12px; margin-bottom: 16px;
+  }
+  .info-banner b { font-weight: 700; }
+
+  /* ── 注釈 ──────────────────────────────────────────────────────────── */
+  .note {
+    margin-top: 36px; padding: 18px; border: 1px dashed var(--border-strong); border-radius: 12px;
+    background: var(--bg-softer); color: var(--fg-muted); font-size: 12.5px; line-height: 1.7;
+  }
+  .note h3 { margin: 0 0 8px; font-family: var(--serif); font-size: 14px; color: var(--fg); }
+  .note ul { margin: 0; padding-left: 20px; }
+  .note code { font-family: var(--mono); font-size: 11.5px; background: var(--bg-card); padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border); }
+
+  /* ── 小細工 ────────────────────────────────────────────────────────── */
+  .row { display: flex; align-items: center; gap: 8px; }
+  .stack { display: flex; flex-direction: column; gap: 2px; }
+  .right { margin-left: auto; }
+
+  @media (max-width: 1100px) {
+    .kpi-grid { grid-template-columns: repeat(3, 1fr); }
+    .col-2 { grid-template-columns: 1fr; }
+    .listing-row { grid-template-columns: 56px 1fr 100px 80px; }
+    .listing-row > :nth-child(4),
+    .listing-row > :nth-child(5) { display: none; }
+  }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ─── サイドバー ───────────────────────────────────────────── -->
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-mark">蟲</div>
+      <div>
+        <div class="brand-name">KOCHŪ</div>
+        <div class="brand-sub">昆虫EC × 飼育ログ</div>
+      </div>
+    </div>
+
+    <div class="nav-section">マーケット</div>
+    <nav class="nav">
+      <a href="#"><span class="icon">▦</span> 出品中の生体 <span class="badge badge--soft">213</span></a>
+      <a href="#"><span class="icon">★</span> マイ出品 <span class="badge">3</span></a>
+      <a href="#"><span class="icon">♻</span> 取引履歴 <span class="badge badge--soft">12</span></a>
+      <a href="#"><span class="icon">🛒</span> カート</a>
+    </nav>
+
+    <div class="nav-section" style="margin-top:14px">飼育</div>
+    <nav class="nav">
+      <a href="#" class="is-active"><span class="icon">⌂</span> マイページ</a>
+      <a href="#"><span class="icon">▤</span> 飼育</a>
+      <a href="#"><span class="icon">🔔</span> 羽化予測</a>
+      <a href="#"><span class="icon">⌬</span> 血統系図</a>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="user-chip">
+        <div class="avatar">りょ</div>
+        <div class="stack">
+          <div class="user-name">りょ</div>
+          <div class="user-role">breeder</div>
+        </div>
+      </div>
+      <div class="logout">ログアウト</div>
+    </div>
+  </aside>
+
+  <!-- ─── メイン ──────────────────────────────────────────────── -->
+  <main class="main">
+    <div class="topbar">
+      <div class="crumb">マイページ &nbsp;/&nbsp; <b>ホーム</b></div>
+      <div class="search">
+        <span>🔍</span>
+        <span style="flex:1">個体ID・種名・出品を検索...</span>
+        <span class="kbd">⌘K</span>
+      </div>
+    </div>
+
+    <div class="content">
+
+      <!-- ヒーロー -->
+      <header class="hero">
+        <div>
+          <div class="eyebrow">マイページ ・ 登録 2026.05 より</div>
+          <h1>りょ</h1>
+          <div class="meta">飼育中 12 ・ 出品中 3 ・ 今月の売上 ¥86,400</div>
+        </div>
+        <div class="hero-actions">
+          <button class="btn"><span class="icon">＋</span> 個体登録</button>
+          <button class="btn"><span class="icon">＋</span> 群を作成</button>
+          <button class="btn btn--primary"><span class="icon">＋</span> 出品する</button>
+        </div>
+      </header>
+
+      <!-- 情報バナー（Stripe Connect 等の状態通知） -->
+      <div class="info-banner">
+        <span>⚑</span>
+        <span><b>Stripe Connect 受取口座が未連携です。</b> 売却完了後の振込には口座連携が必要です。</span>
+        <a class="right" href="#" style="color:inherit; font-weight:700; text-decoration:underline;">設定する →</a>
+      </div>
+
+      <!-- KPI -->
+      <div class="section-title">
+        <h2><span class="num">§01</span> 自分のサマリ</h2>
+        <div class="right">直近 30 日</div>
+      </div>
+      <div class="kpi-grid">
+        <div class="kpi kpi--breed">
+          <div class="kpi-label">所有個体 <span class="help">i</span></div>
+          <div class="kpi-value">12<span class="unit">体</span></div>
+          <div class="kpi-foot">生存中 11 / archived 1</div>
+        </div>
+        <div class="kpi kpi--breed">
+          <div class="kpi-label">羽化予定（60日以内） <span class="help">i</span></div>
+          <div class="kpi-value">3<span class="unit">体</span></div>
+          <div class="kpi-foot warn">直近7日内に1件</div>
+        </div>
+        <div class="kpi kpi--breed">
+          <div class="kpi-label">今月の飼育ログ <span class="help">i</span></div>
+          <div class="kpi-value">42<span class="unit">件</span></div>
+          <div class="kpi-foot up">+8 vs 前月</div>
+        </div>
+
+        <div class="kpi kpi--shop">
+          <div class="kpi-label">出品中 <span class="help">i</span></div>
+          <div class="kpi-value">3<span class="unit">件</span></div>
+          <div class="kpi-foot">うちオークション 2</div>
+        </div>
+        <div class="kpi kpi--shop">
+          <div class="kpi-label">入札・ウォッチ <span class="help">i</span></div>
+          <div class="kpi-value">7<span class="unit">件</span></div>
+          <div class="kpi-foot up">入札あり 2 / watcher 17</div>
+        </div>
+        <div class="kpi kpi--shop">
+          <div class="kpi-label">今月の売上 <span class="help">i</span></div>
+          <div class="kpi-value">86,400<span class="unit">円</span></div>
+          <div class="kpi-foot">手数料控除後 ¥77,760</div>
+        </div>
+      </div>
+
+      <!-- 2 カラム: マイ出品 + 取引タイムライン -->
+      <div class="section-title" style="margin-top:32px">
+        <h2><span class="num">§02</span> マイ出品 と 取引</h2>
+        <div class="right"><a href="#">出品管理ページへ →</a></div>
+      </div>
+
+      <div class="col-2">
+        <!-- マイ出品 -->
+        <div class="card">
+          <div class="tabs">
+            <button class="tab is-active">出品中 <span class="count">3</span></button>
+            <button class="tab">入札中 <span class="count">2</span></button>
+            <button class="tab">売却済 <span class="count">9</span></button>
+            <button class="tab">取消・期限切れ <span class="count">1</span></button>
+          </div>
+
+          <div class="card-body">
+            <!-- row 1: auction with bids -->
+            <div class="listing-row">
+              <div class="thumb">🪲</div>
+              <div>
+                <div class="listing-title">ヘラクレス♂ 148mm 自家累代CBF3</div>
+                <div class="listing-meta">
+                  <span class="pub-id">L-0421</span>
+                  <span>·</span>
+                  <span class="verified">血統認証</span>
+                  <span>·</span>
+                  <span>残り 1日 14:32</span>
+                </div>
+              </div>
+              <div class="price">¥45,000<small>〜</small></div>
+              <div class="stat-stack">
+                <span><b>5</b> 入札</span>
+                <span><b>17</b> watcher</span>
+              </div>
+              <div><span class="badge-pill is-active"><span class="dot"></span> 出品中</span></div>
+              <div class="row-actions">
+                <button class="icon-btn">編集</button>
+                <button class="icon-btn">⋯</button>
+              </div>
+            </div>
+
+            <!-- row 2: fixed price -->
+            <div class="listing-row">
+              <div class="thumb">🪲</div>
+              <div>
+                <div class="listing-title">パラワンオオヒラタ♀ 52mm</div>
+                <div class="listing-meta">
+                  <span class="pub-id">L-0419</span>
+                  <span>·</span>
+                  <span>即決</span>
+                  <span>·</span>
+                  <span>掲載 6 日</span>
+                </div>
+              </div>
+              <div class="price">¥12,800</div>
+              <div class="stat-stack">
+                <span><b>0</b> 入札</span>
+                <span><b>4</b> watcher</span>
+              </div>
+              <div><span class="badge-pill is-active"><span class="dot"></span> 出品中</span></div>
+              <div class="row-actions">
+                <button class="icon-btn">編集</button>
+                <button class="icon-btn">⋯</button>
+              </div>
+            </div>
+
+            <!-- row 3: bid recent -->
+            <div class="listing-row">
+              <div class="thumb">🪲</div>
+              <div>
+                <div class="listing-title">国産オオクワ♂ 82mm 能勢YG F4</div>
+                <div class="listing-meta">
+                  <span class="pub-id">L-0408</span>
+                  <span>·</span>
+                  <span>残り 3日 02:11</span>
+                </div>
+              </div>
+              <div class="price">¥28,000<small>〜</small></div>
+              <div class="stat-stack">
+                <span><b>2</b> 入札</span>
+                <span><b>9</b> watcher</span>
+              </div>
+              <div><span class="badge-pill is-bid"><span class="dot"></span> 入札あり</span></div>
+              <div class="row-actions">
+                <button class="icon-btn">編集</button>
+                <button class="icon-btn">⋯</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card-foot">
+            <a href="#">マイ出品をすべて見る（過去含む 24 件）→</a>
+          </div>
+        </div>
+
+        <!-- 取引タイムライン -->
+        <div class="card">
+          <div class="card-head">
+            <div class="title">最近の取引</div>
+            <a class="sub" href="#" style="text-decoration:none">取引履歴 →</a>
+          </div>
+          <div class="tx-list">
+            <div class="tx">
+              <div class="tx-marker sell">↑</div>
+              <div>
+                <div class="tx-title">売却 — ニジイロクワ♀ ペア</div>
+                <div class="tx-sub">2026/05/02 ・ 購入者: blackbeetle ・ 出荷準備中</div>
+              </div>
+              <div class="tx-amount sell">+¥18,000</div>
+            </div>
+            <div class="tx">
+              <div class="tx-marker buy">↓</div>
+              <div>
+                <div class="tx-title">購入 — クヌギ昆虫マット 10L</div>
+                <div class="tx-sub">2026/04/30 ・ ANCHOR BEETLE ・ 配送済</div>
+              </div>
+              <div class="tx-amount buy">−¥2,480</div>
+            </div>
+            <div class="tx">
+              <div class="tx-marker sell">↑</div>
+              <div>
+                <div class="tx-title">売却 — ヘラクレス♂ 142mm</div>
+                <div class="tx-sub">2026/04/27 ・ owner 譲渡完了 ・ 評価未受領</div>
+              </div>
+              <div class="tx-amount sell">+¥68,400</div>
+            </div>
+            <div class="tx">
+              <div class="tx-marker buy">↓</div>
+              <div>
+                <div class="tx-title">購入 — メス親候補 ♀ オオクワ</div>
+                <div class="tx-sub">2026/04/19 ・ tarokuwa ・ 配送済</div>
+              </div>
+              <div class="tx-amount buy">−¥9,800</div>
+            </div>
+          </div>
+          <div class="card-foot">
+            <a href="#">すべての取引を見る →</a>
+          </div>
+        </div>
+      </div>
+
+      <!-- 次のケア -->
+      <div class="section-title" style="margin-top:32px">
+        <h2><span class="num">§03</span> 次のケア</h2>
+        <div class="right">今週 4 件</div>
+      </div>
+      <div class="card">
+        <div class="care is-overdue">
+          <div class="care-icon">⚠</div>
+          <div>
+            <div class="listing-title">マット交換 — #DHH-0271 ヘラクレス 黒曜</div>
+            <div class="listing-meta">前回交換から 33 日 · 推奨周期 30 日</div>
+          </div>
+          <div><span class="badge-pill" style="background:var(--accent-rose-soft); color:var(--accent-rose);">3日 超過</span></div>
+          <div class="row-actions"><button class="btn">記録</button></div>
+        </div>
+        <div class="care">
+          <div class="care-icon">🍯</div>
+          <div>
+            <div class="listing-title">餌 — #PHG-0145 パラワン</div>
+            <div class="listing-meta">直近 3 日: ゼリー 0 個</div>
+          </div>
+          <div><span class="badge-pill is-bid">今日</span></div>
+          <div class="row-actions"><button class="btn">記録</button></div>
+        </div>
+        <div class="care">
+          <div class="care-icon">⚖</div>
+          <div>
+            <div class="listing-title">体重測定 — LOT-2026-0014 (オオクワ L3)</div>
+            <div class="listing-meta">14 個体 · 前回測定から 12 日</div>
+          </div>
+          <div><span class="badge-pill">明日</span></div>
+          <div class="row-actions"><button class="btn">記録</button></div>
+        </div>
+        <div class="care">
+          <div class="care-icon">📅</div>
+          <div>
+            <div class="listing-title">羽化予測 — #DHH-0271 7 日後</div>
+            <div class="listing-meta">eclosion_eta: 2026-05-11</div>
+          </div>
+          <div><span class="badge-pill">7日後</span></div>
+          <div class="row-actions"><button class="btn">確認</button></div>
+        </div>
+      </div>
+
+      <!-- 設計メモ -->
+      <div class="note">
+        <h3>このモックの設計メモ</h3>
+        <ul>
+          <li><b>マイページ＝自分専用ハブ</b>。「飼育の活動」と「販売の活動」を 1 画面で俯瞰できる。
+              KPI は左 3 枚を <code>飼育系</code>、右 3 枚を <code>販売系</code> に色分け（青タグ／緑タグ）。</li>
+          <li><b>詳細 CRUD は別ルート</b>。マイページ §02 はサマリ＋直近 3 件のみで、フッターから
+              <code>/listings/me</code>（= マイ出品ページ）に逃がす。<code>specimens/me</code>・<code>cohorts/me</code>・<code>orders/me</code>
+              という既存パターンに揃える。</li>
+          <li><b>サイドバー再編</b>: マーケット配下に「マイ出品」「取引履歴」を新設。<code>/products</code>
+              は引き続き「他人の出品閲覧」（公開市場）として残し、自分のものとはルートで分離する。</li>
+          <li><b>API 提案</b>: <code>GET /api/v1/listings/me?status=active|sold|canceled</code> を新設し、
+              <code>v_listings_with_counts</code> を <code>seller_user_id = me</code> でフィルタする。
+              タブごとの件数は SQL 側で <code>GROUP BY status</code>。</li>
+          <li><b>取引タイムライン</b>: 売却 (+¥) と購入 (−¥) を 1 リストに混ぜる。実装的には
+              <code>orders WHERE buyer = me</code> ∪ <code>orders WHERE seller = me</code>（後者は今未実装）を
+              <code>UNION ALL</code> + <code>created_at DESC</code>。</li>
+          <li><b>Stripe Connect バナー</b>は state ベースで出し分け（連携済 / 未連携 / 入金待ち）。
+              他にも「死着補償の対応待ち」「未受領評価あり」などサイト横断アラートのスロットとしても使える。</li>
+          <li><b>ヒーローのアクション</b>: 既存の「+ 新規 ▾」ドロップダウンを 3 ボタン平置きに展開。
+              C2C 化で「+ 出品する」をプライマリに昇格。</li>
+        </ul>
+      </div>
+
+    </div>
+  </main>
+</div>
+</body>
+</html>

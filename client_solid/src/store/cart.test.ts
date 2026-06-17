@@ -3,6 +3,7 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   addItem,
+  addItemWithUndo,
   cartCount,
   cartItems,
   cartSubtotal,
@@ -106,6 +107,31 @@ describe("cart store", () => {
     expect(cartItems()).toEqual([]);
     expect(cartCount()).toBe(0);
     expect(cartSubtotal()).toBe(0);
+  });
+
+  it("addItemWithUndo: undo removes newly-added item entirely", () => {
+    const { undo } = addItemWithUndo(A);
+    expect(cartItems()).toHaveLength(1);
+    undo();
+    expect(cartItems()).toEqual([]);
+  });
+
+  it("addItemWithUndo: undo on merged-qty item subtracts only the added qty", () => {
+    addItem({ ...A, qty: 2 });
+    const { undo } = addItemWithUndo({ ...A, qty: 3 });
+    expect(cartItems()[0].qty).toBe(5);
+    undo();
+    expect(cartItems()).toHaveLength(1);
+    expect(cartItems()[0].qty).toBe(2); // 元の数量に戻る
+  });
+
+  it("addItemWithUndo: undo removes the row when subtracted qty becomes 0 or less", () => {
+    // 既に qty=1 の行に qty=1 追加 → 合計 2。Undo するとその分差し引かれるので qty=1 残る。
+    addItem({ ...A, qty: 1 });
+    const { undo } = addItemWithUndo({ ...A, qty: 1 });
+    expect(cartItems()[0].qty).toBe(2);
+    undo();
+    expect(cartItems()[0].qty).toBe(1);
   });
 
   it("cartCount and cartSubtotal track reactively after mutations", () => {

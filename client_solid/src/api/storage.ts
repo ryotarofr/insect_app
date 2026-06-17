@@ -4,8 +4,15 @@
 // 全 I/O を try/catch で包む。キーはここで一元管理する。
 
 export const LS_KEYS = {
-  logs: "kochu:logs",
-  memos: "kochu:specimen-memos",
+  /** P4-22: Bloodline 交配記録 (= 別機能、現状 client-only 永続化が残る)。 */
+  matingRecords: "kochu:mating-records",
+  /** FE-first mock data の永続化先。TODO: server 駆動に切り替えたら削除。 */
+  cohorts: "kochu:cohorts-mock",
+  cohortLogs: "kochu:cohort-logs-mock",
+  /** 個体化セッション中に作成された specimens の保存。 */
+  promotedSpecimens: "kochu:promoted-specimens-mock",
+  /** 単独個体登録で作成された specimens の保存。 */
+  manualSpecimens: "kochu:manual-specimens-mock",
 } as const;
 
 export const readJSON = <T>(key: string, fallback: T): T => {
