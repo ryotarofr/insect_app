@@ -16,6 +16,22 @@ const stageColor = (stage: string): string => {
   return "ink";
 };
 
+/** 期限の符号で優先度トーンを決める。
+ *  - 超過 → danger (赤)
+ *  - 当日 → warn (橙)
+ *  - 余裕 → ok (緑) */
+type DueTone = "danger" | "warn" | "ok";
+const dueTone = (a: UpcomingAction): DueTone => {
+  if (a.dueInDays < 0) return "danger";
+  if (a.dueInDays === 0) return "warn";
+  return "ok";
+};
+const TONE_COLOR: Record<DueTone, string> = {
+  danger: "var(--accent-rose, oklch(0.55 0.13 25))",
+  warn: "var(--accent-amber, oklch(0.55 0.13 70))",
+  ok: "var(--accent-forest, oklch(0.45 0.08 150))",
+};
+
 export const MyPage = (props: MyPageProps) => {
   const specs = listSpecimens();
   const eclosionSoon = listUrgentEclosion(60).sort(

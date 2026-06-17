@@ -2,6 +2,7 @@
 name = "insect_app_server"
 version = "0.1.0"
 edition = "2024"
+default-run = "insect_app_server"
 
 [dependencies]
 axum = "0.8"

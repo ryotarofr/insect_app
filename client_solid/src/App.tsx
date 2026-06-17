@@ -4,7 +4,6 @@ import { type RouteKey } from "./data";
 import {
   listSpecimens,
   listProducts,
-  listUrgentEclosion,
   specimenExists,
   productExists,
 } from "./api";
