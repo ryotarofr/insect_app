@@ -1,6 +1,0 @@
-node_modules
-dist
-dist-verify
-.vite
-*.log
-.DS_Store
