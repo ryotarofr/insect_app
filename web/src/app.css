@@ -1,0 +1,963 @@
+/* 「昆蟲圖鑑」風ライトテーマ: 生成り地 + 白カード + 墨色罫線 + 深緑アクセント */
+:root {
+  --bg: #f2ecdd;
+  --panel: #e9e2cf;
+  --card: #fffdf6;
+  --card-alt: #f8f3e6;
+  --card-line: #d9d2bc;
+  --line-strong: #2b2619;
+  --card-accent: #2b2619;
+  --text: #2b2619;
+  --muted: #857e69;
+  --accent: #3c5a2c;
+  --accent-ink: #f6f2e6;
+  --inverse: #263c1c;
+  --font-serif: "Shippori Mincho", "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --font-mono: ui-monospace, Menlo, Consolas, monospace;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Noto Sans JP", sans-serif;
+  background: var(--bg);
+  color: var(--text);
+}
+
+/* ── 固定シェル(ヘッダー + 上部ナビ) ─────────────────── */
+
+.shell {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.shell__header {
+  display: flex;
+  align-items: baseline;
+  gap: 24px;
+  padding: 16px 28px;
+  background: var(--bg);
+  border-bottom: 2px solid var(--line-strong);
+}
+
+.shell__brand {
+  font-family: var(--font-serif);
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-decoration: none;
+  color: var(--text);
+}
+
+.shell__brand-tag {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  font-weight: 400;
+  letter-spacing: 0.22em;
+  color: var(--muted);
+  margin-left: 6px;
+}
+
+.shell__nav {
+  margin-left: auto;
+  display: flex;
+  gap: 22px;
+}
+
+.shell__nav-item {
+  font-size: 14px;
+  text-decoration: none;
+  color: var(--muted);
+  padding: 4px 2px;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  border-top: none;
+  border-left: none;
+  border-right: none;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+.shell__nav-item:hover {
+  color: var(--text);
+}
+
+.shell__nav-item--active {
+  color: var(--text);
+  font-weight: 700;
+  border-bottom-color: #8a4b2f;
+}
+
+.shell__user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.shell__user-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.shell__main {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+  max-width: 1160px;
+  margin: 0 auto;
+  padding: 28px 32px;
+}
+
+/* ログイン / 登録ページ(固定コード領域) */
+
+.auth-page {
+  max-width: 420px;
+  margin: 40px auto 0;
+}
+
+.auth-page .sd-card {
+  grid-column: auto;
+}
+
+.auth-tabs {
+  display: flex;
+  gap: 8px;
+}
+
+/* ── SDUI primitives: Box(レイアウト)と Card(面) ────── */
+
+.sd-box {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.sd-region {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 16px;
+}
+
+.sd-card {
+  grid-column: span 2; /* full */
+  background: var(--card);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  padding: 20px 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sd-card--half {
+  grid-column: span 1;
+}
+
+/* tone トークン(additive)。accent = 深緑の反転カード */
+.sd-card--accent {
+  background: var(--inverse);
+  border-color: var(--inverse);
+  color: var(--accent-ink);
+}
+
+.sd-card--accent .sd-text--lead,
+.sd-card--accent .sd-text--caption {
+  color: #c8d3bc;
+}
+
+.sd-card--accent .sd-cta {
+  background: transparent;
+  border-color: var(--accent-ink);
+  color: var(--accent-ink);
+}
+
+.sd-card--accent .sd-cta--primary {
+  background: var(--accent-ink);
+  color: var(--inverse);
+}
+
+/* ── blocks ──────────────────────────────────────────── */
+
+.sd-text {
+  margin: 0;
+  line-height: 1.85;
+  font-size: 14px;
+}
+
+.sd-text--headline {
+  font-family: var(--font-serif);
+  font-size: 21px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.sd-text--lead {
+  color: var(--muted);
+}
+
+.sd-text--caption {
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.sd-cta {
+  align-self: flex-start;
+  padding: 9px 18px;
+  border: 1px solid var(--line-strong);
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
+  color: var(--text);
+  background: var(--card);
+}
+
+.sd-cta--primary {
+  background: var(--inverse);
+  border-color: var(--inverse);
+  color: var(--accent-ink);
+}
+
+.sd-media {
+  max-width: 100%;
+  border-radius: 4px;
+}
+
+/* markdown ブロック */
+
+.sd-markdown {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  font-size: 14px;
+  line-height: 1.85;
+}
+
+.sd-markdown p,
+.sd-markdown ul,
+.sd-markdown ol,
+.sd-markdown blockquote,
+.sd-markdown pre,
+.sd-markdown table {
+  margin: 0;
+}
+
+.sd-markdown ul,
+.sd-markdown ol {
+  padding-left: 22px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sd-markdown h3,
+.sd-markdown h4,
+.sd-markdown h5,
+.sd-markdown h6 {
+  margin: 6px 0 0;
+  font-family: var(--font-serif);
+  letter-spacing: 0.03em;
+}
+
+.sd-markdown h3 {
+  font-size: 16px;
+}
+
+.sd-markdown h4 {
+  font-size: 14.5px;
+}
+
+.sd-markdown code {
+  font-family: var(--font-mono);
+  font-size: 12px;
+  background: var(--panel);
+  border-radius: 4px;
+  padding: 1px 5px;
+}
+
+.sd-markdown pre {
+  background: var(--panel);
+  border-radius: 6px;
+  padding: 10px 12px;
+  overflow-x: auto;
+}
+
+.sd-markdown pre code {
+  background: transparent;
+  padding: 0;
+}
+
+.sd-markdown blockquote {
+  border-left: 3px solid var(--card-line);
+  padding-left: 12px;
+  color: var(--muted);
+}
+
+.sd-markdown a {
+  color: var(--accent);
+  text-decoration: underline;
+}
+
+.sd-markdown table {
+  border-collapse: collapse;
+}
+
+.sd-markdown th,
+.sd-markdown td {
+  border: 1px solid var(--card-line);
+  padding: 4px 10px;
+  font-size: 13px;
+}
+
+/* 出品グリッド: 出品1件も同じ sd-card で描く */
+.sd-listing-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+  gap: 14px;
+}
+
+.sd-card--listing {
+  grid-column: auto;
+  padding: 12px;
+  gap: 7px;
+  background: var(--card);
+  border-color: var(--card-line);
+  text-decoration: none;
+  color: var(--text);
+}
+
+.sd-card--listing:hover {
+  border-color: var(--line-strong);
+}
+
+.sd-listing-thumb {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 3px;
+}
+
+.sd-listing-thumb--empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: repeating-linear-gradient(45deg, #f0e9d6 0 10px, #e6dec8 10px 20px);
+  color: #a59d85;
+  font-size: 10px;
+  letter-spacing: 0.22em;
+}
+
+.sd-listing-title {
+  font-size: 13px;
+  line-height: 1.55;
+}
+
+.sd-listing-latin {
+  font-size: 11px;
+  font-style: italic;
+  color: var(--muted);
+}
+
+.sd-listing-price {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  font-size: 14px;
+  color: var(--card-accent);
+}
+
+/* ── 汎用ボタン / フォーム(固定コード部品) ─────────────── */
+
+.sd-btn {
+  align-self: flex-start;
+  padding: 6px 14px;
+  font-size: 12.5px;
+  font-family: inherit;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--card-line);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.sd-btn:hover {
+  border-color: var(--line-strong);
+}
+
+.sd-btn--primary {
+  background: var(--inverse);
+  border-color: var(--inverse);
+  color: var(--accent-ink);
+  font-weight: 600;
+}
+
+.sd-btn--ghost {
+  background: transparent;
+  border-color: transparent;
+  color: var(--muted);
+}
+
+.sd-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.sd-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sd-form--boxed {
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 12px 14px;
+}
+
+.sd-form input,
+.sd-form select,
+.sd-form textarea {
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--card-line);
+  border-radius: 4px;
+  padding: 8px 10px;
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+}
+
+.sd-form-row {
+  display: flex;
+  gap: 8px;
+}
+
+.sd-form-grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+}
+
+.sd-form-grid3 {
+  display: grid;
+  grid-template-columns: 160px 1fr 1fr;
+  gap: 8px;
+}
+
+.sd-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+/* text / markdown ブロックの編集アフォーダンス(hoverで出現) */
+
+.sd-textwrap {
+  position: relative;
+}
+
+.sd-editbtn {
+  position: absolute;
+  top: 0;
+  right: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.sd-textwrap:hover .sd-editbtn {
+  opacity: 1;
+}
+
+/* ── specimen_list: 縦型サイドタブ + 行リスト ──────────── */
+
+.sd-speclist {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sd-speclist-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.sd-speclist-layout {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.sd-speclist-layout > .sd-rowlist {
+  flex: 1;
+  min-width: 0;
+}
+
+.sd-vtabs {
+  width: 172px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.sd-vtab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  font-size: 13.5px;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.sd-vtab:hover {
+  color: var(--text);
+}
+
+.sd-vtab--on {
+  background: var(--card);
+  border-color: var(--line-strong);
+  color: var(--text);
+  font-weight: 700;
+}
+
+.sd-vtab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.sd-vtab-badge {
+  margin-left: auto;
+  font-size: 11px;
+  font-weight: 700;
+  min-width: 22px;
+  text-align: center;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--text);
+}
+
+.sd-vtab--on .sd-vtab-badge {
+  background: var(--inverse);
+  color: var(--accent-ink);
+}
+
+.sd-vtab-tool {
+  border: none;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font-size: 11px;
+  padding: 0 2px;
+  flex-shrink: 0;
+}
+
+.sd-vtab-tool:hover {
+  color: var(--text);
+}
+
+.sd-vtab-tool:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+.sd-vtab--add {
+  border: 1px dashed var(--card-line);
+  justify-content: center;
+}
+
+.sd-vtab input {
+  width: 100%;
+  min-width: 0;
+  font-family: inherit;
+  font-size: 12.5px;
+  padding: 4px 6px;
+  background: var(--card);
+  border: 1px solid var(--card-line);
+  border-radius: 4px;
+  color: var(--text);
+}
+
+.sd-rowlist {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sd-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 13px 16px;
+  font-family: inherit;
+  font-size: 13.5px;
+  text-align: left;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--card-line);
+  border-radius: 5px;
+  cursor: pointer;
+  transition: border-color 0.2s ease, border-radius 0.28s ease;
+}
+
+.sd-row:hover {
+  border-color: var(--line-strong);
+}
+
+.sd-row-main {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+  min-width: 0;
+}
+
+.sd-row-code {
+  font-family: var(--font-mono);
+  font-weight: 600;
+}
+
+.sd-row-meta {
+  flex: none;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.sd-row-meta--alert {
+  color: #a1512c;
+  font-weight: 600;
+}
+
+.sd-empty {
+  padding: 26px;
+  text-align: center;
+  font-size: 13px;
+  color: var(--muted);
+  border: 1px dashed var(--card-line);
+  border-radius: 5px;
+}
+
+/* アコーディオン展開(行直下に specimen_detail をインライン描画) */
+
+.sd-rowitem {
+  display: flex;
+  flex-direction: column;
+}
+
+.sd-row--open {
+  border-radius: 5px 5px 0 0;
+  border-color: var(--line-strong);
+}
+
+.sd-row-chevron {
+  flex: none;
+  display: inline-block;
+  margin-left: 4px;
+  font-size: 11px;
+  color: var(--muted);
+  transition: transform 0.28s ease;
+}
+
+.sd-row-chevron--open {
+  transform: rotate(180deg);
+}
+
+.sd-collapse {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.28s ease;
+}
+
+.sd-collapse--open {
+  grid-template-rows: 1fr;
+}
+
+.sd-collapse-inner {
+  overflow: hidden;
+  min-height: 0;
+}
+
+.sd-row-detail {
+  border: 1px solid var(--card-line);
+  border-top: none;
+  border-radius: 0 0 5px 5px;
+  padding: 16px;
+  background: var(--panel);
+}
+
+/* ── specimen_profile ────────────────────────────────── */
+
+.sd-profile {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sd-profile-head {
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
+.sd-profile-code {
+  font-family: var(--font-mono);
+  font-size: 22px;
+  font-weight: 700;
+}
+
+.sd-profile-edit {
+  margin-left: auto;
+}
+
+.sd-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.sd-chip {
+  border: 1px solid var(--card-line);
+  border-radius: 999px;
+  padding: 6px 14px;
+  font-size: 12.5px;
+  color: var(--muted);
+  background: var(--card);
+}
+
+.sd-chip b {
+  color: var(--text);
+}
+
+.sd-next {
+  align-self: flex-start;
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 10px 14px;
+  font-size: 13px;
+  color: var(--accent);
+  background: var(--card);
+}
+
+/* ── care_log_list ───────────────────────────────────── */
+
+.sd-loglist {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.sd-logrow {
+  display: grid;
+  grid-template-columns: 56px 130px 1fr auto;
+  gap: 12px;
+  align-items: center;
+  padding: 8px 4px;
+  border-bottom: 1px solid var(--card-line);
+  font-size: 13px;
+}
+
+.sd-logrow:last-child {
+  border-bottom: none;
+}
+
+.sd-logrow-date {
+  font-family: var(--font-mono);
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.sd-logrow-kind {
+  font-weight: 700;
+}
+
+.sd-logrow-body {
+  color: var(--muted);
+}
+
+/* ── モーダル / 確認ダイアログ ────────────────────────── */
+
+.sd-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(43, 38, 25, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 40px 24px;
+  overflow: auto;
+  z-index: 100;
+}
+
+.sd-modal {
+  position: relative;
+  width: 100%;
+  max-width: 980px;
+  background: var(--bg);
+  border: 1px solid var(--line-strong);
+  border-radius: 8px;
+  padding: 24px;
+}
+
+.sd-modal-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  z-index: 1;
+}
+
+.sd-modal-actions {
+  margin-top: 18px;
+}
+
+.sd-dialog {
+  max-width: 440px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sd-btn--danger {
+  border-color: #b0432f;
+  color: #b0432f;
+}
+
+.sd-btn--danger:hover {
+  border-color: #8f3626;
+  color: #8f3626;
+}
+
+.sd-profile-del:hover {
+  color: #b0432f;
+}
+
+.sd-dialog-error {
+  margin: 0;
+  border: 1px solid #b0432f;
+  color: #b0432f;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+/* ── listing_hero / listing_spec(出品詳細) ─────────────── */
+
+.sd-lhero {
+  display: flex;
+  gap: 18px;
+}
+
+.sd-lhero-gal {
+  width: 240px;
+  flex-shrink: 0;
+}
+
+.sd-lhero-img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  border-radius: 4px;
+}
+
+.sd-lhero-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sd-lstatus {
+  display: inline-block;
+  vertical-align: 4px;
+  margin-left: 8px;
+  font-family: "Hiragino Kaku Gothic ProN", "Noto Sans JP", sans-serif;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: normal;
+  border: 1px solid var(--line-strong);
+  color: var(--text);
+  border-radius: 999px;
+  padding: 1px 10px;
+}
+
+.sd-lprice {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--card-accent);
+}
+
+/* fallback / status */
+
+.sd-fallback {
+  border: 1px dashed var(--card-line);
+  border-radius: 5px;
+  padding: 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.sd-status {
+  color: var(--muted);
+}
+
+.sd-status--error {
+  color: #a1352c;
+}
+
+/* ── レスポンシブ / モーション設定 ───────────────────── */
+
+@media (max-width: 720px) {
+  .sd-card--half {
+    grid-column: span 2;
+  }
+
+  .shell__header {
+    flex-wrap: wrap;
+    gap: 8px 16px;
+  }
+
+  .shell__main {
+    padding: 20px 16px;
+  }
+
+  .sd-speclist-layout {
+    flex-direction: column;
+  }
+
+  .sd-vtabs {
+    width: 100%;
+    flex-direction: row;
+    flex-wrap: wrap;
+  }
+
+  .sd-lhero {
+    flex-direction: column;
+  }
+
+  .sd-lhero-gal {
+    width: 100%;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sd-collapse,
+  .sd-row-chevron,
+  .sd-row {
+    transition: none;
+  }
+}

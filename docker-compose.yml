@@ -1,0 +1,23 @@
+# 開発用: DBのみコンテナ化(api/webはネイティブ実行)
+# 起動: docker compose up -d
+# 破棄してseedからやり直す: docker compose down -v
+services:
+  db:
+    image: postgres:16
+    container_name: insect_r2_db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: insect_r2
+    ports:
+      - "5432:5432"
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d insect_r2"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+volumes:
+  db-data:

@@ -1,0 +1,19 @@
+# Rust
+/api/target/
+
+# Node / SolidStart
+/web/node_modules/
+/web/.output/
+/web/.vinxi/
+/web/.nitro/
+/web/dist/
+
+# 環境変数・秘密情報
+.env
+.env.*
+
+# エディタ / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
