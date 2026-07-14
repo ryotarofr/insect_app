@@ -1,4 +1,4 @@
-# insect_app_r2
+# insect_app (step 2.0)
 
 昆虫EC + 飼育管理アプリ
 
