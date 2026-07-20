@@ -1,0 +1,9 @@
+{
+  "fixture": {
+    "file": "l2_two_headlines.json",
+    "expected": "L2:multiple_headlines"
+  },
+  "category": "L2:multiple_headlines",
+  "stderr": "INVALID: card \"c1\" has 2 headline blocks (max 1)",
+  "hydrate": null
+}

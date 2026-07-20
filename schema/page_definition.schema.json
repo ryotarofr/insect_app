@@ -1,0 +1,800 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "PageDefinition",
+  "description": "DBに保存される全体(= エージェントが PUT する単位 = 画面1枚)。\nメタデータ(updated_at 等)は JSONB ではなく DB カラムに置く。",
+  "type": "object",
+  "properties": {
+    "page": {
+      "$ref": "#/$defs/Page"
+    },
+    "schemaVersion": {
+      "description": "定義はコードより長生きする。破壊的変更時のみインクリメント(進化規約3)。",
+      "type": "integer",
+      "format": "uint32",
+      "minimum": 0
+    }
+  },
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "page"
+  ],
+  "$defs": {
+    "BlockKey": {
+      "type": "string",
+      "pattern": "^[a-z][a-z0-9_-]{0,63}$"
+    },
+    "Card": {
+      "description": "構造層のカード。「画面はカードの組み合わせでできている」の実体。\nDef / View で共用するためブロック型 `B` をジェネリクスにする。",
+      "type": "object",
+      "properties": {
+        "blocks": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/DefBlock"
+          }
+        },
+        "key": {
+          "$ref": "#/$defs/BlockKey"
+        },
+        "layout": {
+          "description": "カード内レイアウト。None = stack(additive フィールドのため Option で保持)",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CardLayout"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "size": {
+          "$ref": "#/$defs/CardSize",
+          "default": "full"
+        },
+        "tone": {
+          "description": "色調。None = default(additive フィールドのため Option で保持)",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/CardTone"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "key",
+        "blocks"
+      ]
+    },
+    "CardLayout": {
+      "description": "カード内レイアウト(セマンティックトークン)。CSS値は決して入れない(原則4)。\n`sidebar` = カード内の最初の「側柱対応ブロック」(現状 group_tabs)を側柱に、\nそれより前のブロックを全幅の前置行、残りを本体として横並びに描く。\n対応ブロックが無い場合・未指定・未知値はクライアントで `stack`(縦積み)扱い(進化規約4)。\n汎用Box再帰コンテナは導入しない(docs/REFACTOR.md §3 案ロの不採用)。",
+      "type": "string",
+      "enum": [
+        "stack",
+        "sidebar"
+      ]
+    },
+    "CardSize": {
+      "description": "カードのサイズ(セマンティックトークン)。px・CSS値は決して入れない。\nクライアントは未知の値を `Full` として扱う(進化規約4)。",
+      "type": "string",
+      "enum": [
+        "full",
+        "half"
+      ]
+    },
+    "CardTone": {
+      "description": "カードの色調(セマンティックトークン)。`accent` は反転(深緑)カード。\n未指定/未知値はクライアントで default 扱い(進化規約1・4に沿った additive 追加)。",
+      "type": "string",
+      "enum": [
+        "default",
+        "accent"
+      ]
+    },
+    "CtaIntent": {
+      "type": "string",
+      "enum": [
+        "primary",
+        "secondary"
+      ]
+    },
+    "DefBlock": {
+      "description": "定義側ブロック。adjacently-tagged: `{ \"type\": \"text\", \"content\": { ... } }`\n\n全 variant は構造体 variant(ユニット variant 禁止 — serde #2294)。",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "content": {
+              "type": "object",
+              "properties": {
+                "editable": {
+                  "description": "人間向けの編集UI(定義書込)をこのブロックに出すか。\nUIアフォーダンスの宣言であり、認可(誰がPUTできるか)ではない。\ndefault false・falseは出力に乗せない(additive変更 = 進化規約1)。",
+                  "type": "boolean"
+                },
+                "key": {
+                  "$ref": "#/$defs/BlockKey"
+                },
+                "role": {
+                  "$ref": "#/$defs/TextRole"
+                },
+                "text": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "key",
+                "role",
+                "text"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "text"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "content"
+          ]
+        },
+        {
+          "description": "Markdown 文章(複数段落・リスト・リンク等のリッチ文章)。\n- 原文のままビューへ配信し、描画・サニタイズは各クライアントが行う\n  (Webは marked + DOMPurify、モバイルはネイティブレンダラを想定)\n- 文中見出しは h3 以下として描画する規約(カード見出しは text.role=headline の専権\n  = headline≦1/card の a11y 不変条件を保つ)\n- 長さは L2 検証で上限あり(MAX_MARKDOWN_CHARS)",
+          "type": "object",
+          "properties": {
+            "content": {
+              "type": "object",
+              "properties": {
+                "editable": {
+                  "type": "boolean"
+                },
+                "key": {
+                  "$ref": "#/$defs/BlockKey"
+                },
+                "markdown": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "key",
+                "markdown"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "markdown"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "content"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "content": {
+              "type": "object",
+              "properties": {
+                "alt": {
+                  "type": "string"
+                },
+                "key": {
+                  "$ref": "#/$defs/BlockKey"
+                },
+                "src": {
+                  "$ref": "#/$defs/SitePath"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "key",
+                "src",
+                "alt"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "media"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "content"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "content": {
+              "type": "object",
+              "properties": {
+                "href": {
+                  "$ref": "#/$defs/SitePath"
+                },
+                "intent": {
+                  "$ref": "#/$defs/CtaIntent"
+                },
+                "key": {
+                  "$ref": "#/$defs/BlockKey"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "key",
+                "intent",
+                "label",
+                "href"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "cta"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "content"
+          ]
+        },
+        {
+          "description": "押下でクライアント固定実装の動詞を起動するボタン。\n存在・位置・文言(構成)は定義が持ち、振る舞いは `UiAction` の閉じた動詞から選ぶ。\n対応する actions provider が無いページに置かれた場合、クライアントは無効表示にする。",
+          "type": "object",
+          "properties": {
+            "content": {
+              "type": "object",
+              "properties": {
+                "action": {
+                  "$ref": "#/$defs/UiAction"
+                },
+                "intent": {
+                  "$ref": "#/$defs/CtaIntent"
+                },
+                "key": {
+                  "$ref": "#/$defs/BlockKey"
+                },
+                "label": {
+                  "type": "string"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "key",
+                "intent",
+                "label",
+                "action"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "action_button"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "content"
+          ]
+        },
+        {
+          "type": "object",
+          "properties": {
+            "content": {
+              "type": "object",
+              "properties": {
+                "emptyText": {
+                  "description": "空状態(該当0件)の表示文言。未指定はクライアント既定文言(additive・進化規約1)。\nプレーンテキストのみ(式・補間は §5 のとおり導入しない)。長さは L2 で上限あり。",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "key": {
+                  "$ref": "#/$defs/BlockKey"
+                },
+                "query": {
+                  "$ref": "#/$defs/ListingQuery"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "key",
+                "query"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "listing_grid"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "content"
+          ]
+        },
+        {
+          "description": "全個体のグループ別一覧(タブUI)。\n【非推奨 / Phase 2 で分割済み】新しい定義は `group_tabs` + `specimen_rows` を使うこと。\n既存定義の後方互換のためにのみ残す(語彙からの削除は schemaVersion++ の破壊的変更で行う)。",
+          "type": "object",
+          "properties": {
+            "content": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "$ref": "#/$defs/BlockKey"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "key"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "specimen_list"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "content"
+          ]
+        },
+        {
+          "description": "グループタブ帯(タブ+件数のみ)。選択タブはページコンテキスト\n(`?group=` → HydrateCtx.group)であり、定義にもブロックにも持たせない\n= ブロック同士を直接結合させない(REFACTOR §Phase2)。\nタブの追加/改名/削除のインラインフォームはクライアント固定コード(§2 の線引き)。",
+          "type": "object",
+          "properties": {
+            "content": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "$ref": "#/$defs/BlockKey"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "key"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "group_tabs"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "content"
+          ]
+        },
+        {
+          "description": "選択グループ(ctx.group、未指定/無効はサーバが既定選択)の個体行リスト。\n行直下の詳細展開はクライアント(`?open=` + renderSpecimenDetail 注入)。",
+          "type": "object",
+          "properties": {
+            "content": {
+              "type": "object",
+              "properties": {
+                "emptyText": {
+                  "description": "空状態の表示文言(未指定はクライアント既定)。",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "key": {
+                  "$ref": "#/$defs/BlockKey"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "key"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "specimen_rows"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "content"
+          ]
+        },
+        {
+          "description": "コンテキスト個体のプロフィール。specimen コンテキスト必須。",
+          "type": "object",
+          "properties": {
+            "content": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "$ref": "#/$defs/BlockKey"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "key"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "specimen_profile"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "content"
+          ]
+        },
+        {
+          "description": "コンテキスト個体の飼育記録(新しい順)。specimen コンテキスト必須。",
+          "type": "object",
+          "properties": {
+            "content": {
+              "type": "object",
+              "properties": {
+                "emptyText": {
+                  "description": "空状態の表示文言(未指定はクライアント既定)。",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "key": {
+                  "$ref": "#/$defs/BlockKey"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "key"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "care_log_list"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "content"
+          ]
+        },
+        {
+          "description": "コンテキスト個体の種に紐づく飼育メモ。specimen コンテキスト必須。",
+          "type": "object",
+          "properties": {
+            "content": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "$ref": "#/$defs/BlockKey"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "key"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "species_note"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "content"
+          ]
+        },
+        {
+          "description": "コンテキスト出品のヒーロー(写真・価格・状態・出品者コメント)。listing コンテキスト必須。",
+          "type": "object",
+          "properties": {
+            "content": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "$ref": "#/$defs/BlockKey"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "key"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "listing_hero"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "content"
+          ]
+        },
+        {
+          "description": "コンテキスト出品の個体スペック(チップ列)。listing コンテキスト必須。",
+          "type": "object",
+          "properties": {
+            "content": {
+              "type": "object",
+              "properties": {
+                "emptyText": {
+                  "description": "空状態の表示文言(未指定はクライアント既定)。",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "key": {
+                  "$ref": "#/$defs/BlockKey"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "key"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "listing_spec"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "content"
+          ]
+        },
+        {
+          "description": "コンテキスト個体の出品設定(未出品/出品中の状態と操作)。specimen コンテキスト必須。",
+          "type": "object",
+          "properties": {
+            "content": {
+              "type": "object",
+              "properties": {
+                "key": {
+                  "$ref": "#/$defs/BlockKey"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "key"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "listing_settings"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "content"
+          ]
+        },
+        {
+          "description": "個人TODOリスト。中身はユーザ毎のドメインデータ(user_todos)。\n追加/チェック/削除のフォームはクライアント固定コード(REFACTOR §2 の線引き)。",
+          "type": "object",
+          "properties": {
+            "content": {
+              "type": "object",
+              "properties": {
+                "emptyText": {
+                  "description": "空状態の表示文言(未指定はクライアント既定)。",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "key": {
+                  "$ref": "#/$defs/BlockKey"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "key"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "todo_list"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "content"
+          ]
+        },
+        {
+          "description": "アプリ内通知: 飼育データ由来の警告リスト+しきい値設定。\n設定値(有効/日数)は定義ではなくユーザ毎のドメインデータ(notification_prefs)。\n外部チャネル(メール等)は将来の拡張(docs/CARD_BUILDER.md §4.2)。",
+          "type": "object",
+          "properties": {
+            "content": {
+              "type": "object",
+              "properties": {
+                "emptyText": {
+                  "description": "警告0件時の表示文言(未指定はクライアント既定)。",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "key": {
+                  "$ref": "#/$defs/BlockKey"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "key"
+              ]
+            },
+            "type": {
+              "type": "string",
+              "const": "care_alerts"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "type",
+            "content"
+          ]
+        }
+      ]
+    },
+    "FeedRegions": {
+      "description": "`feed` テンプレートの許容リージョン(固定フィールド = 閉じたリージョン語彙)。\n\n3リージョンとも必須(空でも `[]` を明示する)。\n`#[serde(default)]` を使わない理由: ジェネリクス入りフィールドに付けると\nserde derive が `B: Default` 境界を推論してコンパイルエラーになるため。\n定義を書く側(エージェント)にとっても「全リージョンを必ず書く」方が明確。",
+      "type": "object",
+      "properties": {
+        "body": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Card"
+          }
+        },
+        "footer": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Card"
+          }
+        },
+        "header": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/Card"
+          }
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "header",
+        "body",
+        "footer"
+      ]
+    },
+    "ListingQuery": {
+      "description": "出品フィードへのデータバインド。ID直指定ではなくクエリにすることで\n参照整合性の問題を構造的に回避する。",
+      "type": "object",
+      "properties": {
+        "limit": {
+          "description": "1..=24(意味検証 L2 で強制)",
+          "type": "integer",
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0
+        },
+        "seller": {
+          "description": "未指定 = 市場全体(取り下げ済みは常に除外)",
+          "anyOf": [
+            {
+              "$ref": "#/$defs/ListingSeller"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "sort": {
+          "$ref": "#/$defs/ListingSort"
+        }
+      },
+      "additionalProperties": false,
+      "required": [
+        "sort",
+        "limit"
+      ]
+    },
+    "ListingSeller": {
+      "description": "出品者の絞り込み(additive)。`mine` = ログインユーザの出品のみ(未ログインは401)。",
+      "type": "string",
+      "enum": [
+        "mine"
+      ]
+    },
+    "ListingSort": {
+      "type": "string",
+      "enum": [
+        "newest",
+        "price_asc",
+        "price_desc"
+      ]
+    },
+    "Page": {
+      "description": "画面テンプレート。adjacently-tagged: `{ \"template\": \"feed\", \"content\": { ... } }`\nテンプレート追加はここへの variant 追加(+ Regions struct 追加)で行う。",
+      "oneOf": [
+        {
+          "type": "object",
+          "properties": {
+            "content": {
+              "type": "object",
+              "properties": {
+                "regions": {
+                  "$ref": "#/$defs/FeedRegions"
+                }
+              },
+              "additionalProperties": false,
+              "required": [
+                "regions"
+              ]
+            },
+            "template": {
+              "type": "string",
+              "const": "feed"
+            }
+          },
+          "additionalProperties": false,
+          "required": [
+            "template",
+            "content"
+          ]
+        }
+      ]
+    },
+    "SitePath": {
+      "type": "string",
+      "maxLength": 512,
+      "pattern": "^/"
+    },
+    "TextRole": {
+      "type": "string",
+      "enum": [
+        "headline",
+        "lead",
+        "body",
+        "caption"
+      ]
+    },
+    "UiAction": {
+      "description": "UIアクションの閉じた動詞(action_button 用)。\n押下時の振る舞いはクライアント固定実装(actions provider)が持ち、定義側は\n「どの動詞を起動するか」だけを選ぶ(docs/REFACTOR.md §2: 構成は定義、振る舞いは閉じた語彙)。\n対象IDは持たせない(定義は全ユーザ共有物。IDはコンテキスト = URL/ログインユーザから解決)。",
+      "oneOf": [
+        {
+          "type": "string",
+          "enum": [
+            "add_specimen"
+          ]
+        },
+        {
+          "description": "カードビルダーを開く(care ページの actions provider が実装)",
+          "type": "string",
+          "const": "add_card"
+        }
+      ]
+    }
+  }
+}

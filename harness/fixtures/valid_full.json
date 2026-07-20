@@ -1,0 +1,87 @@
+{
+  "schemaVersion": 1,
+  "page": {
+    "template": "feed",
+    "content": {
+      "regions": {
+        "header": [],
+        "body": [
+          {
+            "key": "roster",
+            "blocks": [
+              {
+                "type": "text",
+                "content": {
+                  "key": "roster-title",
+                  "role": "headline",
+                  "text": "飼育一覧"
+                }
+              },
+              {
+                "type": "action_button",
+                "content": {
+                  "key": "roster-add",
+                  "intent": "secondary",
+                  "label": "＋ 個体を追加",
+                  "action": "add_specimen"
+                }
+              },
+              {
+                "type": "group_tabs",
+                "content": {
+                  "key": "roster-tabs"
+                }
+              },
+              {
+                "type": "specimen_rows",
+                "content": {
+                  "key": "roster-rows"
+                }
+              }
+            ],
+            "layout": "sidebar"
+          },
+          {
+            "key": "sale",
+            "blocks": [
+              {
+                "type": "text",
+                "content": {
+                  "key": "sale-title",
+                  "role": "headline",
+                  "text": "夏のセール"
+                }
+              },
+              {
+                "type": "markdown",
+                "content": {
+                  "key": "sale-md",
+                  "markdown": "**期間限定**\n\n- ヘラクレス\n- ニジイロ",
+                  "editable": true
+                }
+              }
+            ],
+            "size": "half",
+            "tone": "accent"
+          },
+          {
+            "key": "new",
+            "blocks": [
+              {
+                "type": "listing_grid",
+                "content": {
+                  "key": "new-grid",
+                  "query": {
+                    "sort": "newest",
+                    "limit": 6
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "footer": []
+      }
+    }
+  }
+}

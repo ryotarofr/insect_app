@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "page": {
+    "template": "feed",
+    "content": {
+      "regions": {
+        "header": [],
+        "body": [
+          {
+            "key": "c1",
+            "blocks": [
+              {
+                "type": "cta",
+                "content": {
+                  "key": "b1",
+                  "intent": "primary",
+                  "label": "x",
+                  "href": "/a/../etc/passwd"
+                }
+              }
+            ]
+          }
+        ],
+        "footer": []
+      }
+    }
+  }
+}

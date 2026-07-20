@@ -1,4 +1,4 @@
-import type { DefinitionDoc, PageView } from "./types";
+import type { DefCard, DefinitionDoc, PageView } from "./types";
 
 async function http<T = void>(method: string, url: string, body?: unknown): Promise<T> {
   const res = await fetch(url, {
@@ -50,11 +50,12 @@ export function authLogout(): Promise<void> {
 /** SDUI ページを取得。コンテキスト付きページは第2引数で id を渡す */
 export function fetchPage(
   key: string,
-  ctx?: { specimen?: string; listing?: string },
+  ctx?: { specimen?: string; listing?: string; group?: string },
 ): Promise<PageView> {
   const params = new URLSearchParams();
   if (ctx?.specimen) params.set("specimen", ctx.specimen);
   if (ctx?.listing) params.set("listing", ctx.listing);
+  if (ctx?.group) params.set("group", ctx.group);
   const q = params.toString();
   return http<PageView>("GET", `/api/pages/${encodeURIComponent(key)}${q ? `?${q}` : ""}`);
 }
@@ -69,6 +70,114 @@ export function putDefinition(key: string, doc: DefinitionDoc): Promise<void> {
   return http("PUT", `/api/pages/${encodeURIComponent(key)}`, doc);
 }
 
+/** 未保存の定義を検証+hydrateしてビューを返す(保存しない)。ビルダーのライブプレビュー用 */
+export function previewPage(doc: DefinitionDoc): Promise<PageView> {
+  return http<PageView>("POST", "/api/preview", doc);
+}
+
+/** 自分のページ定義として保存(care 等のパーソナライズ。初回で共有からコピーオンライト) */
+export function putMyDefinition(key: string, doc: DefinitionDoc): Promise<void> {
+  return http("PUT", `/api/pages/${encodeURIComponent(key)}/mine`, doc);
+}
+
+/** 自分のページ定義を削除 = 「共有の最新に戻す」リセット(冪等) */
+export function resetMyDefinition(key: string): Promise<void> {
+  return http("DELETE", `/api/pages/${encodeURIComponent(key)}/mine`);
+}
+
+/** 自分のページからカードを1枚削除(カードビルダーで作ったカードの削除用) */
+export async function removeMyCard(pageKey: string, cardKey: string): Promise<void> {
+  const doc = await fetchDefinition(pageKey);
+  let removed = false;
+  for (const cards of Object.values(doc.page.content.regions)) {
+    const i = cards.findIndex(c => c.key === cardKey);
+    if (i >= 0) {
+      cards.splice(i, 1);
+      removed = true;
+    }
+  }
+  // 見つからない(別タブで削除済み等)なら PUT しない
+  // = 変更ゼロの書込で不要にページを個人化(CoW)しない
+  if (removed) await putMyDefinition(pageKey, doc);
+}
+
+// ── 自分のページのカード並び操作(ビルダーの挿入位置 / ページ上の並べ替え)──
+//
+// ページは header → body → footer の順に1列で描画され、リージョン別の見た目差は無い。
+// そこで「ページ全体をひとつの並び」として扱い、**header / footer の枚数を固定したまま**
+// 平坦リストを組み替えて書き戻す(枚数固定なので L2 のカード数上限にも影響しない。
+// カードが隣のリージョンへ移り変わることがあるが、描画順 = ユーザの見た目は常に一致する)。
+// footer は入口ボタン(page-tools)の置き場なので、挿入・移動の対象から外し常に末尾に保つ。
+
+const REGION_ORDER = ["header", "body", "footer"] as const;
+
+function flattenCards(doc: DefinitionDoc): DefCard[] {
+  return REGION_ORDER.flatMap(r => doc.page.content.regions[r] ?? []);
+}
+
+/** flat 並びを header/footer 枚数固定で regions に書き戻す(doc は挿入前の枚数で判定) */
+function reassignRegions(doc: DefinitionDoc, flat: DefCard[]): void {
+  const regions = doc.page.content.regions;
+  const nHeader = (regions.header ?? []).length;
+  const nFooter = (regions.footer ?? []).length;
+  regions.header = flat.slice(0, nHeader);
+  regions.body = flat.slice(nHeader, flat.length - nFooter);
+  regions.footer = flat.slice(flat.length - nFooter);
+}
+
+/** カードの表示名(最初の見出しテキスト。無ければ key) */
+function cardDisplayName(c: DefCard): string {
+  for (const b of c.blocks) {
+    const content = b.content as { role?: string; text?: string };
+    if (b.type === "text" && content.role === "headline" && content.text) return content.text;
+  }
+  return c.key;
+}
+
+export interface CardPosition {
+  label: string;
+  flatIndex: number;
+}
+
+/** ビルダーの「挿入位置」選択肢(footer の手前まで)。末尾 = 最後の選択肢 */
+export function cardPositions(doc: DefinitionDoc): CardPosition[] {
+  const flat = flattenCards(doc);
+  const nFooter = (doc.page.content.regions.footer ?? []).length;
+  const movable = flat.slice(0, flat.length - nFooter);
+  return [
+    { label: "ページの先頭", flatIndex: 0 },
+    ...movable.map((c, i) => ({ label: `「${cardDisplayName(c)}」の後`, flatIndex: i + 1 })),
+  ];
+}
+
+/** doc の flat 位置 flatIndex にカードを挿入する(putはしない。ビルダーの保存が使う) */
+export function insertCardIntoDoc(doc: DefinitionDoc, card: DefCard, flatIndex: number): void {
+  const flat = flattenCards(doc);
+  const nFooter = (doc.page.content.regions.footer ?? []).length;
+  const i = Math.max(0, Math.min(flatIndex, flat.length - nFooter));
+  flat.splice(i, 0, card);
+  reassignRegions(doc, flat);
+}
+
+/** 自分のページ上でカードを1つ上/下へ。端(および footer)は no-op で false を返す */
+export async function moveMyCard(
+  pageKey: string,
+  cardKey: string,
+  dir: -1 | 1,
+): Promise<boolean> {
+  const doc = await fetchDefinition(pageKey);
+  const flat = flattenCards(doc);
+  const nFooter = (doc.page.content.regions.footer ?? []).length;
+  const max = flat.length - nFooter; // 移動できるのは [0, max) の範囲
+  const i = flat.findIndex(c => c.key === cardKey);
+  const j = i + dir;
+  if (i < 0 || i >= max || j < 0 || j >= max) return false;
+  [flat[i], flat[j]] = [flat[j], flat[i]];
+  reassignRegions(doc, flat);
+  await putMyDefinition(pageKey, doc);
+  return true;
+}
+
 /**
  * 定義内の特定ブロックのフィールドを書き換えて保存する
  * (text / markdown の編集UIが使う共通経路。取得→走査→PUT)。
@@ -79,6 +188,7 @@ export async function patchDefinitionBlock(
   blockKey: string,
   blockType: string,
   patch: Record<string, unknown>,
+  scope: "shared" | "mine" = "shared",
 ): Promise<void> {
   const doc = await fetchDefinition(pageKey);
   for (const cards of Object.values(doc.page.content.regions)) {
@@ -91,7 +201,8 @@ export async function patchDefinitionBlock(
       }
     }
   }
-  await putDefinition(pageKey, doc);
+  // scope=mine はユーザ毎ページ(care 等)への書込。編集も自分のページに閉じる
+  await (scope === "mine" ? putMyDefinition(pageKey, doc) : putDefinition(pageKey, doc));
 }
 
 // ── タブ(ユーザ定義グループ)────────────────────────────────
@@ -173,6 +284,31 @@ export function deleteCareLog(logId: string): Promise<void> {
 
 export function putSpeciesNote(speciesName: string, note: string): Promise<void> {
   return http("PATCH", `/api/species_notes/${encodeURIComponent(speciesName)}`, { note });
+}
+
+// ── 個人TODO(todo_list ブロック)────────────────────────────
+
+export function addTodo(body: string): Promise<void> {
+  return http("POST", "/api/todos", { body });
+}
+
+export function patchTodo(
+  id: string,
+  patch: Partial<{ body: string; done: boolean }>,
+): Promise<void> {
+  return http("PATCH", `/api/todos/${id}`, patch);
+}
+
+export function deleteTodo(id: string): Promise<void> {
+  return http("DELETE", `/api/todos/${id}`);
+}
+
+// ── アプリ内通知の設定(care_alerts ブロック)────────────────
+
+export function patchNotificationPrefs(
+  patch: Partial<{ enabled: boolean; staleDays: number }>,
+): Promise<void> {
+  return http("PATCH", "/api/notification_prefs", patch);
 }
 
 // ── 出品(個体⇔listing)──────────────────────────────────────

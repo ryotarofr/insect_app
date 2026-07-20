@@ -9,7 +9,7 @@ use typeshare::typeshare;
 use uuid::Uuid;
 
 use super::brand::{BlockKey, SitePath};
-use super::def::{CtaIntent, Page, TextRole};
+use super::def::{CtaIntent, Page, TextRole, UiAction};
 
 #[typeshare]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, PartialEq, Eq)]
@@ -53,6 +53,7 @@ pub struct SpecimenItem {
 
 /// ユーザ定義グループ1つぶん(タブ1枚)。ラベルはドメインデータ(虫かご等、自由作成)。
 /// 空グループも count=0 で必ず返す(タブUIの前提)。
+/// 【非推奨】specimen_list(旧ブロック)専用。分割後は GroupTabItem / SpecimenItem を使う。
 #[typeshare]
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(deny_unknown_fields, rename_all = "camelCase")]
@@ -62,6 +63,18 @@ pub struct SpecimenGroup {
     pub label: String,
     pub count: u32,
     pub items: Vec<SpecimenItem>,
+}
+
+/// タブ1枚ぶん(グループ+件数のみ)。行は specimen_rows が選択グループ分だけ持つ。
+/// 空グループも count=0 で必ず返す(タブUIの前提)。
+#[typeshare]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct GroupTabItem {
+    #[typeshare(serialized_as = "String")]
+    pub group_id: Uuid,
+    pub label: String,
+    pub count: u32,
 }
 
 /// ラベル+値の1属性(出品スペック等)。項目構成はサーバが決める。
@@ -137,13 +150,44 @@ pub enum ViewBlock {
         label: String,
         href: SitePath,
     },
+    /// 定義からのパススルー(hydrate で解決するデータは無い)。
+    ActionButton {
+        key: BlockKey,
+        intent: CtaIntent,
+        label: String,
+        action: UiAction,
+    },
     ListingGrid {
         key: BlockKey,
         items: Vec<ListingItem>,
+        /// 空状態の表示文言(定義からのパススルー。未指定はクライアント既定)
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        empty_text: Option<String>,
     },
     SpecimenList {
         key: BlockKey,
         groups: Vec<SpecimenGroup>,
+    },
+    /// グループタブ帯(specimen_list の分割後継・タブのみ)。
+    GroupTabs {
+        key: BlockKey,
+        /// サーバが解決した選択グループ(?group= が無効/未指定なら既定選択。
+        /// タブが1つも無い場合のみ None)
+        #[typeshare(serialized_as = "Option<String>")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        active_group_id: Option<Uuid>,
+        groups: Vec<GroupTabItem>,
+    },
+    /// 選択グループの個体行(specimen_list の分割後継・行のみ)。
+    SpecimenRows {
+        key: BlockKey,
+        /// 解決に使ったグループ(group_tabs と同じ規則で解決するため表示は一致する)
+        #[typeshare(serialized_as = "Option<String>")]
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        group_id: Option<Uuid>,
+        items: Vec<SpecimenItem>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        empty_text: Option<String>,
     },
     SpecimenProfile {
         key: BlockKey,
@@ -177,6 +221,8 @@ pub enum ViewBlock {
         #[typeshare(serialized_as = "String")]
         specimen_id: Uuid,
         entries: Vec<CareLogEntry>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        empty_text: Option<String>,
     },
     SpeciesNote {
         key: BlockKey,
@@ -202,6 +248,8 @@ pub enum ViewBlock {
     ListingSpec {
         key: BlockKey,
         attrs: Vec<SpecAttr>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        empty_text: Option<String>,
     },
     /// コンテキスト個体の出品状態。listing が None なら未出品。
     ListingSettings {
@@ -213,6 +261,49 @@ pub enum ViewBlock {
         #[serde(default, skip_serializing_if = "Option::is_none")]
         listing: Option<ListingState>,
     },
+    /// 個人TODO(未完了 → 完了の順)。
+    TodoList {
+        key: BlockKey,
+        items: Vec<TodoItem>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        empty_text: Option<String>,
+    },
+    /// アプリ内通知。enabled=false のとき items は常に空。
+    CareAlerts {
+        key: BlockKey,
+        enabled: bool,
+        stale_days: u32,
+        items: Vec<AlertItem>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        empty_text: Option<String>,
+    },
+}
+
+/// 個人TODO 1件(todo_list 用)。サーバだけが作る。
+#[typeshare]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct TodoItem {
+    #[typeshare(serialized_as = "String")]
+    pub todo_id: Uuid,
+    pub body: String,
+    pub done: bool,
+}
+
+/// アプリ内通知の警告1件(care_alerts 用)。reason はサーバ生成の理由ラベル。
+#[typeshare]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+pub struct AlertItem {
+    #[typeshare(serialized_as = "String")]
+    pub specimen_id: Uuid,
+    /// 行クリックでタブ切替+展開するためのグループ
+    #[typeshare(serialized_as = "String")]
+    pub group_id: Uuid,
+    pub code: String,
+    pub name: String,
+    /// 例: 「要注意フラグ」「最終記録から9日」
+    pub reason: String,
 }
 
 /// `GET /api/pages/{key}` のレスポンス全体。

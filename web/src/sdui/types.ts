@@ -30,12 +30,22 @@ export interface SpecimenItem {
   alert: boolean;
 }
 
-/** ユーザ定義グループ(タブ1枚)。ラベルはドメインデータ(虫かご等、自由作成) */
+/**
+ * ユーザ定義グループ(タブ1枚)。ラベルはドメインデータ(虫かご等、自由作成)。
+ * 【非推奨】specimen_list(旧ブロック)専用。分割後は GroupTabItem / SpecimenItem を使う。
+ */
 export interface SpecimenGroup {
   groupId: string;
   label: string;
   count: number;
   items: SpecimenItem[];
+}
+
+/** タブ1枚ぶん(グループ+件数のみ)。行は specimen_rows が選択グループ分だけ持つ */
+export interface GroupTabItem {
+  groupId: string;
+  label: string;
+  count: number;
 }
 
 export interface CareLogEntry {
@@ -79,6 +89,23 @@ export interface SpecAttr {
   value: string;
 }
 
+/** 個人TODO 1件(todo_list 用) */
+export interface TodoItem {
+  todoId: string;
+  body: string;
+  done: boolean;
+}
+
+/** アプリ内通知の警告1件(care_alerts 用)。reason はサーバ生成の理由ラベル */
+export interface AlertItem {
+  specimenId: string;
+  /** 行クリックでタブ切替+展開するためのグループ */
+  groupId: string;
+  code: string;
+  name: string;
+  reason: string;
+}
+
 export interface ListingSettingsContent {
   key: string;
   specimenId: string;
@@ -103,14 +130,38 @@ export type ViewBlock =
   | { type: "markdown"; content: { key: string; markdown: string; editable?: boolean } }
   | { type: "media"; content: { key: string; src: string; alt: string } }
   | { type: "cta"; content: { key: string; intent: CtaIntent; label: string; href: string } }
-  | { type: "listing_grid"; content: { key: string; items: ListingItem[] } }
+  // action はサーバ側では閉じた動詞 enum。寛容な読み手として string で受け、
+  // 未知動詞は actions provider 側で no-op にする(進化規約4の精神)
+  | { type: "action_button"; content: { key: string; intent: CtaIntent; label: string; action: string } }
+  | { type: "listing_grid"; content: { key: string; items: ListingItem[]; emptyText?: string } }
   | { type: "specimen_list"; content: { key: string; groups: SpecimenGroup[] } }
+  // specimen_list の分割後継(Phase 2)。選択タブは ?group= = ページコンテキスト
+  | { type: "group_tabs"; content: { key: string; activeGroupId?: string; groups: GroupTabItem[] } }
+  | {
+      type: "specimen_rows";
+      content: { key: string; groupId?: string; items: SpecimenItem[]; emptyText?: string };
+    }
   | { type: "specimen_profile"; content: SpecimenProfileContent }
-  | { type: "care_log_list"; content: { key: string; specimenId: string; entries: CareLogEntry[] } }
+  | {
+      type: "care_log_list";
+      content: { key: string; specimenId: string; entries: CareLogEntry[]; emptyText?: string };
+    }
   | { type: "species_note"; content: { key: string; speciesName: string; note: string } }
   | { type: "listing_hero"; content: ListingHeroContent }
-  | { type: "listing_spec"; content: { key: string; attrs: SpecAttr[] } }
-  | { type: "listing_settings"; content: ListingSettingsContent };
+  | { type: "listing_spec"; content: { key: string; attrs: SpecAttr[]; emptyText?: string } }
+  | { type: "listing_settings"; content: ListingSettingsContent }
+  // ユーザウィジェット(配置は定義、中身と設定はユーザ毎のドメインデータ)
+  | { type: "todo_list"; content: { key: string; items: TodoItem[]; emptyText?: string } }
+  | {
+      type: "care_alerts";
+      content: {
+        key: string;
+        enabled: boolean;
+        staleDays: number;
+        items: AlertItem[];
+        emptyText?: string;
+      };
+    };
 
 /** 構造層のカード。「画面はカードの組み合わせでできている」の実体 */
 export interface Card {
@@ -118,6 +169,8 @@ export interface Card {
   size: CardSize;
   /** 色調トークン。未知値・未指定は default 扱い(進化規約4) */
   tone?: "default" | "accent";
+  /** カード内レイアウトトークン。未知値・未指定は stack(縦積み)扱い(進化規約4) */
+  layout?: string;
   blocks: ViewBlock[];
 }
 

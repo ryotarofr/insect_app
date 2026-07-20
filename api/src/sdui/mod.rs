@@ -15,11 +15,11 @@ mod view;
 
 pub use brand::{BlockKey, BrandError, SitePath};
 pub use def::{
-    Card, CardSize, CardTone, CtaIntent, DefBlock, FeedRegions, ListingQuery, ListingSeller,
-    ListingSort, Page, PageDefinition, TextRole,
+    Card, CardLayout, CardSize, CardTone, CtaIntent, DefBlock, FeedRegions, ListingQuery,
+    ListingSeller, ListingSort, Page, PageDefinition, TextRole, UiAction,
 };
 pub use valid::{DefinitionError, SCHEMA_VERSION, ValidPageDefinition};
 pub use view::{
-    CareLogEntry, Currency, ListingItem, ListingState, PageView, SpecAttr, SpecimenGroup,
-    SpecimenItem, ViewBlock,
+    AlertItem, CareLogEntry, Currency, GroupTabItem, ListingItem, ListingState, PageView, SpecAttr,
+    SpecimenGroup, SpecimenItem, TodoItem, ViewBlock,
 };

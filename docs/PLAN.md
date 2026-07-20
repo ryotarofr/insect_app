@@ -76,7 +76,8 @@ web/   SolidStart(SPAモード, /api は vite proxy → 127.0.0.1:3001)
   src/sdui/{types,api,actions,renderer,specimen,listing}  types.tsは暫定手書き
   src/routes/{index,care,login,listings/[id]}.tsx         SDUIコンテンツ面
 scripts/seed_test_user.sql             testユーザ用サンプルデータ(docker cp + psql -f で実行)
-harness/run.py                         (未実装・ステップ6)LLM生成→validate→通過率集計
+scripts/definition_ops_report.sql      定義運用の実績レポート(Phase 4 着手判断の材料)
+harness/{run.py,tasks.json,l2_rules.md,fixtures/}  指標1計測(--dry-run はAPIキー無しで実行可)
 ```
 
 ## フェーズ2: 飼育管理(2026-07-11 実装)
@@ -134,6 +135,38 @@ harness/run.py                         (未実装・ステップ6)LLM生成→va
   (ユーザ不在ならログイン不能なシードユーザ)。新規登録時にデフォルト4タブを自動作成。
   個体code・タブlabel・種メモはユーザ単位の一意に変更。listings と page_definitions は共有のまま
 - 未実装(Phase C): ロール(管理者のみ定義PUT)、CSRF対策強化・レート制限・パスワードリセット
+
+## SDUI改修 + ハーネス(2026-07-19 実装)
+
+- **REFACTOR.md Phase 1〜3 実装済み**: `action_button`(0017・閉じた動詞 `UiAction`)/
+  `group_tabs` + `specimen_rows` + `?group=`/`?open=` のURLコンテキスト化(0018。
+  hydrate は選択グループのみ解決、モジュールスコープ signal は廃止)/
+  `Card.layout: stack|sidebar`(0019)。`specimen_list` は非推奨として語彙に残置
+  (削除は schemaVersion++ の破壊的変更で行う)。
+  指標3の記録: 変更ファイル数 Phase1=12 / Phase2=13 / Phase3=9
+- **ブロック隣接文言の定義化**: listing_grid / specimen_rows / care_log_list / listing_spec に
+  `emptyText`(additive・L2上限 MAX_UI_TEXT_CHARS=200)。空状態文言も定義 = 運用対象
+  (指標2の実例: SQL UPDATE のみで画面反映を確認済み)
+- **フロント primitive 層**(`web/src/sdui/primitives.tsx`): 閉じた props の
+  Box/Stack/Row/Grid と variant 部品(Button/Text/Chip/Field 等)。props はレンダラの
+  内部命令セットであり、定義スキーマへは出さない(docs/FRONTEND_PRIMITIVES.md 参照)
+- **ハーネス**(`harness/run.py`): 指標1計測。套件20件(生成16+編集4)× 条件A/B
+  (スキーマのみ / +L2ルール文書)、失敗を L1/L2/schema-gap に自動分類、
+  任意で hydrate 第二ゲート(validate通過≠配信可能の隙間を計測)。
+  実測結果: ____%(N=20、モデル: ____、実施日: ____)← 実測後に記入
+
+### Phase 4(フォーム語彙化)の着手条件
+
+REFACTOR §Phase4「Phase 1〜3 の運用実績を見てから着手」の具体化。**両方**を満たしたら着手:
+
+1. **指標1 が目標 90% 到達** — 閉じた語彙をLLMが書ける実証(harness のレポート)
+2. **定義運用の実発生** — `updated_by = api:<email>` の更新(ボタン文言・タブ構成・
+   layout・emptyText の変更等)が観測されること。確認は `scripts/definition_ops_report.sql`。
+   PUT の書き手はアカウント単位で記録されるため、エージェントには専用アカウントを
+   使わせて人間の編集と区別する
+
+未達の間は Phase 4 に着手せず、ハーネスの失敗タクソノミを起点にした小粒改善
+(スキーマ description の強化・l2_rules 文書の恒常化・語彙説明の追記)を先に行う。
 
 ## 起動手順
 

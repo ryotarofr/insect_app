@@ -1,0 +1,9 @@
+{
+  "fixture": {
+    "file": "l1_schema_gap_sitepath.json",
+    "expected": "L1:schema_gap_site_path"
+  },
+  "category": "L1:schema_gap_site_path",
+  "stderr": "INVALID: structural: invalid site path (internal '/' path, no '..', max 512 chars): \"/a/../etc/passwd\" at line 19 column 17",
+  "hydrate": null
+}

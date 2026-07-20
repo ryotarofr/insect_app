@@ -4,6 +4,7 @@ import { FileRoutes } from "@solidjs/start/router";
 import { Show, Suspense, createResource } from "solid-js";
 import { isServer } from "solid-js/web";
 import { authLogout, authMe } from "~/sdui/api";
+import { Button } from "~/sdui/primitives";
 import "./app.css";
 
 /**
@@ -54,9 +55,9 @@ export default function App() {
                   {u => (
                     <>
                       <span class="shell__user-name">{u().displayName}</span>
-                      <button class="sd-btn sd-btn--ghost" onClick={() => void logout()}>
+                      <Button intent="ghost" onClick={() => void logout()}>
                         ログアウト
-                      </button>
+                      </Button>
                     </>
                   )}
                 </Show>

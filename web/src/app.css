@@ -136,6 +136,53 @@ body {
   gap: 20px;
 }
 
+/* 閉じた props の primitive 層(primitives.tsx)が使うトークンクラス。
+   Space: xs=4 / sm=8 / md=12 / lg=16 / xl=20(CP2確定値。旧 10px→sm, 14px→md に丸め)。
+   ビルド機構なしの静的クラス = 構造的にゼロランタイム。 */
+
+.ui {
+  display: flex;
+  flex-direction: column;
+}
+
+.ui--row {
+  flex-direction: row;
+}
+
+.ui--wrap {
+  flex-wrap: wrap;
+}
+
+.ui-gap--none { gap: 0; }
+.ui-gap--xs { gap: 4px; }
+.ui-gap--sm { gap: 8px; }
+.ui-gap--md { gap: 12px; }
+.ui-gap--lg { gap: 16px; }
+.ui-gap--xl { gap: 20px; }
+
+.ui-align--start { align-items: flex-start; }
+.ui-align--center { align-items: center; }
+.ui-align--end { align-items: flex-end; }
+.ui-align--stretch { align-items: stretch; }
+
+.ui-just--start { justify-content: flex-start; }
+.ui-just--center { justify-content: center; }
+.ui-just--end { justify-content: flex-end; }
+.ui-just--between { justify-content: space-between; }
+
+/* フォーム用グリッドの閉じたレシピ(Grid cols=2|3) */
+.ui-grid--2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+}
+
+.ui-grid--3 {
+  display: grid;
+  grid-template-columns: 160px 1fr 1fr;
+  gap: 8px;
+}
+
 .sd-region {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -178,6 +225,22 @@ body {
 .sd-card--accent .sd-cta--primary {
   background: var(--accent-ink);
   color: var(--inverse);
+}
+
+/* layout トークン(additive)。sidebar = 側柱+本体の横並び。側柱の幅は側柱ブロック
+   自身が持つ(例: .sd-vtabs)。横並び自体は primitive(<Row align="start" gap="md">)が
+   担い、.sd-card-cols はモバイル分岐(下の media query)のフックとしてのみ残す */
+
+.sd-card-side {
+  flex-shrink: 0;
+}
+
+.sd-card-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
 
 /* ── blocks ──────────────────────────────────────────── */
@@ -432,22 +495,15 @@ body {
   resize: vertical;
 }
 
-.sd-form-row {
-  display: flex;
-  gap: 8px;
+/* チェックボックスは幅いっぱいに伸ばさない(todo/通知トグル等の行内配置用) */
+.sd-form input[type="checkbox"] {
+  width: auto;
+  flex: none;
+  padding: 0;
 }
 
-.sd-form-grid2 {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 8px 12px;
-}
-
-.sd-form-grid3 {
-  display: grid;
-  grid-template-columns: 160px 1fr 1fr;
-  gap: 8px;
-}
+/* 行レイアウト(旧 .sd-form-row)と格子(旧 .sd-form-grid2/3)は primitive
+   (<Row gap="sm"> / <Grid cols>)へ吸収した */
 
 .sd-field {
   display: flex;
@@ -475,18 +531,15 @@ body {
   opacity: 1;
 }
 
-/* ── specimen_list: 縦型サイドタブ + 行リスト ──────────── */
+/* ── specimen_list(レガシー): 縦型サイドタブ + 行リスト ──
+   .sd-speclist / .sd-speclist-layout は非推奨 SpecimenListView 専用。
+   コンポーネント削除時(schemaVersion++)に一緒に消す。
+   旧 .sd-speclist-toolbar / .sd-actionrow は <Row justify="end"> へ吸収した */
 
 .sd-speclist {
   display: flex;
   flex-direction: column;
   gap: 12px;
-}
-
-.sd-speclist-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  gap: 8px;
 }
 
 .sd-speclist-layout {
@@ -721,11 +774,116 @@ body {
   margin-left: auto;
 }
 
-.sd-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
+/* ── ユーザウィジェット: todo_list / care_alerts ─────────── */
+
+.sd-todorow {
+  padding: 2px 0;
 }
+
+.sd-todo-label {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+
+.sd-todo--done {
+  text-decoration: line-through;
+  color: var(--muted);
+}
+
+.sd-form input.sd-todo-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.sd-alertrow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 10px;
+  margin-bottom: 6px;
+  border: 1px solid var(--card-line);
+  border-radius: 5px;
+  background: var(--card);
+  font-family: inherit;
+  font-size: 13px;
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.sd-alertrow:not(:disabled):hover {
+  border-color: var(--line-strong);
+}
+
+/* プレビュー等、遷移ハンドラの無い文脈では静的表示 */
+.sd-alertrow:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.sd-alertrow-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.sd-alertrow-reason {
+  color: #b0432f;
+  font-size: 12px;
+  white-space: nowrap;
+}
+
+.sd-alert-toggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+.sd-form input.sd-alert-days {
+  width: 80px;
+  flex: none;
+}
+
+/* 自分のページのカード操作(並べ替え↑↓は全カード、削除✕は "my-" key のみ)。
+   ホバーで現れる(タッチ環境では常時表示) */
+.sd-card {
+  position: relative;
+}
+
+/* カード上辺に浮かぶ小さなツールバー。カード内右上の編集ボタン(sd-editbtn)と
+   重ならないよう、カードの枠線上(外側)に配置する */
+.sd-card-tools {
+  position: absolute;
+  top: -13px;
+  right: 14px;
+  z-index: 2;
+  background: var(--card);
+  border: 1px solid var(--card-line);
+  border-radius: 999px;
+  padding: 0 4px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.sd-card:hover > .sd-card-tools,
+.sd-card-tools:focus-within {
+  opacity: 1;
+}
+
+@media (hover: none) {
+  .sd-card-tools {
+    opacity: 1;
+  }
+}
+
+/* チップの列(旧 .sd-chips)は <Row wrap gap="sm"> へ吸収した */
 
 .sd-chip {
   border: 1px solid var(--card-line);
@@ -826,6 +984,164 @@ body {
   display: flex;
   flex-direction: column;
   gap: 12px;
+}
+
+/* ── カードビルダー(テンプレートギャラリー + 2ペイン編集)── */
+
+.sd-modal--wide {
+  max-width: 1120px;
+}
+
+.sd-pane-label {
+  font-family: var(--font-mono);
+  font-size: 10px;
+  letter-spacing: 0.18em;
+  color: var(--muted);
+  margin: 0 0 8px;
+}
+
+.sd-builder-cols {
+  display: grid;
+  grid-template-columns: 400px 1fr;
+  gap: 20px;
+  align-items: start;
+}
+
+.sd-builder-preview {
+  background: var(--panel);
+  border: 1px dashed var(--card-line);
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.sd-tpl-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-top: 6px;
+}
+
+.sd-tpl {
+  background: var(--card);
+  border: 1px solid var(--card-line);
+  border-radius: 6px;
+  padding: 14px;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  text-align: left;
+  font-family: inherit;
+  transition: border-color 0.15s;
+}
+
+.sd-tpl:hover {
+  border-color: var(--line-strong);
+}
+
+.sd-tpl-name {
+  font-family: var(--font-serif);
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--text);
+}
+
+.sd-tpl-desc {
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.6;
+}
+
+.sd-mini {
+  background: var(--card-alt);
+  border: 1px solid var(--card-line);
+  border-radius: 4px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-height: 92px;
+  font-size: 10px;
+  color: var(--muted);
+}
+
+.sd-mini-bar {
+  height: 7px;
+  border-radius: 2px;
+  background: var(--card-line);
+}
+
+.sd-mini-bar--dark {
+  background: var(--line-strong);
+  width: 45%;
+  height: 9px;
+}
+
+.sd-mini-bar--half {
+  width: 70%;
+}
+
+.sd-mini-row {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+}
+
+.sd-mini-box {
+  width: 8px;
+  height: 8px;
+  border: 1px solid var(--muted);
+  border-radius: 2px;
+  flex: none;
+}
+
+.sd-mini-box--on {
+  background: var(--line-strong);
+}
+
+.sd-mini-warn {
+  border: 1px solid var(--card-line);
+  border-radius: 3px;
+  padding: 3px 5px;
+  display: flex;
+  justify-content: space-between;
+  background: var(--card);
+}
+
+.sd-mini-warn span {
+  color: #b0432f;
+}
+
+.sd-mini-btn {
+  border: 1px solid var(--card-line);
+  border-radius: 3px;
+  padding: 3px 6px;
+  width: fit-content;
+  background: var(--card);
+}
+
+.sd-mini-grid2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+}
+
+.sd-mini-thumb {
+  height: 22px;
+  background: repeating-linear-gradient(
+    45deg,
+    var(--card-line),
+    var(--card-line) 3px,
+    var(--card-alt) 3px,
+    var(--card-alt) 6px
+  );
+  border-radius: 2px;
+}
+
+.sd-mini-plus {
+  font-size: 22px;
+  color: var(--card-line);
+  margin: auto;
 }
 
 .sd-btn--danger {
@@ -937,6 +1253,22 @@ body {
 
   .sd-speclist-layout {
     flex-direction: column;
+  }
+
+  .sd-card-cols {
+    flex-direction: column;
+  }
+
+  .sd-card-side {
+    width: 100%;
+  }
+
+  .sd-builder-cols {
+    grid-template-columns: 1fr;
+  }
+
+  .sd-tpl-grid {
+    grid-template-columns: 1fr 1fr;
   }
 
   .sd-vtabs {

@@ -1,0 +1,40 @@
+{
+  "schemaVersion": 1,
+  "page": {
+    "template": "feed",
+    "content": {
+      "regions": {
+        "header": [],
+        "body": [
+          {
+            "key": "dup",
+            "blocks": [
+              {
+                "type": "text",
+                "content": {
+                  "key": "t1",
+                  "role": "body",
+                  "text": "a"
+                }
+              }
+            ]
+          },
+          {
+            "key": "dup",
+            "blocks": [
+              {
+                "type": "text",
+                "content": {
+                  "key": "t2",
+                  "role": "body",
+                  "text": "b"
+                }
+              }
+            ]
+          }
+        ],
+        "footer": []
+      }
+    }
+  }
+}

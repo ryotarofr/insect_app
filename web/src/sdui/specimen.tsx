@@ -7,7 +7,8 @@
  * フォーム類は SDUI 語彙ではなく固定コード部品。書き込みは通常の REST →成功後に
  * actions.refreshAll() で再fetch(クライアントにローカル状態を残さない)。
  */
-import { For, Show, createEffect, createSignal, type JSX } from "solid-js";
+import { useSearchParams } from "@solidjs/router";
+import { For, Show, createEffect, createResource, createSignal, type JSX } from "solid-js";
 import {
   addCareLog,
   createGroup,
@@ -22,7 +23,14 @@ import {
   type GroupInfo,
 } from "./api";
 import { useSduiActions } from "./actions";
-import type { CareLogEntry, SpecimenGroup, SpecimenProfileContent } from "./types";
+import { Button, Chip, Empty, Field, FormStack, Grid, Row, Text } from "./primitives";
+import type {
+  CareLogEntry,
+  GroupTabItem,
+  SpecimenGroup,
+  SpecimenItem,
+  SpecimenProfileContent,
+} from "./types";
 
 /** APIエラーからユーザ向けメッセージ部分を取り出す("... failed: 422 " 以降) */
 const apiMessage = (e: unknown) =>
@@ -32,13 +40,17 @@ const apiMessage = (e: unknown) =>
 
 const today = () => new Date().toISOString().slice(0, 10);
 
-// ── specimen_list: グループタブ + 行リスト + 追加モーダル ──────
+// ── group_tabs / specimen_rows: specimen_list の分割後継(Phase 2)──
+//
+// ブロック間で共有される状態はページコンテキスト = URL に置く:
+//   選択タブ → ?group=(サーバが解決し、view の activeGroupId として返る)
+//   行の展開 → ?open=
+// 再fetchでコンポーネントが再マウントされても状態は URL にあるため失われない。
+// 旧実装のモジュールスコープ signal(アプリ内1箇所前提の負債)はこれで廃止。
 
-// 選択状態はモジュールスコープに置く: 保存後の再fetchで <For> がカードを再生成
-// (=コンポーネント再マウント)しても、タブ選択とアコーディオン展開を維持するため。
-// specimen_list はアプリ内1箇所の前提(複数配置するなら block key 毎の Map にする)。
-const [activeId, setActiveId] = createSignal<string | null>(null);
-const [openId, setOpenId] = createSignal<string | null>(null);
+/** searchParams の値を単一文字列へ正規化(重複クエリは先頭を採用) */
+export const firstParam = (v: string | string[] | undefined | null): string | undefined =>
+  (Array.isArray(v) ? v[0] : v) || undefined;
 
 /**
  * なめらかな開閉。grid-template-rows 0fr↔1fr で高さautoをアニメーションし、
@@ -73,9 +85,255 @@ function Collapse(props: { open: boolean; children: JSX.Element }) {
   );
 }
 
+/**
+ * group_tabs ブロック: グループタブ帯(specimen_list の分割後継・タブのみ)。
+ *
+ * 選択表示は content.activeGroupId(サーバ解決値)= 表示のSSOTはビュー。
+ * タブ切替は URL(?group=)の更新だけを行い、care 側のリソースが URL に連動して
+ * 再fetchする。追加/改名/削除のインラインフォームは固定コードのまま(REFACTOR §2)。
+ */
+export function GroupTabsView(props: {
+  content: { key: string; activeGroupId?: string; groups: GroupTabItem[] };
+}) {
+  const actions = useSduiActions();
+  const [params, setParams] = useSearchParams();
+  const [renamingId, setRenamingId] = createSignal<string | null>(null);
+  const [addingTab, setAddingTab] = createSignal(false);
+  const [draft, setDraft] = createSignal("");
+  const [busy, setBusy] = createSignal(false);
+
+  const active = () => props.content.activeGroupId ?? null;
+  // タブ切替 = URL 更新のみ。展開(?open=)は別グループへ持ち越さない
+  const selectTab = (groupId: string) => setParams({ group: groupId, open: undefined });
+
+  const saveNewTab = async () => {
+    if (!draft().trim() || busy()) return;
+    setBusy(true);
+    try {
+      const created = await createGroup(draft().trim());
+      setAddingTab(false);
+      setDraft("");
+      selectTab(created.groupId); // URL 変更で再fetchされ、新タブがアクティブ表示になる
+      actions?.refreshAll();
+    } catch (e) {
+      alert(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveRename = async (groupId: string) => {
+    if (!draft().trim() || busy()) return;
+    setBusy(true);
+    try {
+      await patchGroup(groupId, draft().trim());
+      setRenamingId(null);
+      setDraft("");
+      actions?.refreshAll();
+    } catch (e) {
+      alert(String(e));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeTab = async (group: { groupId: string; label: string }) => {
+    if (!confirm(`タブ「${group.label}」を削除しますか?`)) return;
+    try {
+      await deleteGroup(group.groupId);
+      if (firstParam(params.group) === group.groupId) {
+        // URL が消えたタブを指していたら既定選択(サーバ解決)へ戻す
+        setParams({ group: undefined, open: undefined });
+      }
+      actions?.refreshAll();
+    } catch (e) {
+      alert(String(e));
+    }
+  };
+
+  return (
+    <nav class="sd-vtabs">
+      <For each={props.content.groups}>
+        {g => (
+          <div
+            class="sd-vtab"
+            classList={{ "sd-vtab--on": g.groupId === active() }}
+            onClick={() => selectTab(g.groupId)}
+          >
+            <Show
+              when={renamingId() === g.groupId}
+              fallback={
+                <>
+                  <span class="sd-vtab-label">{g.label}</span>
+                  <Show when={g.groupId === active()}>
+                    <button
+                      class="sd-vtab-tool"
+                      title="タブ名を変更"
+                      onClick={e => {
+                        e.stopPropagation();
+                        setAddingTab(false);
+                        setDraft(g.label);
+                        setRenamingId(g.groupId);
+                      }}
+                    >
+                      ✎
+                    </button>
+                    <button
+                      class="sd-vtab-tool"
+                      title={
+                        g.count > 0
+                          ? "個体が所属しているタブは削除できません"
+                          : "タブを削除"
+                      }
+                      disabled={g.count > 0}
+                      onClick={e => {
+                        e.stopPropagation();
+                        void removeTab(g);
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </Show>
+                  <span class="sd-vtab-badge">{g.count}</span>
+                </>
+              }
+            >
+              <input
+                value={draft()}
+                onClick={e => e.stopPropagation()}
+                onInput={e => setDraft(e.currentTarget.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter" && !e.isComposing) void saveRename(g.groupId);
+                  if (e.key === "Escape") setRenamingId(null);
+                }}
+              />
+              <button
+                class="sd-vtab-tool"
+                title="保存"
+                onClick={e => {
+                  e.stopPropagation();
+                  void saveRename(g.groupId);
+                }}
+              >
+                ✓
+              </button>
+              <button
+                class="sd-vtab-tool"
+                title="キャンセル"
+                onClick={e => {
+                  e.stopPropagation();
+                  setRenamingId(null);
+                }}
+              >
+                ✕
+              </button>
+            </Show>
+          </div>
+        )}
+      </For>
+
+      <Show
+        when={addingTab()}
+        fallback={
+          <div
+            class="sd-vtab sd-vtab--add"
+            onClick={() => {
+              setRenamingId(null);
+              setDraft("");
+              setAddingTab(true);
+            }}
+          >
+            ＋ タブを追加
+          </div>
+        }
+      >
+        <div class="sd-vtab">
+          <input
+            placeholder="例: 虫かご1"
+            value={draft()}
+            onInput={e => setDraft(e.currentTarget.value)}
+            onKeyDown={e => {
+              if (e.key === "Enter" && !e.isComposing) void saveNewTab();
+              if (e.key === "Escape") setAddingTab(false);
+            }}
+          />
+          <button class="sd-vtab-tool" title="追加" onClick={() => void saveNewTab()}>
+            ✓
+          </button>
+          <button class="sd-vtab-tool" title="キャンセル" onClick={() => setAddingTab(false)}>
+            ✕
+          </button>
+        </div>
+      </Show>
+    </nav>
+  );
+}
+
+/**
+ * specimen_rows ブロック: 選択グループの個体行(specimen_list の分割後継・行のみ)。
+ * 展開行は ?open= に置く(再fetch・再マウントを跨いで保持。履歴は汚さない replace)。
+ * 詳細は従来どおり renderSpecimenDetail 注入で行直下に描画する。
+ */
+export function SpecimenRowsView(props: {
+  content: { key: string; groupId?: string; items: SpecimenItem[]; emptyText?: string };
+}) {
+  const actions = useSduiActions();
+  const [params, setParams] = useSearchParams();
+  const openId = () => firstParam(params.open) ?? null;
+  const toggle = (specimenId: string) =>
+    setParams({ open: openId() === specimenId ? undefined : specimenId }, { replace: true });
+
+  return (
+    <div class="sd-rowlist">
+      <For each={props.content.items}>
+        {item => {
+          const open = () => openId() === item.specimenId;
+          return (
+            <div class="sd-rowitem">
+              <button
+                class="sd-row"
+                classList={{ "sd-row--open": open() }}
+                onClick={() => toggle(item.specimenId)}
+              >
+                <span class="sd-row-main">
+                  <span class="sd-row-code">{item.code}</span>
+                  <span class="sd-row-name">{item.name}</span>
+                </span>
+                <span class="sd-row-meta" classList={{ "sd-row-meta--alert": item.alert }}>
+                  {item.alert ? "⚠ " : ""}
+                  {item.hint ?? ""}
+                </span>
+                <span class="sd-row-chevron" classList={{ "sd-row-chevron--open": open() }}>
+                  ▾
+                </span>
+              </button>
+              <Collapse open={open() && !!actions?.renderSpecimenDetail}>
+                <div class="sd-row-detail">
+                  {actions?.renderSpecimenDetail?.(item.specimenId)}
+                </div>
+              </Collapse>
+            </div>
+          );
+        }}
+      </For>
+      <Show when={props.content.items.length === 0}>
+        {/* 空状態の文言は定義側 emptyText を優先(未指定はコード既定) */}
+        <Empty>{props.content.emptyText ?? "このグループの個体はいません"}</Empty>
+      </Show>
+    </div>
+  );
+}
+
+/**
+ * 【非推奨】specimen_list ブロックのレンダラ。Phase 2 で group_tabs + specimen_rows に
+ * 分割され、標準定義からは使われていない(古い定義の後方互換のためにのみ残す。
+ * 語彙からの削除は schemaVersion++ の破壊的変更で行う)。
+ * 選択/展開はコンポーネントローカルのため、再fetchによる再マウントで失われる(許容)。
+ */
 export function SpecimenListView(props: { groups: SpecimenGroup[] }) {
   const actions = useSduiActions();
-  const [adding, setAdding] = createSignal(false); // 個体追加モーダル
+  const [activeId, setActiveId] = createSignal<string | null>(null);
+  const [openId, setOpenId] = createSignal<string | null>(null);
   const [renamingId, setRenamingId] = createSignal<string | null>(null);
   const [addingTab, setAddingTab] = createSignal(false);
   const [draft, setDraft] = createSignal("");
@@ -133,12 +391,8 @@ export function SpecimenListView(props: { groups: SpecimenGroup[] }) {
 
   return (
     <div class="sd-speclist">
-      <div class="sd-speclist-toolbar">
-        <button class="sd-btn" onClick={() => setAdding(true)}>
-          ＋ 個体を追加
-        </button>
-      </div>
-
+      {/* 「+ 個体を追加」ボタンは定義管理の action_button ブロックへ移行(Phase 1)。
+          このブロックはタブ+行リストの描画に専念する */}
       <div class="sd-speclist-layout">
         <nav class="sd-vtabs">
           <For each={props.groups}>
@@ -191,7 +445,7 @@ export function SpecimenListView(props: { groups: SpecimenGroup[] }) {
                     onClick={e => e.stopPropagation()}
                     onInput={e => setDraft(e.currentTarget.value)}
                     onKeyDown={e => {
-                      if (e.key === "Enter") void saveRename(g.groupId);
+                      if (e.key === "Enter" && !e.isComposing) void saveRename(g.groupId);
                       if (e.key === "Escape") setRenamingId(null);
                     }}
                   />
@@ -241,7 +495,7 @@ export function SpecimenListView(props: { groups: SpecimenGroup[] }) {
                 value={draft()}
                 onInput={e => setDraft(e.currentTarget.value)}
                 onKeyDown={e => {
-                  if (e.key === "Enter") void saveNewTab();
+                  if (e.key === "Enter" && !e.isComposing) void saveNewTab();
                   if (e.key === "Escape") setAddingTab(false);
                 }}
               />
@@ -292,14 +546,6 @@ export function SpecimenListView(props: { groups: SpecimenGroup[] }) {
           </Show>
         </div>
       </div>
-
-      <Show when={adding()}>
-        <AddSpecimenModal
-          groups={props.groups.map(g => ({ groupId: g.groupId, label: g.label }))}
-          defaultGroupId={active()}
-          onClose={() => setAdding(false)}
-        />
-      </Show>
     </div>
   );
 }
@@ -307,16 +553,30 @@ export function SpecimenListView(props: { groups: SpecimenGroup[] }) {
 /**
  * 個体追加モーダル。詳細のプロフィール編集と同じ項目構成
  * (飼育記録セクションのみ無し)。グループ初期値は現在のタブ。
+ *
+ * action_button("add_specimen")の動詞実装としてページ(care)が開く固定コード部品
+ * (フォームの中身の語彙化は Phase 4 のテーマ = docs/REFACTOR.md §2 の線引き)。
+ * グループ一覧は自分で fetch する(呼び出し側が hydrate 済み groups を持つ前提を無くす)。
  */
-function AddSpecimenModal(props: {
-  groups: GroupInfo[];
+export function AddSpecimenModal(props: {
   defaultGroupId: string | null;
   onClose: () => void;
 }) {
   const actions = useSduiActions();
+  const [groups] = createResource(fetchGroups);
   const [busy, setBusy] = createSignal(false);
   const [d, setD] = createSignal<Record<string, string>>({
-    groupId: props.defaultGroupId ?? props.groups[0]?.groupId ?? "",
+    groupId: props.defaultGroupId ?? "",
+  });
+  // グループ一覧の到着後、未確定/無効なら先頭グループへ補完(d は追跡しない: 関数型 setD)
+  createEffect(() => {
+    const gs = groups();
+    if (!gs || gs.length === 0) return;
+    setD(prev =>
+      prev.groupId && gs.some(g => g.groupId === prev.groupId)
+        ? prev
+        : { ...prev, groupId: gs[0].groupId },
+    );
   });
   const set = (key: string, value: string) => setD({ ...d(), [key]: value });
   const canSave = () =>
@@ -352,78 +612,75 @@ function AddSpecimenModal(props: {
   };
 
   const field = (label: string, key: string, placeholder = ""): JSX.Element => (
-    <label class="sd-field">
-      {label}
+    <Field label={label}>
       <input
         value={d()[key] ?? ""}
         placeholder={placeholder}
         onInput={e => set(key, e.currentTarget.value)}
       />
-    </label>
+    </Field>
   );
 
   return (
     <div class="sd-modal-backdrop" onClick={props.onClose}>
       <div class="sd-modal" onClick={e => e.stopPropagation()}>
-        <button class="sd-btn sd-modal-close" onClick={props.onClose}>
+        <Button class="sd-modal-close" onClick={props.onClose}>
           ✕
-        </button>
+        </Button>
         <div class="sd-region">
           <section class="sd-card">
-            <h2 class="sd-text sd-text--headline">個体を追加</h2>
-            <div class="sd-form">
-              <div class="sd-form-grid2">
+            <Text role="headline">個体を追加</Text>
+            <FormStack>
+              <Grid cols={2}>
                 {field("ID *", "code", "例: DHH-015")}
                 {field("名前 *", "name", "例: ヘラクレス 3令 ♂")}
                 {field("種名 *", "speciesName", "例: ヘラクレスヘラクレス")}
                 {field("学名", "scientificName", "例: Dynastes hercules hercules")}
                 {field("性別", "sex", "♂ / ♀")}
-                <label class="sd-field">
-                  グループ
+                <Field label="グループ">
                   <select value={d().groupId} onChange={e => set("groupId", e.currentTarget.value)}>
-                    <For each={props.groups}>
+                    <For each={groups() ?? []}>
                       {g => <option value={g.groupId}>{g.label}</option>}
                     </For>
                   </select>
-                </label>
+                </Field>
                 {field("累代", "line", "例: CB F2")}
                 {field("最終計測", "measure", "例: 98g(3令)")}
-                <label class="sd-field">
-                  採卵日
+                <Field label="採卵日">
                   <input
                     type="date"
                     value={d().eggDate ?? ""}
                     onInput={e => set("eggDate", e.currentTarget.value)}
                   />
-                </label>
+                </Field>
                 {field("次のアクション", "nextAction", "例: 割出予定 7/20")}
-              </div>
-            </div>
+              </Grid>
+            </FormStack>
           </section>
           <section class="sd-card sd-card--half">
-            <h2 class="sd-text sd-text--headline">種の飼育メモ</h2>
-            <div class="sd-form">
+            <Text role="headline">種の飼育メモ</Text>
+            <FormStack>
               <textarea
                 rows={4}
                 placeholder="任意。保存時にこの種のメモとして登録されます"
                 value={d().speciesNote ?? ""}
                 onInput={e => set("speciesNote", e.currentTarget.value)}
               />
-            </div>
+            </FormStack>
           </section>
           <section class="sd-card sd-card--half">
-            <h2 class="sd-text sd-text--headline">写真</h2>
-            <p class="sd-text sd-text--caption">写真アップロードは準備中です。</p>
+            <Text role="headline">写真</Text>
+            <Text role="caption">写真アップロードは準備中です。</Text>
           </section>
         </div>
-        <div class="sd-form-row sd-modal-actions">
-          <button class="sd-btn sd-btn--primary" disabled={!canSave()} onClick={save}>
+        <Row gap="sm" class="sd-modal-actions">
+          <Button intent="primary" disabled={!canSave()} onClick={save}>
             保存
-          </button>
-          <button class="sd-btn" disabled={busy()} onClick={props.onClose}>
+          </Button>
+          <Button disabled={busy()} onClick={props.onClose}>
             キャンセル
-          </button>
-        </div>
+          </Button>
+        </Row>
       </div>
     </div>
   );
@@ -433,6 +690,7 @@ function AddSpecimenModal(props: {
 
 export function SpecimenProfileView(props: { profile: SpecimenProfileContent }) {
   const actions = useSduiActions();
+  const [, setParams] = useSearchParams();
   const [editing, setEditing] = createSignal(false);
   const [busy, setBusy] = createSignal(false);
   const [d, setD] = createSignal<Record<string, string>>({});
@@ -447,7 +705,7 @@ export function SpecimenProfileView(props: { profile: SpecimenProfileContent }) 
     try {
       await deleteSpecimen(props.profile.specimenId);
       setConfirming(false);
-      setOpenId(null); // アコーディオンを閉じる(モジュールスコープの展開状態)
+      setParams({ open: undefined }, { replace: true }); // アコーディオン(?open=)を閉じる
       actions?.refreshAll();
     } catch (e) {
       // 出品中(422)等はダイアログ内に表示
@@ -502,14 +760,13 @@ export function SpecimenProfileView(props: { profile: SpecimenProfileContent }) 
   };
 
   const field = (label: string, key: string, placeholder = "") => (
-    <label class="sd-field">
-      {label}
+    <Field label={label}>
       <input
         value={d()[key] ?? ""}
         placeholder={placeholder}
         onInput={e => setD({ ...d(), [key]: e.currentTarget.value })}
       />
-    </label>
+    </Field>
   );
 
   return (
@@ -518,18 +775,19 @@ export function SpecimenProfileView(props: { profile: SpecimenProfileContent }) 
         <span class="sd-profile-code">{props.profile.code}</span>
         <span class="sd-text sd-text--caption">{props.profile.name}</span>
         <Show when={!editing()}>
-          <button class="sd-btn sd-profile-edit" onClick={() => void startEdit()}>
+          <Button class="sd-profile-edit" onClick={() => void startEdit()}>
             編集
-          </button>
-          <button
-            class="sd-btn sd-btn--ghost sd-profile-del"
+          </Button>
+          <Button
+            intent="ghost"
+            class="sd-profile-del"
             onClick={() => {
               setDelError(null);
               setConfirming(true);
             }}
           >
             削除
-          </button>
+          </Button>
         </Show>
       </div>
 
@@ -541,27 +799,21 @@ export function SpecimenProfileView(props: { profile: SpecimenProfileContent }) 
           }}
         >
           <div class="sd-modal sd-dialog" onClick={e => e.stopPropagation()}>
-            <h2 class="sd-text sd-text--headline">
+            <Text role="headline">
               「{props.profile.code} {props.profile.name}」を削除しますか?
-            </h2>
-            <p class="sd-text">
-              飼育記録もすべて削除されます。この操作は取り消せません。
-            </p>
+            </Text>
+            <Text>飼育記録もすべて削除されます。この操作は取り消せません。</Text>
             <Show when={delError()}>
               <p class="sd-dialog-error">⚠ {delError()}</p>
             </Show>
-            <div class="sd-form-row sd-modal-actions">
-              <button class="sd-btn" disabled={deleting()} onClick={() => setConfirming(false)}>
+            <Row gap="sm" class="sd-modal-actions">
+              <Button disabled={deleting()} onClick={() => setConfirming(false)}>
                 キャンセル
-              </button>
-              <button
-                class="sd-btn sd-btn--danger"
-                disabled={deleting()}
-                onClick={() => void doDelete()}
-              >
+              </Button>
+              <Button intent="danger" disabled={deleting()} onClick={() => void doDelete()}>
                 削除する
-              </button>
-            </div>
+              </Button>
+            </Row>
           </div>
         </div>
       </Show>
@@ -569,64 +821,62 @@ export function SpecimenProfileView(props: { profile: SpecimenProfileContent }) 
       <Show
         when={!editing()}
         fallback={
-          <div class="sd-form">
-            <div class="sd-form-grid2">
+          <FormStack>
+            <Grid cols={2}>
               {field("種名", "speciesName")}
               {field("学名", "scientificName")}
               {field("性別", "sex", "♂ / ♀")}
-              <label class="sd-field">
-                グループ
+              <Field label="グループ">
                 <select
                   value={d().groupId}
                   onChange={e => setD({ ...d(), groupId: e.currentTarget.value })}
                 >
                   <For each={groups()}>{g => <option value={g.groupId}>{g.label}</option>}</For>
                 </select>
-              </label>
+              </Field>
               {field("累代", "line", "CB F2")}
               {field("最終計測", "measure", "98g(3令)")}
-              <label class="sd-field">
-                採卵日
+              <Field label="採卵日">
                 <input
                   type="date"
                   value={d().eggDate ?? ""}
                   onInput={e => setD({ ...d(), eggDate: e.currentTarget.value })}
                 />
-              </label>
+              </Field>
               {field("次のアクション", "nextAction")}
-            </div>
-            <div class="sd-form-row">
-              <button class="sd-btn sd-btn--primary" disabled={busy()} onClick={save}>
+            </Grid>
+            <Row gap="sm">
+              <Button intent="primary" disabled={busy()} onClick={save}>
                 保存
-              </button>
-              <button class="sd-btn" disabled={busy()} onClick={() => setEditing(false)}>
+              </Button>
+              <Button disabled={busy()} onClick={() => setEditing(false)}>
                 キャンセル
-              </button>
-            </div>
-          </div>
+              </Button>
+            </Row>
+          </FormStack>
         }
       >
-        <p class="sd-text">
+        <Text>
           {props.profile.speciesName}{" "}
           <span class="sd-text--caption">{props.profile.scientificName ?? ""}</span>
-        </p>
-        <div class="sd-chips">
+        </Text>
+        <Row wrap gap="sm">
           <Show when={props.profile.sex}>
-            <span class="sd-chip">{props.profile.sex}</span>
+            <Chip>{props.profile.sex}</Chip>
           </Show>
-          <span class="sd-chip">
+          <Chip>
             グループ: <b>{props.profile.groupLabel}</b>
-          </span>
+          </Chip>
           <Show when={props.profile.line}>
-            <span class="sd-chip">累代: {props.profile.line}</span>
+            <Chip>累代: {props.profile.line}</Chip>
           </Show>
           <Show when={props.profile.measure}>
-            <span class="sd-chip">最終計測: {props.profile.measure}</span>
+            <Chip>最終計測: {props.profile.measure}</Chip>
           </Show>
           <Show when={props.profile.eggDate}>
-            <span class="sd-chip">採卵: {props.profile.eggDate}</span>
+            <Chip>採卵: {props.profile.eggDate}</Chip>
           </Show>
-        </div>
+        </Row>
         <Show when={props.profile.nextAction}>
           <div class="sd-next">次のアクション: {props.profile.nextAction}</div>
         </Show>
@@ -637,7 +887,11 @@ export function SpecimenProfileView(props: { profile: SpecimenProfileContent }) 
 
 // ── care_log_list: 記録の一覧 + 追加 + 削除 ──────────────────
 
-export function CareLogListView(props: { specimenId: string; entries: CareLogEntry[] }) {
+export function CareLogListView(props: {
+  specimenId: string;
+  entries: CareLogEntry[];
+  emptyText?: string;
+}) {
   const actions = useSduiActions();
   const [adding, setAdding] = createSignal(false);
   const [busy, setBusy] = createSignal(false);
@@ -669,14 +923,12 @@ export function CareLogListView(props: { specimenId: string; entries: CareLogEnt
 
   return (
     <div class="sd-loglist">
-      <div class="sd-speclist-toolbar">
-        <button class="sd-btn" onClick={() => setAdding(!adding())}>
-          ＋ 記録を追加
-        </button>
-      </div>
+      <Row justify="end" gap="sm">
+        <Button onClick={() => setAdding(!adding())}>＋ 記録を追加</Button>
+      </Row>
       <Show when={adding()}>
-        <div class="sd-form sd-form--boxed">
-          <div class="sd-form-grid3">
+        <FormStack boxed>
+          <Grid cols={3}>
             <input
               type="date"
               value={d().at}
@@ -692,20 +944,20 @@ export function CareLogListView(props: { specimenId: string; entries: CareLogEnt
               value={d().body}
               onInput={e => setD({ ...d(), body: e.currentTarget.value })}
             />
-          </div>
-          <div class="sd-form-row">
-            <button class="sd-btn sd-btn--primary" disabled={busy()} onClick={save}>
+          </Grid>
+          <Row gap="sm">
+            <Button intent="primary" disabled={busy()} onClick={save}>
               追加
-            </button>
-            <button class="sd-btn" disabled={busy()} onClick={() => setAdding(false)}>
+            </Button>
+            <Button disabled={busy()} onClick={() => setAdding(false)}>
               キャンセル
-            </button>
-          </div>
-        </div>
+            </Button>
+          </Row>
+        </FormStack>
       </Show>
       <Show
         when={props.entries.length > 0}
-        fallback={<p class="sd-text sd-text--caption">記録はまだありません</p>}
+        fallback={<Text role="caption">{props.emptyText ?? "記録はまだありません"}</Text>}
       >
         <div>
           <For each={props.entries}>
@@ -714,13 +966,9 @@ export function CareLogListView(props: { specimenId: string; entries: CareLogEnt
                 <span class="sd-logrow-date">{log.at}</span>
                 <span class="sd-logrow-kind">{log.kind}</span>
                 <span class="sd-logrow-body">{log.body}</span>
-                <button
-                  class="sd-btn sd-btn--ghost"
-                  title="この記録を削除"
-                  onClick={() => del(log.logId)}
-                >
+                <Button intent="ghost" title="この記録を削除" onClick={() => del(log.logId)}>
                   ✕
-                </button>
+                </Button>
               </div>
             )}
           </For>
@@ -756,30 +1004,31 @@ export function SpeciesNoteView(props: { speciesName: string; note: string }) {
       when={editing()}
       fallback={
         <div class="sd-textwrap">
-          <p class="sd-text">{props.note}</p>
-          <button
-            class="sd-btn sd-btn--ghost sd-editbtn"
+          <Text>{props.note}</Text>
+          <Button
+            intent="ghost"
+            class="sd-editbtn"
             onClick={() => {
               setDraft(props.note);
               setEditing(true);
             }}
           >
             編集
-          </button>
+          </Button>
         </div>
       }
     >
-      <div class="sd-form">
+      <FormStack>
         <textarea rows={4} value={draft()} onInput={e => setDraft(e.currentTarget.value)} />
-        <div class="sd-form-row">
-          <button class="sd-btn sd-btn--primary" disabled={busy()} onClick={save}>
+        <Row gap="sm">
+          <Button intent="primary" disabled={busy()} onClick={save}>
             保存
-          </button>
-          <button class="sd-btn" disabled={busy()} onClick={() => setEditing(false)}>
+          </Button>
+          <Button disabled={busy()} onClick={() => setEditing(false)}>
             キャンセル
-          </button>
-        </div>
-      </div>
+          </Button>
+        </Row>
+      </FormStack>
     </Show>
   );
 }

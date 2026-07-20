@@ -34,3 +34,12 @@ bun dev                   # http://localhost:3000
 cargo clean -p api
 cargo run
 ```
+
+## 画面定義の運用実績を見る
+
+```powershell
+Get-Content scripts/definition_ops_report.sql | docker compose exec -T db psql -U postgres -d insect_r2
+```
+
+誰が(seed / migration / api:ユーザ)いつ定義を更新したかが出る。
+Phase 4(フォーム語彙化)の着手判断に使う(docs/PLAN.md「Phase 4 の着手条件」参照)。

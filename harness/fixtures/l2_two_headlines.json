@@ -1,0 +1,35 @@
+{
+  "schemaVersion": 1,
+  "page": {
+    "template": "feed",
+    "content": {
+      "regions": {
+        "header": [],
+        "body": [
+          {
+            "key": "c1",
+            "blocks": [
+              {
+                "type": "text",
+                "content": {
+                  "key": "t1",
+                  "role": "headline",
+                  "text": "a"
+                }
+              },
+              {
+                "type": "text",
+                "content": {
+                  "key": "t2",
+                  "role": "headline",
+                  "text": "b"
+                }
+              }
+            ]
+          }
+        ],
+        "footer": []
+      }
+    }
+  }
+}

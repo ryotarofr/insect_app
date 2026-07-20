@@ -38,7 +38,15 @@ async fn main() {
         .route("/api/auth/logout", post(auth::logout))
         .route("/api/auth/me", get(auth::me))
         .route("/api/pages/{key}", get(get_page).put(put_page))
+        .route(
+            "/api/pages/{key}/mine",
+            axum::routing::put(put_page_mine).delete(delete_page_mine),
+        )
         .route("/api/pages/{key}/definition", get(get_definition))
+        .route("/api/preview", post(preview_page))
+        .route("/api/todos", post(create_todo))
+        .route("/api/todos/{id}", patch(patch_todo).delete(delete_todo))
+        .route("/api/notification_prefs", patch(patch_notification_prefs))
         .route("/api/groups", get(list_groups).post(create_group))
         .route("/api/groups/{id}", patch(patch_group).delete(delete_group))
         .route("/api/specimens", post(create_specimen))
@@ -78,6 +86,8 @@ fn hydrate_err(e: HydrateError) -> ApiError {
 struct PageQuery {
     specimen: Option<Uuid>,
     listing: Option<Uuid>,
+    /// 選択中グループ(group_tabs / specimen_rows 用)。無効値は既定選択にフォールバック
+    group: Option<Uuid>,
 }
 
 async fn load_definition(pool: &PgPool, key: &str) -> Result<ValidPageDefinition, ApiError> {
@@ -99,16 +109,46 @@ async fn load_definition(pool: &PgPool, key: &str) -> Result<ValidPageDefinition
     })
 }
 
+/// ユーザ行(user_page_definitions)→ 共有の順で解決する(docs/CARD_BUILDER.md §1)。
+/// 未ログイン(user=None)は常に共有。
+async fn load_definition_for(
+    pool: &PgPool,
+    key: &str,
+    user: Option<Uuid>,
+) -> Result<ValidPageDefinition, ApiError> {
+    if let Some(owner) = user {
+        let row: Option<(serde_json::Value,)> = sqlx::query_as(
+            "SELECT definition FROM user_page_definitions \
+             WHERE owner_id = $1 AND page_key = $2",
+        )
+        .bind(owner)
+        .bind(key)
+        .fetch_optional(pool)
+        .await
+        .map_err(internal)?;
+        if let Some((value,)) = row {
+            return ValidPageDefinition::from_value(value).map_err(|e| {
+                (
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                    format!("stored personal definition is invalid: {e}"),
+                )
+            });
+        }
+    }
+    load_definition(pool, key).await
+}
+
 async fn get_page(
     State(st): State<AppState>,
     Path(key): Path<String>,
     Query(q): Query<PageQuery>,
     MaybeUser(user): MaybeUser,
 ) -> Result<Json<PageView>, ApiError> {
-    let valid = load_definition(&st.pool, &key).await?;
+    let valid = load_definition_for(&st.pool, &key, user.as_ref().map(|u| u.user_id)).await?;
     let ctx = HydrateCtx {
         specimen: q.specimen,
         listing: q.listing,
+        group: q.group,
         user: user.map(|u| u.user_id),
     };
     let view = hydrate(&st.pool, valid.into_inner(), &ctx)
@@ -117,13 +157,14 @@ async fn get_page(
     Ok(Json(view))
 }
 
-/// 定義そのものを返す(定義編集UI・エージェントの読み戻し用)
+/// 定義そのものを返す(定義編集UI・エージェントの読み戻し用)。
+/// 個人化済みならユーザの定義 = 「そのユーザが編集する対象」を返す。
 async fn get_definition(
     State(st): State<AppState>,
     Path(key): Path<String>,
-    _user: AuthUser,
+    AuthUser(user): AuthUser,
 ) -> Result<Json<serde_json::Value>, ApiError> {
-    let valid = load_definition(&st.pool, &key).await?;
+    let valid = load_definition_for(&st.pool, &key, Some(user.user_id)).await?;
     let value = serde_json::to_value(valid.get()).map_err(internal)?;
     Ok(Json(value))
 }
@@ -131,7 +172,69 @@ async fn get_definition(
 async fn put_page(
     State(st): State<AppState>,
     Path(key): Path<String>,
-    _user: AuthUser,
+    AuthUser(user): AuthUser,
+    body: String,
+) -> Result<StatusCode, ApiError> {
+    let valid = ValidPageDefinition::parse(&body).map_err(|e| {
+        (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!("invalid definition: {e}"),
+        )
+    })?;
+    let value = serde_json::to_value(valid.get()).map_err(internal)?;
+    // 書き手をアカウント単位で運用実績として記録する(Phase 4 着手判断の材料。
+    // 集計は scripts/definition_ops_report.sql)。人間の編集UIもエージェントも
+    // 同じ PUT 経路のため、エージェントには専用アカウントを使わせて区別する。
+    let writer = format!("api:{}", user.email);
+    sqlx::query(
+        "INSERT INTO page_definitions (page_key, definition, updated_by) \
+         VALUES ($1, $2, $3) \
+         ON CONFLICT (page_key) DO UPDATE \
+         SET definition = EXCLUDED.definition, updated_at = now(), \
+             updated_by = EXCLUDED.updated_by",
+    )
+    .bind(&key)
+    .bind(&value)
+    .bind(&writer)
+    .execute(&st.pool)
+    .await
+    .map_err(internal)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// 未保存の定義を検証して hydrate し、**保存せずに**ビューを返す
+/// (カードビルダーのライブプレビュー用)。語彙が閉じているため、
+/// プレビュー = 本番と同一の描画・ログインユーザの実データになる。
+async fn preview_page(
+    State(st): State<AppState>,
+    AuthUser(user): AuthUser,
+    body: String,
+) -> Result<Json<PageView>, ApiError> {
+    let valid = ValidPageDefinition::parse(&body).map_err(|e| {
+        (
+            StatusCode::UNPROCESSABLE_ENTITY,
+            format!("invalid definition: {e}"),
+        )
+    })?;
+    let ctx = HydrateCtx {
+        specimen: None,
+        listing: None,
+        group: None,
+        user: Some(user.user_id),
+    };
+    let view = hydrate(&st.pool, valid.into_inner(), &ctx)
+        .await
+        .map_err(hydrate_err)?;
+    Ok(Json(view))
+}
+
+/// 自分のページ定義として保存(care のパーソナライズ)。検証は共有 PUT と同一。
+/// 初回書込 = その時点の共有定義を土台にしたコピー(クライアントが GET definition →
+/// 変更 → ここへ PUT する運びのため、コピーは自然に成立する)。
+async fn put_page_mine(
+    State(st): State<AppState>,
+    Path(key): Path<String>,
+    AuthUser(user): AuthUser,
     body: String,
 ) -> Result<StatusCode, ApiError> {
     let valid = ValidPageDefinition::parse(&body).map_err(|e| {
@@ -142,16 +245,32 @@ async fn put_page(
     })?;
     let value = serde_json::to_value(valid.get()).map_err(internal)?;
     sqlx::query(
-        "INSERT INTO page_definitions (page_key, definition, updated_by) \
-         VALUES ($1, $2, 'api') \
-         ON CONFLICT (page_key) DO UPDATE \
-         SET definition = EXCLUDED.definition, updated_at = now(), updated_by = 'api'",
+        "INSERT INTO user_page_definitions (owner_id, page_key, definition) \
+         VALUES ($1, $2, $3) \
+         ON CONFLICT (owner_id, page_key) DO UPDATE \
+         SET definition = EXCLUDED.definition, updated_at = now()",
     )
+    .bind(user.user_id)
     .bind(&key)
     .bind(&value)
     .execute(&st.pool)
     .await
     .map_err(internal)?;
+    Ok(StatusCode::NO_CONTENT)
+}
+
+/// 自分のページ定義を削除 = 「共有の最新に戻す」リセット(冪等)。
+async fn delete_page_mine(
+    State(st): State<AppState>,
+    Path(key): Path<String>,
+    AuthUser(user): AuthUser,
+) -> Result<StatusCode, ApiError> {
+    sqlx::query("DELETE FROM user_page_definitions WHERE owner_id = $1 AND page_key = $2")
+        .bind(user.user_id)
+        .bind(&key)
+        .execute(&st.pool)
+        .await
+        .map_err(internal)?;
     Ok(StatusCode::NO_CONTENT)
 }
 
@@ -669,6 +788,126 @@ async fn withdraw_listing(
             "出品が見つかりません(取り下げ済みの可能性)".into(),
         ));
     }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// ── 個人TODO(todo_list ブロックのドメインREST)──────────────
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields)]
+struct CreateTodo {
+    body: String,
+}
+
+async fn create_todo(
+    State(st): State<AppState>,
+    AuthUser(user): AuthUser,
+    Json(req): Json<CreateTodo>,
+) -> Result<StatusCode, ApiError> {
+    let body = req.body.trim();
+    if body.is_empty() {
+        return Err((
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "内容を入力してください".into(),
+        ));
+    }
+    sqlx::query("INSERT INTO user_todos (owner_id, body) VALUES ($1, $2)")
+        .bind(user.user_id)
+        .bind(body)
+        .execute(&st.pool)
+        .await
+        .map_err(domain_err)?;
+    Ok(StatusCode::CREATED)
+}
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct PatchTodo {
+    body: Option<String>,
+    done: Option<bool>,
+}
+
+async fn patch_todo(
+    State(st): State<AppState>,
+    Path(id): Path<Uuid>,
+    AuthUser(user): AuthUser,
+    Json(req): Json<PatchTodo>,
+) -> Result<StatusCode, ApiError> {
+    let result = sqlx::query(
+        "UPDATE user_todos SET \
+            body = COALESCE($2, body), \
+            done = COALESCE($3, done), \
+            done_at = CASE WHEN $3 IS TRUE THEN now() \
+                           WHEN $3 IS FALSE THEN NULL \
+                           ELSE done_at END \
+         WHERE id = $1 AND owner_id = $4",
+    )
+    .bind(id)
+    .bind(&req.body)
+    .bind(req.done)
+    .bind(user.user_id)
+    .execute(&st.pool)
+    .await
+    .map_err(domain_err)?;
+    if result.rows_affected() == 0 {
+        return Err((StatusCode::NOT_FOUND, "todo not found".into()));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+async fn delete_todo(
+    State(st): State<AppState>,
+    Path(id): Path<Uuid>,
+    AuthUser(user): AuthUser,
+) -> Result<StatusCode, ApiError> {
+    let result = sqlx::query("DELETE FROM user_todos WHERE id = $1 AND owner_id = $2")
+        .bind(id)
+        .bind(user.user_id)
+        .execute(&st.pool)
+        .await
+        .map_err(internal)?;
+    if result.rows_affected() == 0 {
+        return Err((StatusCode::NOT_FOUND, "todo not found".into()));
+    }
+    Ok(StatusCode::NO_CONTENT)
+}
+
+// ── アプリ内通知の設定(care_alerts ブロックのドメインREST)──
+
+#[derive(Deserialize)]
+#[serde(deny_unknown_fields, rename_all = "camelCase")]
+struct PatchNotificationPrefs {
+    enabled: Option<bool>,
+    stale_days: Option<i32>,
+}
+
+async fn patch_notification_prefs(
+    State(st): State<AppState>,
+    AuthUser(user): AuthUser,
+    Json(req): Json<PatchNotificationPrefs>,
+) -> Result<StatusCode, ApiError> {
+    if let Some(d) = req.stale_days {
+        if !(1..=365).contains(&d) {
+            return Err((
+                StatusCode::UNPROCESSABLE_ENTITY,
+                "日数は1〜365で入力してください".into(),
+            ));
+        }
+    }
+    sqlx::query(
+        "INSERT INTO notification_prefs (owner_id, enabled, stale_days) \
+         VALUES ($1, COALESCE($2, true), COALESCE($3, 7)) \
+         ON CONFLICT (owner_id) DO UPDATE SET \
+            enabled = COALESCE($2, notification_prefs.enabled), \
+            stale_days = COALESCE($3, notification_prefs.stale_days), \
+            updated_at = now()",
+    )
+    .bind(user.user_id)
+    .bind(req.enabled)
+    .bind(req.stale_days)
+    .execute(&st.pool)
+    .await
+    .map_err(domain_err)?;
     Ok(StatusCode::NO_CONTENT)
 }
 

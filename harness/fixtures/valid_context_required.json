@@ -1,0 +1,31 @@
+{
+  "schemaVersion": 1,
+  "page": {
+    "template": "feed",
+    "content": {
+      "regions": {
+        "header": [],
+        "body": [
+          {
+            "key": "profile",
+            "blocks": [
+              {
+                "type": "specimen_profile",
+                "content": {
+                  "key": "p-main"
+                }
+              },
+              {
+                "type": "care_log_list",
+                "content": {
+                  "key": "p-logs"
+                }
+              }
+            ]
+          }
+        ],
+        "footer": []
+      }
+    }
+  }
+}

@@ -6,6 +6,7 @@
 import { For, Show, createSignal } from "solid-js";
 import { createListing, patchListing, withdrawListing } from "./api";
 import { useSduiActions } from "./actions";
+import { Button, ButtonLink, Chip, Field, FormStack, Row, Text } from "./primitives";
 import type { ListingHeroContent, ListingSettingsContent, SpecAttr } from "./types";
 
 export function ListingHeroView(props: { content: ListingHeroContent }) {
@@ -21,27 +22,27 @@ export function ListingHeroView(props: { content: ListingHeroContent }) {
         </Show>
       </div>
       <div class="sd-lhero-main">
-        <h2 class="sd-text sd-text--headline">
+        <Text role="headline">
           {c().title} <span class="sd-lstatus">{c().status}</span>
-        </h2>
+        </Text>
         <Show when={c().scientificName}>
-          <p class="sd-text sd-text--caption">{c().scientificName}</p>
+          <Text role="caption">{c().scientificName}</Text>
         </Show>
         <p class="sd-lprice">
           ¥{c().priceAmount.toLocaleString("ja-JP")}{" "}
           <span class="sd-text--caption">税込・送料別</span>
         </p>
         <Show when={c().sellerComment}>
-          <p class="sd-text sd-text--lead">「{c().sellerComment}」 — 出品者コメント</p>
+          <Text role="lead">「{c().sellerComment}」 — 出品者コメント</Text>
         </Show>
-        <div class="sd-form-row">
-          <button class="sd-btn sd-btn--primary" disabled title="購入フローは今後実装(Phase C)">
+        <Row gap="sm">
+          <Button intent="primary" disabled title="購入フローは今後実装(Phase C)">
             購入する(準備中)
-          </button>
-          <button class="sd-btn" disabled title="ウォッチは今後実装(Phase C)">
+          </Button>
+          <Button disabled title="ウォッチは今後実装(Phase C)">
             ウォッチ(準備中)
-          </button>
-        </div>
+          </Button>
+        </Row>
       </div>
     </div>
   );
@@ -109,61 +110,57 @@ export function ListingSettingsView(props: { content: ListingSettingsContent }) 
   };
 
   return (
-    <div class="sd-form">
-      <div class="sd-chips">
-        <Show when={listing()} fallback={<span class="sd-chip">未出品</span>}>
+    <FormStack>
+      <Row wrap gap="sm">
+        <Show when={listing()} fallback={<Chip>未出品</Chip>}>
           {li => (
             <>
-              <span class="sd-chip">
+              <Chip>
                 <b>{li().status}</b>
-              </span>
-              <span class="sd-chip">
+              </Chip>
+              <Chip>
                 価格: <b>¥{li().priceAmount.toLocaleString("ja-JP")}</b>
-              </span>
+              </Chip>
             </>
           )}
         </Show>
-      </div>
+      </Row>
 
       <Show
         when={editing()}
         fallback={
-          <div class="sd-form-row">
+          <Row gap="sm">
             <Show
               when={listing()}
               fallback={
-                <button class="sd-btn sd-btn--primary" onClick={startForm}>
+                <Button intent="primary" onClick={startForm}>
                   この個体を出品する
-                </button>
+                </Button>
               }
             >
               {li => (
                 <>
-                  <button class="sd-btn" onClick={startForm}>
-                    価格・コメントを変更
-                  </button>
-                  <a class="sd-btn" href={`/listings/${li().listingId}`}>
+                  <Button onClick={startForm}>価格・コメントを変更</Button>
+                  <ButtonLink href={`/listings/${li().listingId}`}>
                     出品ページを見る →
-                  </a>
-                  <button class="sd-btn sd-btn--ghost" onClick={() => void withdraw()}>
+                  </ButtonLink>
+                  <Button intent="ghost" onClick={() => void withdraw()}>
                     出品を取り下げる
-                  </button>
+                  </Button>
                 </>
               )}
             </Show>
-          </div>
+          </Row>
         }
       >
-        <div class="sd-form sd-form--boxed">
-          <label class="sd-field">
-            出品タイトル(個体情報から自動生成・編集可)
+        <FormStack boxed>
+          <Field label="出品タイトル(個体情報から自動生成・編集可)">
             <input
               value={d().title}
               onInput={e => setD({ ...d(), title: e.currentTarget.value })}
             />
-          </label>
-          <label class="sd-field">
-            価格(円・必須)
+          </Field>
+          <Field label="価格(円・必須)">
             <input
               type="number"
               min="1"
@@ -171,45 +168,44 @@ export function ListingSettingsView(props: { content: ListingSettingsContent }) 
               placeholder="例: 58000"
               onInput={e => setD({ ...d(), price: e.currentTarget.value })}
             />
-          </label>
-          <label class="sd-field">
-            出品コメント(任意)
+          </Field>
+          <Field label="出品コメント(任意)">
             <textarea
               rows={3}
               value={d().comment}
               placeholder="例: 羽化後3ヶ月、後食開始済み。"
               onInput={e => setD({ ...d(), comment: e.currentTarget.value })}
             />
-          </label>
-          <div class="sd-form-row">
-            <button class="sd-btn sd-btn--primary" disabled={busy()} onClick={save}>
+          </Field>
+          <Row gap="sm">
+            <Button intent="primary" disabled={busy()} onClick={save}>
               {listing() ? "保存" : "出品"}
-            </button>
-            <button class="sd-btn" disabled={busy()} onClick={() => setEditing(false)}>
+            </Button>
+            <Button disabled={busy()} onClick={() => setEditing(false)}>
               キャンセル
-            </button>
-          </div>
-        </div>
+            </Button>
+          </Row>
+        </FormStack>
       </Show>
-    </div>
+    </FormStack>
   );
 }
 
-export function ListingSpecView(props: { attrs: SpecAttr[] }) {
+export function ListingSpecView(props: { attrs: SpecAttr[]; emptyText?: string }) {
   return (
     <Show
       when={props.attrs.length > 0}
-      fallback={<p class="sd-text sd-text--caption">スペック情報は未登録です</p>}
+      fallback={<Text role="caption">{props.emptyText ?? "スペック情報は未登録です"}</Text>}
     >
-      <div class="sd-chips">
+      <Row wrap gap="sm">
         <For each={props.attrs}>
           {a => (
-            <span class="sd-chip">
+            <Chip>
               {a.label}: <b>{a.value}</b>
-            </span>
+            </Chip>
           )}
         </For>
-      </div>
+      </Row>
     </Show>
   );
 }

@@ -1,0 +1,28 @@
+{
+  "schemaVersion": 1,
+  "page": {
+    "template": "feed",
+    "content": {
+      "regions": {
+        "header": [
+          {
+            "key": "hero",
+            "blocks": [
+              {
+                "type": "text",
+                "content": {
+                  "key": "hero-title",
+                  "role": "headline",
+                  "text": "x",
+                  "color": "red"
+                }
+              }
+            ]
+          }
+        ],
+        "body": [],
+        "footer": []
+      }
+    }
+  }
+}

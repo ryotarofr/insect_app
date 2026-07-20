@@ -1,0 +1,9 @@
+{
+  "fixture": {
+    "file": "l2_duplicate_key.json",
+    "expected": "L2:duplicate_key"
+  },
+  "category": "L2:duplicate_key",
+  "stderr": "INVALID: duplicate key: dup",
+  "hydrate": null
+}

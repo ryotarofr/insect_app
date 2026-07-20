@@ -1,0 +1,102 @@
+{
+    "page": {
+        "content": {
+            "regions": {
+                "body": [
+                    {
+                        "key": "roster",
+                        "size": "full",
+                        "blocks": [
+                            {
+                                "type": "text",
+                                "content": {
+                                    "key": "roster-title",
+                                    "role": "headline",
+                                    "text": "\u98fc\u80b2\u4e00\u89a7",
+                                    "editable": true
+                                }
+                            },
+                            {
+                                "type": "action_button",
+                                "content": {
+                                    "key": "roster-add",
+                                    "label": "\uff0b \u500b\u4f53\u3092\u8ffd\u52a0",
+                                    "action": "add_specimen",
+                                    "intent": "secondary"
+                                }
+                            },
+                            {
+                                "type": "group_tabs",
+                                "content": {
+                                    "key": "roster-tabs"
+                                }
+                            },
+                            {
+                                "type": "specimen_rows",
+                                "content": {
+                                    "key": "roster-rows"
+                                }
+                            }
+                        ],
+                        "layout": "sidebar"
+                    },
+                    {
+                        "key": "selling",
+                        "size": "full",
+                        "blocks": [
+                            {
+                                "type": "text",
+                                "content": {
+                                    "key": "selling-title",
+                                    "role": "headline",
+                                    "text": "\u51fa\u54c1\u4e2d",
+                                    "editable": true
+                                }
+                            },
+                            {
+                                "type": "listing_grid",
+                                "content": {
+                                    "key": "selling-grid",
+                                    "query": {
+                                        "sort": "newest",
+                                        "limit": 4,
+                                        "seller": "mine"
+                                    }
+                                }
+                            }
+                        ]
+                    }
+                ],
+                "footer": [],
+                "header": [
+                    {
+                        "key": "memo",
+                        "size": "full",
+                        "blocks": [
+                            {
+                                "type": "text",
+                                "content": {
+                                    "key": "memo-title",
+                                    "role": "headline",
+                                    "text": "\u4eca\u5b63\u306e\u98fc\u80b2\u30e1\u30e2",
+                                    "editable": true
+                                }
+                            },
+                            {
+                                "type": "text",
+                                "content": {
+                                    "key": "memo-body",
+                                    "role": "body",
+                                    "text": "\u6885\u96e8\u660e\u3051\u5f8c\u306f28\u2103\u8d85\u306b\u6ce8\u610f\u3002\u30b1\u30fc\u30b9\u5185\u306e\u84b8\u308c\u5bfe\u7b56\u3092\u3002",
+                                    "editable": true
+                                }
+                            }
+                        ]
+                    }
+                ]
+            }
+        },
+        "template": "feed"
+    },
+    "schemaVersion": 1
+}

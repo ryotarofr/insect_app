@@ -1,0 +1,9 @@
+{
+  "fixture": {
+    "file": "l1_unknown_field.json",
+    "expected": "L1:unknown_field"
+  },
+  "category": "L1:unknown_field",
+  "stderr": "INVALID: structural: unknown field `color`, expected one of `key`, `role`, `text`, `editable` at line 17 column 25",
+  "hydrate": null
+}

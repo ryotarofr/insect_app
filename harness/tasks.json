@@ -1,0 +1,149 @@
+{
+  "comment": "成功指標1の計測タスク套件。mode=generate はゼロから生成、mode=edit は base_def の現行定義を与えて変更後の全体を出力させる。expects は套件の語彙カバレッジ表(レポートの参考情報であり合否判定には使わない)。",
+  "tasks": [
+    {
+      "id": "gen-01-simple-notice",
+      "mode": "generate",
+      "page_key": "home",
+      "instruction": "ホームページ用に「夏季休業のお知らせ」カードを1枚だけ持つ画面定義を書いてください。カードには見出しと、お知らせの本文(8/13〜8/16 は発送を休止する旨)を入れてください。",
+      "expects": ["text.headline", "text.body"]
+    },
+    {
+      "id": "gen-02-cta-card",
+      "mode": "generate",
+      "page_key": "home",
+      "instruction": "「飼育をはじめよう」という見出しと、初心者向けの一言リード文、そして飼育管理ページ(/care)へ移動するボタンを持つカード1枚の画面定義を書いてください。",
+      "expects": ["text.lead", "cta", "site_path"]
+    },
+    {
+      "id": "gen-03-media-card",
+      "mode": "generate",
+      "page_key": "home",
+      "instruction": "今月の一枚として写真を紹介するカードを持つ画面定義を書いてください。画像は /assets/photo-2026-07.jpg にあり、ヘラクレスオオカブトの写真です。写真の下に撮影者クレジットを小さな文字(キャプション)で入れてください。",
+      "expects": ["media", "text.caption"]
+    },
+    {
+      "id": "gen-04-markdown-guide",
+      "mode": "generate",
+      "page_key": "home",
+      "instruction": "「夏場の飼育ガイド」カードを1枚持つ画面定義を書いてください。本文はMarkdownブロックで、太字の注意点1つと、やることの箇条書き3項目を含めてください。本文は管理画面から後で編集できるようにしてください。",
+      "expects": ["markdown", "editable"]
+    },
+    {
+      "id": "gen-05-listing-newest",
+      "mode": "generate",
+      "page_key": "home",
+      "instruction": "「新着の出品」という見出しと、新着順の出品6件を並べるグリッドを持つカード1枚の画面定義を書いてください。",
+      "expects": ["listing_grid", "sort.newest"]
+    },
+    {
+      "id": "gen-06-listing-price-asc",
+      "mode": "generate",
+      "page_key": "home",
+      "instruction": "「お手頃価格から探す」カードを作ってください。価格の安い順に出品4件を並べるグリッドと見出しを持つ、カード1枚の画面定義を書いてください。",
+      "expects": ["listing_grid", "sort.price_asc"]
+    },
+    {
+      "id": "gen-07-listing-mine-desc",
+      "mode": "generate",
+      "page_key": "care",
+      "instruction": "飼育管理ページ用に「自分の出品」カードを作ってください。ログインユーザ自身の出品だけを価格の高い順に8件並べるグリッドと見出しを持つ、カード1枚の画面定義を書いてください。",
+      "expects": ["listing_grid", "sort.price_desc", "seller.mine"]
+    },
+    {
+      "id": "gen-08-action-button",
+      "mode": "generate",
+      "page_key": "care",
+      "instruction": "飼育管理ページ用に、「マイコレクション」という見出しと、個体を追加するためのボタン(控えめな見た目、ラベルは「＋ 個体を追加」)を持つカード1枚の画面定義を書いてください。ボタンは押すと個体追加の動作を起動します。",
+      "expects": ["action_button", "ui_action.add_specimen", "cta_intent.secondary"]
+    },
+    {
+      "id": "gen-09-care-roster-sidebar",
+      "mode": "generate",
+      "page_key": "care",
+      "instruction": "飼育一覧のカードを1枚持つ画面定義を書いてください。カードは、見出し「飼育一覧」、個体追加ボタン、グループのタブ帯、選択グループの個体行リストで構成し、タブ帯が左の側柱・行リストが本体になる横並びレイアウトにしてください。",
+      "expects": ["group_tabs", "specimen_rows", "action_button", "layout.sidebar"]
+    },
+    {
+      "id": "gen-10-two-half-cards",
+      "mode": "generate",
+      "page_key": "home",
+      "instruction": "半分幅のカード2枚が横に並ぶ画面定義を書いてください。1枚目は「飼育ガイド」(見出し+本文+ /care へのリンクボタン)、2枚目は「よくある質問」(見出し+本文)です。",
+      "expects": ["size.half", "cta"]
+    },
+    {
+      "id": "gen-11-accent-card",
+      "mode": "generate",
+      "page_key": "home",
+      "instruction": "「夏のセール開催中」を強調する告知カード1枚の画面定義を書いてください。カードは反転色(アクセント)の見た目にし、見出しとリード文を入れてください。",
+      "expects": ["tone.accent"]
+    },
+    {
+      "id": "gen-12-footer-note",
+      "mode": "generate",
+      "page_key": "home",
+      "instruction": "本文リージョンに「ようこそ」カード(見出し+本文)、フッターリージョンに注意書きカード(「生体の発送は気温に配慮して行います」というキャプション1行のみ)を持つ画面定義を書いてください。",
+      "expects": ["region.footer", "text.caption"]
+    },
+    {
+      "id": "gen-13-specimen-detail",
+      "mode": "generate",
+      "page_key": "specimen_detail",
+      "instruction": "個体詳細ページの画面定義を書いてください。構成は、個体プロフィールのカード、飼育記録一覧のカード(見出し付き)、種の飼育メモのカード(見出し付き・半分幅)、出品設定のカード(見出し付き・半分幅)です。",
+      "expects": ["specimen_profile", "care_log_list", "species_note", "listing_settings"]
+    },
+    {
+      "id": "gen-14-listing-detail",
+      "mode": "generate",
+      "page_key": "listing_detail",
+      "instruction": "出品詳細ページの画面定義を書いてください。構成は、出品のヒーロー(写真・価格などが出る領域)のカードと、個体スペック表示のカード(見出し「スペック」付き)です。",
+      "expects": ["listing_hero", "listing_spec"]
+    },
+    {
+      "id": "gen-15-many-blocks",
+      "mode": "generate",
+      "page_key": "home",
+      "instruction": "「飼育の心得」カード1枚の画面定義を書いてください。見出し1つのあとに、心得を本文ブロック9個として並べてください(合計10ブロック)。",
+      "expects": ["boundary.blocks_per_card"]
+    },
+    {
+      "id": "gen-16-seasonal-home",
+      "mode": "generate",
+      "page_key": "home",
+      "instruction": "夏仕様のホームページ全体の画面定義を書いてください。構成: ヘッダーに夏特集のヒーローカード(Markdownの紹介文、編集可能)。本文に、新着出品6件のグリッドカード、半分幅の「飼育ガイド」カード(見出し+本文+/careへのボタン)、半分幅のセール告知カード(アクセント色、見出し+リード)。フッターは空です。",
+      "expects": ["markdown", "listing_grid", "size.half", "tone.accent", "region.footer.empty"]
+    },
+    {
+      "id": "edit-17-add-card",
+      "mode": "edit",
+      "page_key": "home",
+      "base_def": "defs/home.json",
+      "instruction": "このホームページ定義の本文リージョンの末尾に「クワガタ特集」カードを追加してください。見出しと、特集の一言リード文を入れてください。他のカードは変更しないでください。変更後の定義全体を出力してください。",
+      "expects": ["edit.append", "key.uniqueness"]
+    },
+    {
+      "id": "edit-18-relabel-button",
+      "mode": "edit",
+      "page_key": "care",
+      "base_def": "defs/care.json",
+      "instruction": "この飼育管理ページ定義にある個体追加ボタンのラベルを「個体を登録」に変更してください。それ以外は一切変更せず、変更後の定義全体を出力してください。",
+      "expects": ["edit.action_button_label"]
+    },
+    {
+      "id": "edit-19-layout-stack",
+      "mode": "edit",
+      "page_key": "care",
+      "base_def": "defs/care.json",
+      "instruction": "この飼育管理ページ定義の飼育一覧カード(roster)のレイアウトを、横並び(sidebar)から縦積み(stack)に変更してください。それ以外は変更せず、変更後の定義全体を出力してください。",
+      "expects": ["edit.layout.stack"]
+    },
+    {
+      "id": "edit-20-remove-card",
+      "mode": "edit",
+      "page_key": "home",
+      "base_def": "defs/home.json",
+      "instruction": "このホームページ定義から「insect_app_r2 に質問」のカード(ask-ai)を削除してください。それ以外は変更せず、変更後の定義全体を出力してください。",
+      "expects": ["edit.remove"]
+    }
+  ]
+}

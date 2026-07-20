@@ -12,14 +12,18 @@ use sqlx::PgPool;
 use uuid::Uuid;
 
 use crate::sdui::{
-    Card, CareLogEntry, Currency, DefBlock, FeedRegions, ListingItem, ListingQuery, ListingSeller,
-    ListingSort, ListingState, Page, PageDefinition, PageView, SitePath, SpecAttr, SpecimenGroup,
-    SpecimenItem, ViewBlock,
+    AlertItem, Card, CareLogEntry, Currency, DefBlock, FeedRegions, GroupTabItem, ListingItem,
+    ListingQuery, ListingSeller, ListingSort, ListingState, Page, PageDefinition, PageView,
+    SitePath, SpecAttr, SpecimenGroup, SpecimenItem, TodoItem, ViewBlock,
 };
 
 pub struct HydrateCtx {
     pub specimen: Option<Uuid>,
     pub listing: Option<Uuid>,
+    /// 選択中グループ(`?group=`)。group_tabs / specimen_rows が使う。
+    /// 未指定・無効(他人/不存在)はエラーにせずサーバの既定選択にフォールバックする
+    /// (所有チェックは各クエリの owner_id 条件で担保される)。
+    pub group: Option<Uuid>,
     /// ログインユーザ。飼育系ブロックはこれで自分のデータだけを hydrate する
     /// (定義は全ユーザ共有・データはユーザ毎)
     pub user: Option<Uuid>,
@@ -64,6 +68,7 @@ pub async fn hydrate(
                 key: card.key,
                 size: card.size,
                 tone: card.tone,
+                layout: card.layout,
                 blocks,
             });
         }
@@ -112,7 +117,23 @@ async fn hydrate_block(
             label,
             href,
         },
-        DefBlock::ListingGrid { key, query } => {
+        // 構成は定義・振る舞いはクライアントの閉じた動詞。サーバはパススルーのみ
+        DefBlock::ActionButton {
+            key,
+            intent,
+            label,
+            action,
+        } => ViewBlock::ActionButton {
+            key,
+            intent,
+            label,
+            action,
+        },
+        DefBlock::ListingGrid {
+            key,
+            query,
+            empty_text,
+        } => {
             let owner = match query.seller {
                 Some(ListingSeller::Mine) => {
                     Some(ctx.user.ok_or(HydrateError::AuthRequired("listing_grid"))?)
@@ -122,6 +143,7 @@ async fn hydrate_block(
             ViewBlock::ListingGrid {
                 key,
                 items: fetch_listings(pool, &query, owner).await?,
+                empty_text,
             }
         }
         DefBlock::SpecimenList { key } => {
@@ -133,6 +155,32 @@ async fn hydrate_block(
                 groups: fetch_specimen_groups(pool, owner).await?,
             }
         }
+        DefBlock::GroupTabs { key } => {
+            let owner = ctx.user.ok_or(HydrateError::AuthRequired("group_tabs"))?;
+            let groups = fetch_group_tabs(pool, owner).await?;
+            ViewBlock::GroupTabs {
+                key,
+                active_group_id: pick_active_group(&groups, ctx.group),
+                groups,
+            }
+        }
+        DefBlock::SpecimenRows { key, empty_text } => {
+            let owner = ctx
+                .user
+                .ok_or(HydrateError::AuthRequired("specimen_rows"))?;
+            let tabs = fetch_group_tabs(pool, owner).await?;
+            let group_id = pick_active_group(&tabs, ctx.group);
+            let items = match group_id {
+                Some(g) => fetch_specimen_rows(pool, owner, g).await?,
+                None => Vec::new(),
+            };
+            ViewBlock::SpecimenRows {
+                key,
+                group_id,
+                items,
+                empty_text,
+            }
+        }
         DefBlock::SpecimenProfile { key } => {
             let owner = ctx
                 .user
@@ -142,7 +190,7 @@ async fn hydrate_block(
                 .ok_or(HydrateError::MissingContext("specimen_profile"))?;
             fetch_profile(pool, id, owner, key).await?
         }
-        DefBlock::CareLogList { key } => {
+        DefBlock::CareLogList { key, empty_text } => {
             let owner = ctx
                 .user
                 .ok_or(HydrateError::AuthRequired("care_log_list"))?;
@@ -153,6 +201,7 @@ async fn hydrate_block(
                 key,
                 specimen_id: id,
                 entries: fetch_care_logs(pool, id, owner).await?,
+                empty_text,
             }
         }
         DefBlock::SpeciesNote { key } => {
@@ -179,7 +228,7 @@ async fn hydrate_block(
                 image_src: r.image_src.and_then(|s| SitePath::try_from(s).ok()),
             }
         }
-        DefBlock::ListingSpec { key } => {
+        DefBlock::ListingSpec { key, empty_text } => {
             let id = ctx
                 .listing
                 .ok_or(HydrateError::MissingContext("listing_spec"))?;
@@ -198,7 +247,11 @@ async fn hydrate_block(
                     });
                 }
             }
-            ViewBlock::ListingSpec { key, attrs }
+            ViewBlock::ListingSpec {
+                key,
+                attrs,
+                empty_text,
+            }
         }
         DefBlock::ListingSettings { key } => {
             let owner = ctx
@@ -208,6 +261,37 @@ async fn hydrate_block(
                 .specimen
                 .ok_or(HydrateError::MissingContext("listing_settings"))?;
             fetch_listing_settings(pool, id, owner, key).await?
+        }
+        DefBlock::TodoList { key, empty_text } => {
+            let owner = ctx.user.ok_or(HydrateError::AuthRequired("todo_list"))?;
+            ViewBlock::TodoList {
+                key,
+                items: fetch_todos(pool, owner).await?,
+                empty_text,
+            }
+        }
+        DefBlock::CareAlerts { key, empty_text } => {
+            let owner = ctx.user.ok_or(HydrateError::AuthRequired("care_alerts"))?;
+            let prefs: Option<(bool, i32)> = sqlx::query_as(
+                "SELECT enabled, stale_days FROM notification_prefs WHERE owner_id = $1",
+            )
+            .bind(owner)
+            .fetch_optional(pool)
+            .await?;
+            // 行が無いユーザは既定値(0023 の DEFAULT と一致させる)
+            let (enabled, stale_days) = prefs.unwrap_or((true, 7));
+            let items = if enabled {
+                fetch_care_alerts(pool, owner, stale_days).await?
+            } else {
+                Vec::new()
+            };
+            ViewBlock::CareAlerts {
+                key,
+                enabled,
+                stale_days: u32::try_from(stale_days).unwrap_or(7),
+                items,
+                empty_text,
+            }
         }
     })
 }
@@ -374,6 +458,205 @@ async fn fetch_listing_settings(
     })
 }
 
+// ── group tabs / specimen rows(Phase 2: specimen_list の分割)──
+
+#[derive(sqlx::FromRow)]
+struct TabRow {
+    group_id: Uuid,
+    label: String,
+    count: i64,
+}
+
+/// ログインユーザのタブ(グループ+件数のみ)。行は specimen_rows が選択グループ分だけ解決する
+/// = 旧 specimen_list の「全グループ×全行を毎回解決」の置き換え。
+async fn fetch_group_tabs(pool: &PgPool, owner: Uuid) -> Result<Vec<GroupTabItem>, sqlx::Error> {
+    let rows: Vec<TabRow> = sqlx::query_as(
+        "SELECT g.id AS group_id, g.label, COUNT(s.id) AS count \
+         FROM specimen_groups g \
+         LEFT JOIN specimens s ON s.group_id = g.id AND s.owner_id = $1 \
+         WHERE g.owner_id = $1 \
+         GROUP BY g.id, g.label, g.sort_order \
+         ORDER BY g.sort_order, g.label",
+    )
+    .bind(owner)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| GroupTabItem {
+            group_id: r.group_id,
+            label: r.label,
+            count: u32::try_from(r.count).unwrap_or(0),
+        })
+        .collect())
+}
+
+/// 選択グループの解決: `?group=` が自分のタブならそれを採用、無効/未指定は
+/// 「個体がいる最初のタブ → 先頭タブ」(旧クライアント実装と同じ既定)。
+/// group_tabs / specimen_rows は同じ規則で解決するため表示は一致する
+/// (ブロックごとにタブを引き直すが、ずれるのは並行書込と重なった一瞬のみ = POCとして許容)。
+fn pick_active_group(tabs: &[GroupTabItem], requested: Option<Uuid>) -> Option<Uuid> {
+    if let Some(id) = requested {
+        if tabs.iter().any(|t| t.group_id == id) {
+            return Some(id);
+        }
+    }
+    tabs.iter()
+        .find(|t| t.count > 0)
+        .or_else(|| tabs.first())
+        .map(|t| t.group_id)
+}
+
+#[derive(sqlx::FromRow)]
+struct RowItemRow {
+    id: Uuid,
+    code: String,
+    name: String,
+    alert: bool,
+    next_action: Option<String>,
+    last_kind: Option<String>,
+    last_at: Option<String>,
+    listing_price: Option<i64>,
+}
+
+/// 選択グループの個体行のみ解決する。
+async fn fetch_specimen_rows(
+    pool: &PgPool,
+    owner: Uuid,
+    group: Uuid,
+) -> Result<Vec<SpecimenItem>, sqlx::Error> {
+    let rows: Vec<RowItemRow> = sqlx::query_as(
+        "SELECT s.id, s.code, s.name, s.alert, s.next_action, \
+                l.kind AS last_kind, to_char(l.at, 'MM/DD') AS last_at, \
+                li.price_amount AS listing_price \
+         FROM specimens s \
+         LEFT JOIN LATERAL ( \
+             SELECT kind, at, created_at FROM care_logs \
+             WHERE specimen_id = s.id ORDER BY at DESC, created_at DESC LIMIT 1 \
+         ) l ON true \
+         LEFT JOIN listings li ON li.specimen_id = s.id AND li.status = 'active' \
+         WHERE s.owner_id = $1 AND s.group_id = $2 \
+         ORDER BY s.code",
+    )
+    .bind(owner)
+    .bind(group)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| SpecimenItem {
+            hint: build_hint(r.next_action, r.listing_price, r.last_kind, r.last_at),
+            specimen_id: r.id,
+            code: r.code,
+            name: r.name,
+            alert: r.alert,
+        })
+        .collect())
+}
+
+/// 一覧行 hint の優先順位: 次のアクション > 出品中 > 最新の記録
+/// (specimen_rows と旧 specimen_list で共通)。
+fn build_hint(
+    next_action: Option<String>,
+    listing_price: Option<i64>,
+    last_kind: Option<String>,
+    last_at: Option<String>,
+) -> Option<String> {
+    next_action
+        .or_else(|| listing_price.map(|p| format!("出品中 {}", fmt_yen(p))))
+        .or(match (last_kind, last_at) {
+            (Some(kind), Some(at)) => Some(format!("{kind} {at}")),
+            _ => None,
+        })
+}
+
+// ── ユーザウィジェット: todo_list / care_alerts ───────────────
+
+#[derive(sqlx::FromRow)]
+struct TodoRow {
+    id: Uuid,
+    body: String,
+    done: bool,
+}
+
+/// ログインユーザのTODO(未完了 → 完了、それぞれ追加順)。
+async fn fetch_todos(pool: &PgPool, owner: Uuid) -> Result<Vec<TodoItem>, sqlx::Error> {
+    let rows: Vec<TodoRow> = sqlx::query_as(
+        "SELECT id, body, done FROM user_todos \
+         WHERE owner_id = $1 ORDER BY done, created_at",
+    )
+    .bind(owner)
+    .fetch_all(pool)
+    .await?;
+    Ok(rows
+        .into_iter()
+        .map(|r| TodoItem {
+            todo_id: r.id,
+            body: r.body,
+            done: r.done,
+        })
+        .collect())
+}
+
+#[derive(sqlx::FromRow)]
+struct AlertRow {
+    id: Uuid,
+    group_id: Uuid,
+    code: String,
+    name: String,
+    alert: bool,
+    days_since_log: Option<i32>,
+    days_since_created: i32,
+}
+
+/// アプリ内通知の警告抽出。理由の優先: 要注意フラグ > 最終記録の経過 > 記録なしの経過。
+/// 日数計算はSQL(CURRENT_DATE との差)で行い、しきい値比較だけをここで行う。
+async fn fetch_care_alerts(
+    pool: &PgPool,
+    owner: Uuid,
+    stale_days: i32,
+) -> Result<Vec<AlertItem>, sqlx::Error> {
+    let rows: Vec<AlertRow> = sqlx::query_as(
+        "SELECT s.id, s.group_id, s.code, s.name, s.alert, \
+                (CURRENT_DATE - l.at)               AS days_since_log, \
+                (CURRENT_DATE - s.created_at::date) AS days_since_created \
+         FROM specimens s \
+         LEFT JOIN LATERAL ( \
+             SELECT at FROM care_logs \
+             WHERE specimen_id = s.id ORDER BY at DESC, created_at DESC LIMIT 1 \
+         ) l ON true \
+         WHERE s.owner_id = $1 \
+         ORDER BY s.alert DESC, days_since_log DESC NULLS LAST, s.code",
+    )
+    .bind(owner)
+    .fetch_all(pool)
+    .await?;
+    let mut items = Vec::new();
+    for r in rows {
+        let reason = if r.alert {
+            Some("要注意フラグ".to_string())
+        } else {
+            match r.days_since_log {
+                Some(d) if d > stale_days => Some(format!("最終記録から{d}日")),
+                None if r.days_since_created > stale_days => {
+                    Some(format!("記録なし・登録から{}日", r.days_since_created))
+                }
+                _ => None,
+            }
+        };
+        if let Some(reason) = reason {
+            items.push(AlertItem {
+                specimen_id: r.id,
+                group_id: r.group_id,
+                code: r.code,
+                name: r.name,
+                reason,
+            });
+        }
+    }
+    Ok(items)
+}
+
 // ── specimens ────────────────────────────────────────────────
 
 #[derive(sqlx::FromRow)]
@@ -428,13 +711,7 @@ async fn fetch_specimen_groups(
         }
         let group = groups.last_mut().expect("just pushed");
         if let Some(id) = r.id {
-            let hint = r
-                .next_action
-                .or_else(|| r.listing_price.map(|p| format!("出品中 {}", fmt_yen(p))))
-                .or(match (r.last_kind, r.last_at) {
-                    (Some(kind), Some(at)) => Some(format!("{kind} {at}")),
-                    _ => None,
-                });
+            let hint = build_hint(r.next_action, r.listing_price, r.last_kind, r.last_at);
             group.items.push(SpecimenItem {
                 specimen_id: id,
                 code: r.code.unwrap_or_default(),

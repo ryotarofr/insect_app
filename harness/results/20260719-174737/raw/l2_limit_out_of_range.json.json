@@ -1,0 +1,9 @@
+{
+  "fixture": {
+    "file": "l2_limit_out_of_range.json",
+    "expected": "L2:limit_out_of_range"
+  },
+  "category": "L2:limit_out_of_range",
+  "stderr": "INVALID: listing_grid \"g1\": limit 99 out of range 1..=24",
+  "hydrate": null
+}

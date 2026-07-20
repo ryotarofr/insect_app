@@ -1,6 +1,7 @@
 import { Title } from "@solidjs/meta";
 import { Show, createSignal } from "solid-js";
 import { authLogin, authRegister } from "~/sdui/api";
+import { Button, Field, FormStack, Row, Status } from "~/sdui/primitives";
 
 /**
  * ログイン / 新規登録(固定コード領域)。
@@ -37,36 +38,32 @@ export default function Login() {
       <Title>ログイン | insect_app_r2</Title>
       <section class="sd-card">
         <div class="auth-tabs">
-          <button
-            class="sd-btn"
-            classList={{ "sd-btn--primary": mode() === "login" }}
+          <Button
+            intent={mode() === "login" ? "primary" : "default"}
             onClick={() => setMode("login")}
           >
             ログイン
-          </button>
-          <button
-            class="sd-btn"
-            classList={{ "sd-btn--primary": mode() === "register" }}
+          </Button>
+          <Button
+            intent={mode() === "register" ? "primary" : "default"}
             onClick={() => setMode("register")}
           >
             新規登録
-          </button>
+          </Button>
         </div>
 
-        <form class="sd-form" onSubmit={submit}>
+        <FormStack form onSubmit={submit}>
           <Show when={mode() === "register"}>
-            <label class="sd-field">
-              表示名
+            <Field label="表示名">
               <input
                 value={name()}
                 required
                 placeholder="例: Ryotaro"
                 onInput={e => setName(e.currentTarget.value)}
               />
-            </label>
+            </Field>
           </Show>
-          <label class="sd-field">
-            メールアドレス
+          <Field label="メールアドレス">
             <input
               type="email"
               value={email()}
@@ -74,9 +71,8 @@ export default function Login() {
               autocomplete="email"
               onInput={e => setEmail(e.currentTarget.value)}
             />
-          </label>
-          <label class="sd-field">
-            パスワード{mode() === "register" ? "(8文字以上)" : ""}
+          </Field>
+          <Field label={`パスワード${mode() === "register" ? "(8文字以上)" : ""}`}>
             <input
               type="password"
               value={password()}
@@ -84,16 +80,16 @@ export default function Login() {
               autocomplete={mode() === "login" ? "current-password" : "new-password"}
               onInput={e => setPassword(e.currentTarget.value)}
             />
-          </label>
+          </Field>
           <Show when={error()}>
-            <p class="sd-status sd-status--error">{error()}</p>
+            <Status error>{error()}</Status>
           </Show>
-          <div class="sd-form-row">
-            <button class="sd-btn sd-btn--primary" type="submit" disabled={busy()}>
+          <Row gap="sm">
+            <Button intent="primary" type="submit" disabled={busy()}>
               {mode() === "login" ? "ログイン" : "登録してはじめる"}
-            </button>
-          </div>
-        </form>
+            </Button>
+          </Row>
+        </FormStack>
       </section>
     </div>
   );

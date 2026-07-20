@@ -1,0 +1,260 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8" />
+<title>カードビルダーUI デザイン案(モック)</title>
+<style>
+/* insect_app_r2 の実テーマ変数(app.css より) */
+:root {
+  --bg: #f2ecdd; --panel: #e9e2cf; --card: #fffdf6; --card-alt: #f8f3e6;
+  --card-line: #d9d2bc; --line-strong: #2b2619; --text: #2b2619; --muted: #857e69;
+  --accent: #3c5a2c; --accent-ink: #f6f2e6; --inverse: #263c1c;
+  --font-serif: "Shippori Mincho", "Noto Serif JP", "Hiragino Mincho ProN", "Yu Mincho", serif;
+  --font-mono: ui-monospace, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; font-family: "Hiragino Kaku Gothic ProN", "Yu Gothic UI", "Noto Sans JP", sans-serif; background: var(--bg); color: var(--text); }
+
+/* 案ラベル */
+.variant { padding: 28px 32px 48px; border-bottom: 4px double var(--line-strong); }
+.variant-label { font-family: var(--font-mono); font-size: 12px; letter-spacing: .2em; color: var(--muted); margin: 0 0 4px; }
+.variant-title { font-family: var(--font-serif); font-size: 22px; font-weight: 700; margin: 0 0 6px; }
+.variant-note { font-size: 12.5px; color: var(--muted); margin: 0 0 18px; max-width: 900px; line-height: 1.8; }
+
+/* 共通部品(sd-* 相当) */
+.card { background: var(--card); border: 1px solid var(--line-strong); border-radius: 6px; padding: 20px 24px; }
+.h { font-family: var(----font-serif); font-family: var(--font-serif); font-size: 19px; font-weight: 700; letter-spacing: .04em; margin: 0; }
+.cap { font-size: 12px; color: var(--muted); }
+.btn { display: inline-flex; align-items: center; gap: 6px; padding: 6px 14px; font-size: 12.5px; color: var(--text); background: var(--card); border: 1px solid var(--card-line); border-radius: 4px; cursor: pointer; font-family: inherit; }
+.btn--primary { background: var(--inverse); border-color: var(--inverse); color: var(--accent-ink); font-weight: 600; }
+.btn--ghost { background: transparent; border-color: transparent; color: var(--muted); }
+.input, select.input, textarea.input { font-family: inherit; font-size: 13px; color: var(--text); background: var(--card); border: 1px solid var(--card-line); border-radius: 4px; padding: 8px 10px; width: 100%; }
+.field { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--muted); }
+.row { display: flex; align-items: center; gap: 8px; }
+.stack { display: flex; flex-direction: column; gap: 10px; }
+.chip { border: 1px solid var(--card-line); border-radius: 999px; padding: 5px 12px; font-size: 12px; color: var(--muted); background: var(--card); }
+
+/* ══ 案A: 2ペイン(設定+ライブプレビュー)══════════════ */
+.a-backdrop { background: rgba(43,38,25,.45); padding: 36px; }
+.a-modal { background: var(--bg); border: 1px solid var(--line-strong); border-radius: 8px; max-width: 1060px; margin: 0 auto; padding: 22px 24px; }
+.a-cols { display: grid; grid-template-columns: 420px 1fr; gap: 22px; align-items: start; }
+.a-pane-label { font-family: var(--font-mono); font-size: 10px; letter-spacing: .18em; color: var(--muted); margin-bottom: 8px; }
+.a-palette { display: flex; flex-wrap: wrap; gap: 6px; }
+.a-block { border: 1px solid var(--accent); border-radius: 6px; padding: 10px 12px; background: var(--card); }
+.a-block-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.a-drag { color: var(--muted); cursor: grab; font-size: 14px; letter-spacing: -1px; }
+.a-block-type { font-size: 11px; color: var(--muted); flex: 1; }
+.a-tool { border: none; background: none; color: var(--muted); cursor: pointer; font-size: 12px; padding: 2px 4px; }
+.a-preview { background: var(--panel); border: 1px dashed var(--card-line); border-radius: 8px; padding: 18px; }
+.a-actions { display: flex; justify-content: space-between; margin-top: 18px; }
+/* プレビュー内のカード(実レンダラ相当) */
+.p-todo { display: flex; align-items: center; gap: 8px; font-size: 13.5px; padding: 2px 0; }
+.p-todo.done span { text-decoration: line-through; color: var(--muted); }
+.p-alert { display: flex; align-items: center; gap: 10px; border: 1px solid var(--card-line); border-radius: 5px; padding: 8px 10px; font-size: 13px; margin-top: 6px; background: var(--card); }
+.p-alert b { font-family: var(--font-mono); font-weight: 600; }
+.p-alert .warn { margin-left: auto; color: #b0432f; font-size: 12px; }
+.p-md ul { margin: 6px 0 0 18px; padding: 0; } .p-md li { margin: 2px 0; font-size: 13.5px; }
+
+/* ══ 案B: その場編集(インライン)══════════════════════ */
+.b-page { max-width: 900px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+.b-ghostcard { border: 2px dashed var(--accent); background: var(--card); border-radius: 6px; padding: 20px 24px; position: relative; }
+.b-ghost-tag { position: absolute; top: -10px; left: 16px; background: var(--accent); color: var(--accent-ink); font-size: 10px; letter-spacing: .15em; padding: 2px 8px; border-radius: 3px; font-family: var(--font-mono); }
+.b-title-input { font-family: var(--font-serif); font-size: 19px; font-weight: 700; border: none; border-bottom: 1px dashed var(--card-line); background: transparent; width: 60%; padding: 4px 2px; }
+.b-inline-palette { display: flex; gap: 6px; flex-wrap: wrap; border-top: 1px dashed var(--card-line); padding-top: 12px; margin-top: 14px; }
+.b-savebar { position: sticky; bottom: 16px; margin: 8px auto 0; width: fit-content; display: flex; gap: 8px; background: var(--inverse); padding: 10px 14px; border-radius: 999px; box-shadow: 0 6px 18px rgba(43,38,25,.35); }
+.b-savebar .cap { color: var(--accent-ink); opacity: .75; align-self: center; }
+.b-dim { opacity: .55; }
+
+/* ══ 案C: テンプレートギャラリー ══════════════════════ */
+.c-modal { background: var(--bg); border: 1px solid var(--line-strong); border-radius: 8px; max-width: 900px; margin: 0 auto; padding: 24px; }
+.c-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; margin-top: 14px; }
+.c-tpl { background: var(--card); border: 1px solid var(--card-line); border-radius: 6px; padding: 14px; cursor: pointer; transition: border-color .15s; display: flex; flex-direction: column; gap: 8px; }
+.c-tpl:hover { border-color: var(--line-strong); }
+.c-tpl-name { font-family: var(--font-serif); font-weight: 700; font-size: 15px; }
+.c-tpl-desc { font-size: 11.5px; color: var(--muted); line-height: 1.6; min-height: 34px; }
+.c-mini { background: var(--card-alt); border: 1px solid var(--card-line); border-radius: 4px; padding: 10px; font-size: 10px; color: var(--muted); display: flex; flex-direction: column; gap: 5px; min-height: 92px; }
+.c-mini .bar { height: 7px; border-radius: 2px; background: var(--card-line); }
+.c-mini .bar.dark { background: var(--line-strong); width: 45%; height: 9px; }
+.c-mini .bar.half { width: 70%; }
+.c-mini .todo { display: flex; gap: 5px; align-items: center; }
+.c-mini .box { width: 8px; height: 8px; border: 1px solid var(--muted); border-radius: 2px; }
+.c-mini .warnrow { border: 1px solid var(--card-line); border-radius: 3px; padding: 3px 5px; display: flex; justify-content: space-between; background: var(--card); }
+.c-mini .warn { color: #b0432f; }
+.c-mini .btnish { border: 1px solid var(--card-line); border-radius: 3px; padding: 3px 6px; width: fit-content; background: var(--card); }
+.c-mini .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.c-mini .thumb { height: 22px; background: repeating-linear-gradient(45deg, var(--card-line), var(--card-line) 3px, var(--card-alt) 3px, var(--card-alt) 6px); border-radius: 2px; }
+</style>
+</head>
+<body>
+
+<!-- ═══════════════════ 案A ═══════════════════ -->
+<section class="variant" id="variant-a">
+  <p class="variant-label">案A(推奨・編集画面)</p>
+  <h1 class="variant-title">2ペイン編集 — 左で組み立て、右にライブプレビュー</h1>
+  <p class="variant-note">現行モーダルの改良。右ペインは実レンダラに組み立て中の定義を流して描く(語彙が閉じているため、プレビューは常に本番と同一の見た目になる。TODOや通知はこのアカウントの現在データで描画)。ブロックはドラッグで並べ替え。</p>
+  <div class="a-backdrop">
+    <div class="a-modal">
+      <div class="a-cols">
+        <div><!-- 左: 設定 -->
+          <p class="a-pane-label">CARD SETTINGS</p>
+          <div class="stack">
+            <label class="field">カードのタイトル(見出し・省略可)
+              <input class="input" value="今週のやること" /></label>
+            <div class="row">
+              <label class="field" style="flex:1">幅
+                <select class="input"><option>全幅</option></select></label>
+              <label class="field" style="flex:1">色調
+                <select class="input"><option>標準</option></select></label>
+            </div>
+            <p class="a-pane-label" style="margin-top:8px">BLOCKS</p>
+            <div class="a-palette">
+              <button class="btn">＋ 本文</button><button class="btn">＋ Markdown</button>
+              <button class="btn">＋ リンク</button><button class="btn">＋ 出品グリッド</button>
+              <button class="btn">＋ TODO</button><button class="btn">＋ 通知</button>
+            </div>
+            <div class="a-block">
+              <div class="a-block-head"><span class="a-drag">⠿</span><span class="a-block-type">Markdown</span>
+                <button class="a-tool">✕</button></div>
+              <textarea class="input" rows="3">**今週の目標**
+- 産卵セット割り出し
+- マット在庫の確認</textarea>
+            </div>
+            <div class="a-block">
+              <div class="a-block-head"><span class="a-drag">⠿</span><span class="a-block-type">TODOリスト</span>
+                <button class="a-tool">✕</button></div>
+              <span class="cap">設定はありません(中身はこのアカウントのデータ)</span>
+            </div>
+            <div class="a-block">
+              <div class="a-block-head"><span class="a-drag">⠿</span><span class="a-block-type">通知(アプリ内)</span>
+                <button class="a-tool">✕</button></div>
+              <span class="cap">しきい値はカード上でいつでも変更できます</span>
+            </div>
+          </div>
+        </div>
+        <div><!-- 右: プレビュー -->
+          <p class="a-pane-label">PREVIEW(実データで描画)</p>
+          <div class="a-preview">
+            <div class="card">
+              <h2 class="h" style="font-family:var(--font-serif)">今週のやること</h2>
+              <div class="p-md"><p style="margin:10px 0 0;font-size:13.5px"><b>今週の目標</b></p>
+                <ul><li>産卵セット割り出し</li><li>マット在庫の確認</li></ul></div>
+              <div class="row" style="margin-top:12px">
+                <input class="input" placeholder="やることを追加" style="flex:1" />
+                <button class="btn btn--primary">追加</button>
+              </div>
+              <div class="p-todo"><input type="checkbox" /><span>マット注文</span></div>
+              <div class="p-todo done"><input type="checkbox" checked /><span>ゼリー補充</span></div>
+              <div class="p-alert"><b>CB-01</b> 警告テスト <span class="warn">⚠ 最終記録から10日</span></div>
+              <div class="row" style="margin-top:10px">
+                <label class="cap"><input type="checkbox" checked /> 通知を有効にする</label>
+                <span class="cap">最終記録から</span><input class="input" value="7" style="width:64px" />
+                <span class="cap">日で警告</span><button class="btn">適用</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="a-actions">
+        <div class="row">
+          <button class="btn btn--primary">このカードを追加</button>
+          <button class="btn">キャンセル</button>
+        </div>
+        <button class="btn btn--ghost">共有の最新に戻す</button>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ 案B ═══════════════════ -->
+<section class="variant" id="variant-b">
+  <p class="variant-label">案B(将来のv2候補)</p>
+  <h1 class="variant-title">その場編集 — ページに直接ゴーストカードを挿し込む</h1>
+  <p class="variant-note">モーダルを開かず、ページ本体の挿入位置に破線のカードが現れてその場で組み立てる。ページ全体がプレビューそのもの(WYSIWYG)。既存の text/markdown インライン編集と同じ思想の完成形だが、フォーカス管理・スクロール・挿入位置の操作が増えるため実装コストは大。</p>
+  <div class="b-page">
+    <div class="card b-dim">
+      <h2 class="h">今季の飼育メモ</h2>
+      <p style="font-size:13.5px;margin:10px 0 0">梅雨明け後は28℃超に注意。ケース内の蒸れ対策を。</p>
+    </div>
+    <div class="b-ghostcard">
+      <span class="b-ghost-tag">NEW CARD — 編集中</span>
+      <input class="b-title-input" value="今週のやること" />
+      <div style="margin-top:12px">
+        <textarea class="input" rows="2">**今週の目標** / - 産卵セット割り出し …</textarea>
+      </div>
+      <div class="p-todo" style="margin-top:8px"><input type="checkbox" /><span>マット注文</span></div>
+      <div class="p-alert"><b>CB-01</b> 警告テスト <span class="warn">⚠ 最終記録から10日</span></div>
+      <div class="b-inline-palette">
+        <button class="btn">＋ 本文</button><button class="btn">＋ Markdown</button>
+        <button class="btn">＋ リンク</button><button class="btn">＋ TODO</button>
+        <button class="btn">＋ 通知</button><span class="cap" style="align-self:center">ブロックをこのカードに追加…</span>
+      </div>
+    </div>
+    <div class="card b-dim">
+      <h2 class="h">飼育一覧</h2>
+      <p class="cap" style="margin:10px 0 0">(既存カードは編集中は淡色表示)</p>
+    </div>
+    <div class="b-savebar">
+      <span class="cap">自分のページに保存されます</span>
+      <button class="btn btn--primary">カードを保存</button>
+      <button class="btn">破棄</button>
+    </div>
+  </div>
+</section>
+
+<!-- ═══════════════════ 案C ═══════════════════ -->
+<section class="variant" id="variant-c">
+  <p class="variant-label">案C(推奨・入口)</p>
+  <h1 class="variant-title">テンプレートギャラリー — 用途から選んで、編集画面へ</h1>
+  <p class="variant-note">「＋ カードを追加」の最初の画面。TODO・通知・メモのような定番はワンタップでプリセット済みの編集画面(案A)が開く。テンプレート = ブロック構成のプリセットにすぎず、新しい語彙は不要。白紙から作る人のために「空のカード」も残す。</p>
+  <div class="c-modal">
+    <h2 class="h">どんなカードを追加しますか?</h2>
+    <p class="cap" style="margin:6px 0 0">テンプレートはあとから自由に変更できます</p>
+    <div class="c-grid">
+      <div class="c-tpl">
+        <div class="c-mini"><div class="bar dark"></div><div class="bar"></div><div class="bar half"></div></div>
+        <span class="c-tpl-name">メモ</span>
+        <span class="c-tpl-desc">見出し+Markdown本文。飼育メモや覚え書きに</span>
+      </div>
+      <div class="c-tpl">
+        <div class="c-mini">
+          <div class="bar dark"></div>
+          <div class="todo"><span class="box"></span><div class="bar half" style="flex:1"></div></div>
+          <div class="todo"><span class="box" style="background:var(--line-strong)"></span><div class="bar" style="flex:1;width:50%"></div></div>
+        </div>
+        <span class="c-tpl-name">TODO</span>
+        <span class="c-tpl-desc">チェックできる自分専用のやることリスト</span>
+      </div>
+      <div class="c-tpl">
+        <div class="c-mini">
+          <div class="bar dark"></div>
+          <div class="warnrow"><div class="bar" style="width:40%"></div><span class="warn">⚠</span></div>
+          <div class="warnrow"><div class="bar" style="width:55%"></div><span class="warn">⚠</span></div>
+        </div>
+        <span class="c-tpl-name">通知</span>
+        <span class="c-tpl-desc">記録が途切れた個体をしきい値で警告(アプリ内)</span>
+      </div>
+      <div class="c-tpl">
+        <div class="c-mini"><div class="bar dark"></div><div class="bar half"></div><span class="btnish">ガイドを読む →</span></div>
+        <span class="c-tpl-name">リンク集</span>
+        <span class="c-tpl-desc">よく使うページへのボタンを並べる</span>
+      </div>
+      <div class="c-tpl">
+        <div class="c-mini"><div class="bar dark"></div><div class="grid2"><div class="thumb"></div><div class="thumb"></div></div></div>
+        <span class="c-tpl-name">出品ウォッチ</span>
+        <span class="c-tpl-desc">市場の新着や自分の出品をグリッドで一覧</span>
+      </div>
+      <div class="c-tpl">
+        <div class="c-mini" style="align-items:center;justify-content:center"><span style="font-size:22px;color:var(--card-line)">＋</span></div>
+        <span class="c-tpl-name">空のカード</span>
+        <span class="c-tpl-desc">白紙からブロックを組み合わせて作る</span>
+      </div>
+    </div>
+    <div class="row" style="margin-top:16px;justify-content:space-between">
+      <button class="btn">キャンセル</button>
+      <button class="btn btn--ghost">共有の最新に戻す</button>
+    </div>
+  </div>
+</section>
+
+</body>
+</html>

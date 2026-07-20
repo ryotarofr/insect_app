@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "page": {
+    "template": "feed",
+    "content": {
+      "regions": {
+        "header": [],
+        "body": [
+          {
+            "key": "c1",
+            "blocks": [
+              {
+                "type": "carousel",
+                "content": {
+                  "key": "b1"
+                }
+              }
+            ]
+          }
+        ],
+        "footer": []
+      }
+    }
+  }
+}

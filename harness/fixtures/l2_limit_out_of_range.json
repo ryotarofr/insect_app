@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "page": {
+    "template": "feed",
+    "content": {
+      "regions": {
+        "header": [],
+        "body": [
+          {
+            "key": "c1",
+            "blocks": [
+              {
+                "type": "listing_grid",
+                "content": {
+                  "key": "g1",
+                  "query": {
+                    "sort": "newest",
+                    "limit": 99
+                  }
+                }
+              }
+            ]
+          }
+        ],
+        "footer": []
+      }
+    }
+  }
+}

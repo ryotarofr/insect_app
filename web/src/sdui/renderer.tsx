@@ -12,16 +12,27 @@
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import { For, Show, createSignal, type JSX } from "solid-js";
-import { patchDefinitionBlock } from "./api";
+import { moveMyCard, patchDefinitionBlock, removeMyCard } from "./api";
 import { useSduiActions } from "./actions";
+import { Button, Cta, FormStack, Row, Text } from "./primitives";
+import { CareAlertsView, TodoListView } from "./widgets";
 import { ListingHeroView, ListingSettingsView, ListingSpecView } from "./listing";
 import {
   CareLogListView,
+  GroupTabsView,
   SpeciesNoteView,
   SpecimenListView,
   SpecimenProfileView,
+  SpecimenRowsView,
 } from "./specimen";
-import type { Card as CardData, ListingItem, PageView, TextRole, ViewBlock } from "./types";
+import type {
+  Card as CardData,
+  CtaIntent,
+  ListingItem,
+  PageView,
+  TextRole,
+  ViewBlock,
+} from "./types";
 
 // ── markdown 描画(定義は信頼できない入力として扱う)──────────
 //
@@ -67,9 +78,42 @@ function Box(props: { class?: string; children: JSX.Element }) {
   return <div class={`sd-box ${props.class ?? ""}`}>{props.children}</div>;
 }
 
-/** 視覚サーフェス。size / tone のセマンティックトークンを解釈する */
-function CardView(props: { card: CardData }) {
-  // 未知の size / tone 値は default 扱い(進化規約4)
+/**
+ * sidebar レイアウトで側柱になれるブロック型。
+ * `layout: "sidebar"` のカードは、最初の対応ブロックを側柱・それより前を全幅の前置行・
+ * 残りを本体として描く(対応ブロックが無ければ stack と同じ = 壊れない解釈)。
+ */
+const SIDEBAR_CAPABLE = new Set<string>(["group_tabs"]);
+
+/** 視覚サーフェス。size / tone / layout のセマンティックトークンを解釈する */
+function CardView(props: { card: CardData; region?: string }) {
+  const actions = useSduiActions();
+  // 未知の size / tone / layout 値は default 扱い(進化規約4)
+  const sidebarIndex = () =>
+    props.card.layout === "sidebar"
+      ? props.card.blocks.findIndex(b => SIDEBAR_CAPABLE.has(b.type))
+      : -1;
+  // 自分のページ(pageScope=mine)では並べ替え可(footer = 入口ボタン置き場は固定)。
+  // 削除はビルダー作成カード("my-" prefix)のみ。ツールはカードにホバーで現れる
+  const movable = () => actions?.pageScope === "mine" && props.region !== "footer";
+  const deletable = () => actions?.pageScope === "mine" && props.card.key.startsWith("my-");
+  const moveCard = async (dir: -1 | 1) => {
+    if (!actions) return;
+    try {
+      if (await moveMyCard(actions.pageKey, props.card.key, dir)) actions.refreshAll();
+    } catch (e) {
+      alert(String(e));
+    }
+  };
+  const removeCard = async () => {
+    if (!actions || !confirm("このカードを削除しますか?")) return;
+    try {
+      await removeMyCard(actions.pageKey, props.card.key);
+      actions.refreshAll();
+    } catch (e) {
+      alert(String(e));
+    }
+  };
   return (
     <section
       class="sd-card"
@@ -78,9 +122,50 @@ function CardView(props: { card: CardData }) {
         "sd-card--accent": props.card.tone === "accent",
       }}
     >
-      <For each={props.card.blocks}>
-        {block => <BlockView block={block} cardKey={props.card.key} />}
-      </For>
+      <Show when={movable() || deletable()}>
+        <Row gap="xs" class="sd-card-tools">
+          <Show when={movable()}>
+            <Button intent="ghost" title="1つ上へ移動" onClick={() => void moveCard(-1)}>
+              ↑
+            </Button>
+            <Button intent="ghost" title="1つ下へ移動" onClick={() => void moveCard(1)}>
+              ↓
+            </Button>
+          </Show>
+          <Show when={deletable()}>
+            <Button
+              intent="ghost"
+              title="このカードを削除(自分のページから)"
+              onClick={() => void removeCard()}
+            >
+              ✕
+            </Button>
+          </Show>
+        </Row>
+      </Show>
+      <Show
+        when={sidebarIndex() >= 0}
+        fallback={
+          <For each={props.card.blocks}>
+            {block => <BlockView block={block} cardKey={props.card.key} />}
+          </For>
+        }
+      >
+        <For each={props.card.blocks.slice(0, sidebarIndex())}>
+          {block => <BlockView block={block} cardKey={props.card.key} />}
+        </For>
+        {/* 意味トークン(sidebar)→ primitive 合成。sd-card-cols はモバイル分岐のフックのみ */}
+        <Row align="start" gap="md" class="sd-card-cols">
+          <div class="sd-card-side">
+            <BlockView block={props.card.blocks[sidebarIndex()]} cardKey={props.card.key} />
+          </div>
+          <div class="sd-card-main">
+            <For each={props.card.blocks.slice(sidebarIndex() + 1)}>
+              {block => <BlockView block={block} cardKey={props.card.key} />}
+            </For>
+          </div>
+        </Row>
+      </Show>
     </section>
   );
 }
@@ -110,7 +195,7 @@ function RegionView(props: { name: string; cards: CardData[] }) {
   return (
     <Show when={props.cards.length > 0}>
       <div class={`sd-region sd-region--${props.name}`}>
-        <For each={props.cards}>{card => <CardView card={card} />}</For>
+        <For each={props.cards}>{card => <CardView card={card} region={props.name} />}</For>
       </div>
     </Show>
   );
@@ -144,26 +229,42 @@ function BlockView(props: { block: ViewBlock; cardKey: string }) {
       return <img class="sd-media" src={b.content.src} alt={b.content.alt} loading="lazy" />;
     case "cta":
       return (
-        <a class={`sd-cta sd-cta--${b.content.intent}`} href={b.content.href}>
+        <Cta intent={b.content.intent} href={b.content.href}>
           {b.content.label}
-        </a>
+        </Cta>
       );
+    case "action_button":
+      return <ActionButtonView content={b.content} />;
     case "listing_grid":
-      return <ListingGridView items={b.content.items} />;
+      return <ListingGridView items={b.content.items} emptyText={b.content.emptyText} />;
     case "specimen_list":
       return <SpecimenListView groups={b.content.groups} />;
+    case "group_tabs":
+      return <GroupTabsView content={b.content} />;
+    case "specimen_rows":
+      return <SpecimenRowsView content={b.content} />;
     case "specimen_profile":
       return <SpecimenProfileView profile={b.content} />;
     case "care_log_list":
-      return <CareLogListView specimenId={b.content.specimenId} entries={b.content.entries} />;
+      return (
+        <CareLogListView
+          specimenId={b.content.specimenId}
+          entries={b.content.entries}
+          emptyText={b.content.emptyText}
+        />
+      );
     case "species_note":
       return <SpeciesNoteView speciesName={b.content.speciesName} note={b.content.note} />;
     case "listing_hero":
       return <ListingHeroView content={b.content} />;
     case "listing_spec":
-      return <ListingSpecView attrs={b.content.attrs} />;
+      return <ListingSpecView attrs={b.content.attrs} emptyText={b.content.emptyText} />;
     case "listing_settings":
       return <ListingSettingsView content={b.content} />;
+    case "todo_list":
+      return <TodoListView content={b.content} />;
+    case "care_alerts":
+      return <CareAlertsView content={b.content} />;
     default:
       // 未知ブロックの fallback(進化規約2)。ここで例外を投げないことが契約
       return <div class="sd-fallback">未対応のブロック: {(b as { type: string }).type}</div>;
@@ -191,9 +292,14 @@ function TextView(props: {
     if (!a) return;
     setBusy(true);
     try {
-      await patchDefinitionBlock(a.pageKey, props.cardKey, props.blockKey, "text", {
-        text: draft(),
-      });
+      await patchDefinitionBlock(
+        a.pageKey,
+        props.cardKey,
+        props.blockKey,
+        "text",
+        { text: draft() },
+        a.pageScope ?? "shared",
+      );
       setEditing(false);
       a.refresh();
     } catch (e) {
@@ -203,19 +309,8 @@ function TextView(props: {
     }
   };
 
-  const body = () => {
-    switch (props.role) {
-      case "headline":
-        return <h2 class="sd-text sd-text--headline">{props.text}</h2>;
-      case "lead":
-        return <p class="sd-text sd-text--lead">{props.text}</p>;
-      case "caption":
-        return <p class="sd-text sd-text--caption">{props.text}</p>;
-      default:
-        // body + 未知 role は本文扱い(進化規約4)
-        return <p class="sd-text">{props.text}</p>;
-    }
-  };
+  // body + 未知 role は本文扱い(進化規約4。Text 側で未知roleの修飾クラスは無効に落ちる)
+  const body = () => <Text role={props.role}>{props.text}</Text>;
 
   return (
     // 編集アフォーダンスはスキーマ側の editable 宣言があるブロックにだけ出す
@@ -225,8 +320,9 @@ function TextView(props: {
         fallback={
           <div class="sd-textwrap">
             {body()}
-            <button
-              class="sd-btn sd-btn--ghost sd-editbtn"
+            <Button
+              intent="ghost"
+              class="sd-editbtn"
               title="文言を編集(画面定義を更新)"
               onClick={() => {
                 setDraft(props.text);
@@ -234,25 +330,25 @@ function TextView(props: {
               }}
             >
               編集
-            </button>
+            </Button>
           </div>
         }
       >
-        <div class="sd-form">
+        <FormStack>
           <textarea
             rows={3}
             value={draft()}
             onInput={e => setDraft(e.currentTarget.value)}
           />
-          <div class="sd-form-row">
-            <button class="sd-btn sd-btn--primary" disabled={busy()} onClick={save}>
+          <Row gap="sm">
+            <Button intent="primary" disabled={busy()} onClick={save}>
               保存
-            </button>
-            <button class="sd-btn" disabled={busy()} onClick={() => setEditing(false)}>
+            </Button>
+            <Button disabled={busy()} onClick={() => setEditing(false)}>
               キャンセル
-            </button>
-          </div>
-        </div>
+            </Button>
+          </Row>
+        </FormStack>
       </Show>
     </Show>
   );
@@ -277,9 +373,14 @@ function MarkdownView(props: {
     if (!a) return;
     setBusy(true);
     try {
-      await patchDefinitionBlock(a.pageKey, props.cardKey, props.blockKey, "markdown", {
-        markdown: draft(),
-      });
+      await patchDefinitionBlock(
+        a.pageKey,
+        props.cardKey,
+        props.blockKey,
+        "markdown",
+        { markdown: draft() },
+        a.pageScope ?? "shared",
+      );
       setEditing(false);
       a.refresh();
     } catch (e) {
@@ -298,8 +399,9 @@ function MarkdownView(props: {
         fallback={
           <div class="sd-textwrap">
             {body()}
-            <button
-              class="sd-btn sd-btn--ghost sd-editbtn"
+            <Button
+              intent="ghost"
+              class="sd-editbtn"
               title="Markdownを編集(画面定義を更新)"
               onClick={() => {
                 setDraft(props.markdown);
@@ -307,38 +409,62 @@ function MarkdownView(props: {
               }}
             >
               編集
-            </button>
+            </Button>
           </div>
         }
       >
-        <div class="sd-form">
+        <FormStack>
           <textarea
             rows={8}
             value={draft()}
             onInput={e => setDraft(e.currentTarget.value)}
           />
-          <p class="sd-text sd-text--caption">
+          <Text role="caption">
             Markdownが使えます(**太字**・- リスト・[リンク](/care) 等)
-          </p>
-          <div class="sd-form-row">
-            <button class="sd-btn sd-btn--primary" disabled={busy()} onClick={save}>
+          </Text>
+          <Row gap="sm">
+            <Button intent="primary" disabled={busy()} onClick={save}>
               保存
-            </button>
-            <button class="sd-btn" disabled={busy()} onClick={() => setEditing(false)}>
+            </Button>
+            <Button disabled={busy()} onClick={() => setEditing(false)}>
               キャンセル
-            </button>
-          </div>
-        </div>
+            </Button>
+          </Row>
+        </FormStack>
       </Show>
     </Show>
   );
 }
 
-function ListingGridView(props: { items: ListingItem[] }) {
+/**
+ * action_button ブロック。ボタンの存在・位置・文言(構成)は定義が持ち、
+ * 押下の振る舞いはページの actions provider(runAction)の閉じた動詞実装が持つ
+ * (docs/REFACTOR.md §2 の線引き)。provider が無いページでは無効表示
+ * (未知の動詞は provider 側で no-op — どちらも「落とさない」契約)。
+ */
+function ActionButtonView(props: {
+  content: { key: string; intent: CtaIntent; label: string; action: string };
+}) {
+  const actions = useSduiActions();
+  return (
+    <Row justify="end" gap="sm">
+      <Button
+        intent={props.content.intent === "primary" ? "primary" : "default"}
+        disabled={!actions?.runAction}
+        onClick={() => actions?.runAction?.(props.content.action)}
+      >
+        {props.content.label}
+      </Button>
+    </Row>
+  );
+}
+
+// 空状態の文言は定義側 emptyText を優先(未指定はコード既定 = additive 互換)
+function ListingGridView(props: { items: ListingItem[]; emptyText?: string }) {
   return (
     <Show
       when={props.items.length > 0}
-      fallback={<p class="sd-text sd-text--caption">該当する出品がありません</p>}
+      fallback={<Text role="caption">{props.emptyText ?? "該当する出品がありません"}</Text>}
     >
       <div class="sd-listing-grid">
         <For each={props.items}>{item => <ListingCard item={item} />}</For>

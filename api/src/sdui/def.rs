@@ -64,12 +64,38 @@ pub enum CardTone {
     Accent,
 }
 
+/// カード内レイアウト(セマンティックトークン)。CSS値は決して入れない(原則4)。
+/// `sidebar` = カード内の最初の「側柱対応ブロック」(現状 group_tabs)を側柱に、
+/// それより前のブロックを全幅の前置行、残りを本体として横並びに描く。
+/// 対応ブロックが無い場合・未指定・未知値はクライアントで `stack`(縦積み)扱い(進化規約4)。
+/// 汎用Box再帰コンテナは導入しない(docs/REFACTOR.md §3 案ロの不採用)。
+#[typeshare]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum CardLayout {
+    Stack,
+    Sidebar,
+}
+
 /// 出品者の絞り込み(additive)。`mine` = ログインユーザの出品のみ(未ログインは401)。
 #[typeshare]
 #[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum ListingSeller {
     Mine,
+}
+
+/// UIアクションの閉じた動詞(action_button 用)。
+/// 押下時の振る舞いはクライアント固定実装(actions provider)が持ち、定義側は
+/// 「どの動詞を起動するか」だけを選ぶ(docs/REFACTOR.md §2: 構成は定義、振る舞いは閉じた語彙)。
+/// 対象IDは持たせない(定義は全ユーザ共有物。IDはコンテキスト = URL/ログインユーザから解決)。
+#[typeshare]
+#[derive(Debug, Clone, Copy, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum UiAction {
+    AddSpecimen,
+    /// カードビルダーを開く(care ページの actions provider が実装)
+    AddCard,
 }
 
 // ──────────────────────────────────────────────────────────────
@@ -136,40 +162,82 @@ pub enum DefBlock {
         label: String,
         href: SitePath,
     },
+    /// 押下でクライアント固定実装の動詞を起動するボタン。
+    /// 存在・位置・文言(構成)は定義が持ち、振る舞いは `UiAction` の閉じた動詞から選ぶ。
+    /// 対応する actions provider が無いページに置かれた場合、クライアントは無効表示にする。
+    ActionButton {
+        key: BlockKey,
+        intent: CtaIntent,
+        label: String,
+        action: UiAction,
+    },
     ListingGrid {
         key: BlockKey,
         query: ListingQuery,
+        /// 空状態(該当0件)の表示文言。未指定はクライアント既定文言(additive・進化規約1)。
+        /// プレーンテキストのみ(式・補間は §5 のとおり導入しない)。長さは L2 で上限あり。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        empty_text: Option<String>,
     },
     // ── 飼育管理ドメインのデータバインド(いずれもパラメータなし) ──
     // エージェントが操作できるのは「どのカードに置くか / 並び順」だけ。
     /// 全個体のグループ別一覧(タブUI)。
-    SpecimenList {
+    /// 【非推奨 / Phase 2 で分割済み】新しい定義は `group_tabs` + `specimen_rows` を使うこと。
+    /// 既存定義の後方互換のためにのみ残す(語彙からの削除は schemaVersion++ の破壊的変更で行う)。
+    SpecimenList { key: BlockKey },
+    /// グループタブ帯(タブ+件数のみ)。選択タブはページコンテキスト
+    /// (`?group=` → HydrateCtx.group)であり、定義にもブロックにも持たせない
+    /// = ブロック同士を直接結合させない(REFACTOR §Phase2)。
+    /// タブの追加/改名/削除のインラインフォームはクライアント固定コード(§2 の線引き)。
+    GroupTabs { key: BlockKey },
+    /// 選択グループ(ctx.group、未指定/無効はサーバが既定選択)の個体行リスト。
+    /// 行直下の詳細展開はクライアント(`?open=` + renderSpecimenDetail 注入)。
+    SpecimenRows {
         key: BlockKey,
+        /// 空状態の表示文言(未指定はクライアント既定)。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        empty_text: Option<String>,
     },
     /// コンテキスト個体のプロフィール。specimen コンテキスト必須。
-    SpecimenProfile {
-        key: BlockKey,
-    },
+    SpecimenProfile { key: BlockKey },
     /// コンテキスト個体の飼育記録(新しい順)。specimen コンテキスト必須。
     CareLogList {
         key: BlockKey,
+        /// 空状態の表示文言(未指定はクライアント既定)。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        empty_text: Option<String>,
     },
     /// コンテキスト個体の種に紐づく飼育メモ。specimen コンテキスト必須。
-    SpeciesNote {
-        key: BlockKey,
-    },
+    SpeciesNote { key: BlockKey },
     // ── 出品詳細のデータバインド ──
     /// コンテキスト出品のヒーロー(写真・価格・状態・出品者コメント)。listing コンテキスト必須。
-    ListingHero {
-        key: BlockKey,
-    },
+    ListingHero { key: BlockKey },
     /// コンテキスト出品の個体スペック(チップ列)。listing コンテキスト必須。
     ListingSpec {
         key: BlockKey,
+        /// 空状態の表示文言(未指定はクライアント既定)。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        empty_text: Option<String>,
     },
     /// コンテキスト個体の出品設定(未出品/出品中の状態と操作)。specimen コンテキスト必須。
-    ListingSettings {
+    ListingSettings { key: BlockKey },
+    // ── ユーザウィジェット(カードビルダーで配置できる個人データバインド)──
+    /// 個人TODOリスト。中身はユーザ毎のドメインデータ(user_todos)。
+    /// 追加/チェック/削除のフォームはクライアント固定コード(REFACTOR §2 の線引き)。
+    TodoList {
         key: BlockKey,
+        /// 空状態の表示文言(未指定はクライアント既定)。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        empty_text: Option<String>,
+    },
+    /// アプリ内通知: 飼育データ由来の警告リスト+しきい値設定。
+    /// 設定値(有効/日数)は定義ではなくユーザ毎のドメインデータ(notification_prefs)。
+    /// 外部チャネル(メール等)は将来の拡張(docs/CARD_BUILDER.md §4.2)。
+    CareAlerts {
+        key: BlockKey,
+        /// 警告0件時の表示文言(未指定はクライアント既定)。
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        empty_text: Option<String>,
     },
 }
 
@@ -179,15 +247,20 @@ impl DefBlock {
             DefBlock::Text { key, .. }
             | DefBlock::Media { key, .. }
             | DefBlock::Cta { key, .. }
+            | DefBlock::ActionButton { key, .. }
             | DefBlock::Markdown { key, .. }
             | DefBlock::ListingGrid { key, .. }
             | DefBlock::SpecimenList { key }
+            | DefBlock::GroupTabs { key }
+            | DefBlock::SpecimenRows { key, .. }
             | DefBlock::SpecimenProfile { key }
-            | DefBlock::CareLogList { key }
+            | DefBlock::CareLogList { key, .. }
             | DefBlock::SpeciesNote { key }
             | DefBlock::ListingHero { key }
-            | DefBlock::ListingSpec { key }
-            | DefBlock::ListingSettings { key } => key,
+            | DefBlock::ListingSpec { key, .. }
+            | DefBlock::ListingSettings { key }
+            | DefBlock::TodoList { key, .. }
+            | DefBlock::CareAlerts { key, .. } => key,
         }
     }
 }
@@ -208,6 +281,9 @@ pub struct Card<B> {
     /// 色調。None = default(additive フィールドのため Option で保持)
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub tone: Option<CardTone>,
+    /// カード内レイアウト。None = stack(additive フィールドのため Option で保持)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub layout: Option<CardLayout>,
     pub blocks: Vec<B>,
 }
 

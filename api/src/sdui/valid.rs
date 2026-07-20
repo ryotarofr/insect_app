@@ -14,6 +14,8 @@ pub const MAX_BLOCKS_PER_CARD: usize = 10;
 pub const LISTING_LIMIT_MIN: u8 = 1;
 pub const LISTING_LIMIT_MAX: u8 = 24;
 pub const MAX_MARKDOWN_CHARS: usize = 5000;
+/// emptyText 等の短いUI文言の上限(1行〜2行の想定。長文は markdown ブロックの領分)
+pub const MAX_UI_TEXT_CHARS: usize = 200;
 
 #[derive(Debug, thiserror::Error)]
 pub enum DefinitionError {
@@ -32,6 +34,8 @@ pub enum DefinitionError {
     LimitOutOfRange { key: String, limit: u8 },
     #[error("markdown {key:?}: {len} chars exceeds max {MAX_MARKDOWN_CHARS}")]
     MarkdownTooLong { key: String, len: usize },
+    #[error("{key:?}: ui text {len} chars exceeds max {MAX_UI_TEXT_CHARS}")]
+    UiTextTooLong { key: String, len: usize },
     #[error("region {region:?} has {count} cards (max {MAX_CARDS_PER_REGION})")]
     TooManyCards { region: &'static str, count: usize },
     #[error("card {card:?} has {count} blocks (max {MAX_BLOCKS_PER_CARD})")]
@@ -85,6 +89,20 @@ fn validate(def: &PageDefinition) -> Result<(), DefinitionError> {
     Ok(())
 }
 
+/// emptyText 等の短いUI文言の長さ検証(未指定は常にOK)
+fn check_ui_text(key: &super::brand::BlockKey, text: Option<&str>) -> Result<(), DefinitionError> {
+    if let Some(t) = text {
+        let len = t.chars().count();
+        if len > MAX_UI_TEXT_CHARS {
+            return Err(DefinitionError::UiTextTooLong {
+                key: key.as_str().to_string(),
+                len,
+            });
+        }
+    }
+    Ok(())
+}
+
 fn region_entries<B>(r: &FeedRegions<B>) -> [(&'static str, &Vec<Card<B>>); 3] {
     [
         ("header", &r.header),
@@ -124,13 +142,25 @@ fn validate_card(card: &Card<DefBlock>, seen: &mut HashSet<String>) -> Result<()
                     });
                 }
             }
-            DefBlock::ListingGrid { key, query } => {
+            DefBlock::ListingGrid {
+                key,
+                query,
+                empty_text,
+            } => {
                 if !(LISTING_LIMIT_MIN..=LISTING_LIMIT_MAX).contains(&query.limit) {
                     return Err(DefinitionError::LimitOutOfRange {
                         key: key.as_str().to_string(),
                         limit: query.limit,
                     });
                 }
+                check_ui_text(key, empty_text.as_deref())?;
+            }
+            DefBlock::SpecimenRows { key, empty_text }
+            | DefBlock::CareLogList { key, empty_text }
+            | DefBlock::ListingSpec { key, empty_text }
+            | DefBlock::TodoList { key, empty_text }
+            | DefBlock::CareAlerts { key, empty_text } => {
+                check_ui_text(key, empty_text.as_deref())?;
             }
             _ => {}
         }
@@ -280,6 +310,137 @@ mod tests {
         let valid = parse(&v).unwrap();
         let super::Page::Feed { regions } = &valid.get().page;
         assert_eq!(regions.header[0].size, crate::sdui::CardSize::Full);
+    }
+
+    // ── action_button(SDUI改修 Phase 1)──
+
+    #[test]
+    fn action_button_roundtrips() {
+        let mut v = sample();
+        v["page"]["content"]["regions"]["body"][1]["blocks"] = json!([
+            { "type": "action_button", "content": {
+                "key": "add-btn", "intent": "secondary",
+                "label": "＋ 個体を追加", "action": "add_specimen" } }
+        ]);
+        let valid = parse(&v).unwrap();
+        let back = serde_json::to_value(valid.get()).unwrap();
+        assert_eq!(back, v);
+    }
+
+    #[test]
+    fn rejects_unknown_ui_action() {
+        // 閉じた動詞 enum: 未知の動詞は L1(serde)で拒否 = PUT では 422
+        let mut v = sample();
+        v["page"]["content"]["regions"]["body"][1]["blocks"] = json!([
+            { "type": "action_button", "content": {
+                "key": "add-btn", "intent": "secondary",
+                "label": "＋", "action": "self_destruct" } }
+        ]);
+        assert!(matches!(parse(&v), Err(DefinitionError::Json(_))));
+    }
+
+    #[test]
+    fn rejects_unknown_field_in_action_button() {
+        // 任意イベント定義(onClick 等)の混入は構造で拒否(docs/REFACTOR.md §5)
+        let mut v = sample();
+        v["page"]["content"]["regions"]["body"][1]["blocks"] = json!([
+            { "type": "action_button", "content": {
+                "key": "add-btn", "intent": "secondary",
+                "label": "＋", "action": "add_specimen", "onClick": "alert(1)" } }
+        ]);
+        assert!(matches!(parse(&v), Err(DefinitionError::Json(_))));
+    }
+
+    // ── Card.layout(SDUI改修 Phase 3)──
+
+    #[test]
+    fn card_layout_roundtrips_and_absent_by_default() {
+        // 指定時は round-trip で保持される
+        let mut v = sample();
+        v["page"]["content"]["regions"]["body"][0]["layout"] = json!("sidebar");
+        let valid = parse(&v).unwrap();
+        let back = serde_json::to_value(valid.get()).unwrap();
+        assert_eq!(back, v);
+        // 未指定は出力に乗らない(additive 互換 = 進化規約1)
+        let plain = parse(&sample()).unwrap();
+        let s = serde_json::to_string(plain.get()).unwrap();
+        assert!(!s.contains("layout"), "{s}");
+    }
+
+    #[test]
+    fn rejects_unknown_card_layout() {
+        // サーバは書き込みに厳格(未知トークン拒否)。クライアント側 fallback とは別のルール
+        let mut v = sample();
+        v["page"]["content"]["regions"]["body"][0]["layout"] = json!("grid");
+        assert!(matches!(parse(&v), Err(DefinitionError::Json(_))));
+    }
+
+    // ── emptyText(ブロック隣接文言の定義化)──
+
+    #[test]
+    fn empty_text_roundtrips_and_absent_by_default() {
+        let mut v = sample();
+        v["page"]["content"]["regions"]["body"][0]["blocks"][0]["content"]["emptyText"] =
+            json!("出品はまだありません。最初の出品者になりませんか?");
+        let valid = parse(&v).unwrap();
+        let back = serde_json::to_value(valid.get()).unwrap();
+        assert_eq!(back, v);
+        // 未指定は出力に乗らない(additive 互換)
+        let plain = parse(&sample()).unwrap();
+        let s = serde_json::to_string(plain.get()).unwrap();
+        assert!(!s.contains("emptyText"), "{s}");
+    }
+
+    #[test]
+    fn rejects_too_long_empty_text() {
+        let mut v = sample();
+        v["page"]["content"]["regions"]["body"][0]["blocks"][0]["content"]["emptyText"] =
+            json!("あ".repeat(201));
+        assert!(matches!(
+            parse(&v),
+            Err(DefinitionError::UiTextTooLong { len: 201, .. })
+        ));
+    }
+
+    // ── todo_list / care_alerts / add_card(カードビルダー v1)──
+
+    #[test]
+    fn user_widget_blocks_roundtrip() {
+        let mut v = sample();
+        v["page"]["content"]["regions"]["body"][1]["blocks"] = json!([
+            { "type": "todo_list",   "content": { "key": "todos", "emptyText": "TODOはありません" } },
+            { "type": "care_alerts", "content": { "key": "alerts" } },
+            { "type": "action_button", "content": {
+                "key": "add-card", "intent": "secondary",
+                "label": "＋ カードを追加", "action": "add_card" } }
+        ]);
+        let valid = parse(&v).unwrap();
+        let back = serde_json::to_value(valid.get()).unwrap();
+        assert_eq!(back, v);
+    }
+
+    // ── group_tabs / specimen_rows(SDUI改修 Phase 2)──
+
+    #[test]
+    fn group_tabs_and_specimen_rows_roundtrip() {
+        let mut v = sample();
+        v["page"]["content"]["regions"]["body"][1]["blocks"] = json!([
+            { "type": "group_tabs",    "content": { "key": "tabs" } },
+            { "type": "specimen_rows", "content": { "key": "rows" } }
+        ]);
+        let valid = parse(&v).unwrap();
+        let back = serde_json::to_value(valid.get()).unwrap();
+        assert_eq!(back, v);
+    }
+
+    #[test]
+    fn rejects_unknown_field_in_group_tabs() {
+        // 定義側の語彙は { key } のみ。選択状態はコンテキスト(URL)であって定義ではない
+        let mut v = sample();
+        v["page"]["content"]["regions"]["body"][1]["blocks"] = json!([
+            { "type": "group_tabs", "content": { "key": "tabs", "activeGroupId": "x" } }
+        ]);
+        assert!(matches!(parse(&v), Err(DefinitionError::Json(_))));
     }
 
     #[test]

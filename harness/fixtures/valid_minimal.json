@@ -1,0 +1,51 @@
+{
+  "schemaVersion": 1,
+  "page": {
+    "template": "feed",
+    "content": {
+      "regions": {
+        "header": [
+          {
+            "key": "hero",
+            "blocks": [
+              {
+                "type": "text",
+                "content": {
+                  "key": "hero-title",
+                  "role": "headline",
+                  "text": "夏のヘラクレス特集"
+                }
+              },
+              {
+                "type": "text",
+                "content": {
+                  "key": "hero-lead",
+                  "role": "lead",
+                  "text": "新着からピックアップ"
+                }
+              }
+            ]
+          }
+        ],
+        "body": [
+          {
+            "key": "guide",
+            "blocks": [
+              {
+                "type": "cta",
+                "content": {
+                  "key": "guide-link",
+                  "intent": "secondary",
+                  "label": "ガイドを読む",
+                  "href": "/care"
+                }
+              }
+            ],
+            "size": "half"
+          }
+        ],
+        "footer": []
+      }
+    }
+  }
+}

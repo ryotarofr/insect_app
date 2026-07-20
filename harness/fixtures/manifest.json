@@ -1,0 +1,41 @@
+[
+  {
+    "file": "valid_minimal.json",
+    "expected": "pass",
+    "expected_hydrate": 200
+  },
+  {
+    "file": "valid_full.json",
+    "expected": "pass",
+    "expected_hydrate": 200
+  },
+  {
+    "file": "valid_context_required.json",
+    "expected": "pass",
+    "expected_hydrate": 400
+  },
+  {
+    "file": "l1_unknown_field.json",
+    "expected": "L1:unknown_field"
+  },
+  {
+    "file": "l1_unknown_variant.json",
+    "expected": "L1:unknown_variant"
+  },
+  {
+    "file": "l1_schema_gap_sitepath.json",
+    "expected": "L1:schema_gap_site_path"
+  },
+  {
+    "file": "l2_duplicate_key.json",
+    "expected": "L2:duplicate_key"
+  },
+  {
+    "file": "l2_two_headlines.json",
+    "expected": "L2:multiple_headlines"
+  },
+  {
+    "file": "l2_limit_out_of_range.json",
+    "expected": "L2:limit_out_of_range"
+  }
+]

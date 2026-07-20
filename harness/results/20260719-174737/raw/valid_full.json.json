@@ -1,0 +1,13 @@
+{
+  "fixture": {
+    "file": "valid_full.json",
+    "expected": "pass",
+    "expected_hydrate": 200
+  },
+  "category": "pass",
+  "stderr": "",
+  "hydrate": {
+    "put": 204,
+    "get": 200
+  }
+}

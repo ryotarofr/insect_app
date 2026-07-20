@@ -1,0 +1,10 @@
+{
+  "fixture": {
+    "file": "valid_context_required.json",
+    "expected": "pass",
+    "expected_hydrate": 400
+  },
+  "category": "pass",
+  "stderr": "",
+  "hydrate": null
+}

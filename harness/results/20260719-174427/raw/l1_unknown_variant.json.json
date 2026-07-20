@@ -1,0 +1,9 @@
+{
+  "fixture": {
+    "file": "l1_unknown_variant.json",
+    "expected": "L1:unknown_variant"
+  },
+  "category": "L1:unknown_variant",
+  "stderr": "INVALID: structural: unknown variant `carousel`, expected one of `text`, `markdown`, `media`, `cta`, `action_button`, `listing_grid`, `specimen_list`, `group_tabs`, `specimen_rows`, `specimen_profile`, `care_log_list`, `species_note`, `listing_hero`, `listing_spec`, `listing_settings` at line 13 column 34",
+  "hydrate": null
+}
